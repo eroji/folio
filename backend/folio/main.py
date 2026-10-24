@@ -19,6 +19,8 @@ from folio.errors import ApiError, register_error_handlers
 from folio.models import User
 from folio.routers.admin import router as admin_router
 from folio.routers.auth import router as auth_router
+from folio.routers.books import router as books_router
+from folio.routers.events import router as events_router
 
 WORKER_HEARTBEAT_MAX_AGE_S = 60
 STATIC_DIR = Path(__file__).parent / "static"
@@ -56,6 +58,8 @@ def create_app() -> FastAPI:
     app.add_api_route("/api/v1/admin/health", admin_health, methods=["GET"])
     app.include_router(auth_router)
     app.include_router(admin_router)
+    app.include_router(books_router)
+    app.include_router(events_router)
 
     if get_settings().folio_test_mode:
         from folio.routers.test_auth import router as test_auth_router

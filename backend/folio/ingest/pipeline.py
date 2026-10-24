@@ -1,0 +1,172 @@
+"""The ``ingest`` job handler: extract → clean → segment → metadata → ready.
+
+Status flow (spec, Book ingestion): ``uploading`` (set at upload) →
+``processing`` → ``ready`` | ``needs_ocr`` | ``failed``. The handler is
+idempotent: chapters/segments are deleted before being rebuilt, so a
+reprocess or a retry never duplicates rows.
+"""
+
+import hashlib
+from pathlib import Path
+from uuid import UUID
+
+import bleach  # type: ignore[import-untyped]
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from folio.config import Settings
+from folio.ingest import (
+    EmbeddedMetadata,
+    ExtractedBook,
+    ExtractedChapter,
+    ScannedPDF,
+    UnsupportedFormat,
+)
+from folio.ingest.clean import clean_chapters
+from folio.ingest.detect import Format, detect_format
+from folio.ingest.epub import extract_epub
+from folio.ingest.kindle import extract_kindle
+from folio.ingest.pdf import extract_pdf
+from folio.ingest.segment import segment_chapter
+from folio.models import Book, BookFile, Chapter, Job, Segment
+from folio.storage import book_dir, cover_dir, ensure_dirs
+
+
+def process_book(session: Session, settings: Settings, target: UUID | Job) -> None:
+    """Run the ingest pipeline for one book.
+
+    Takes a ``Job`` (the worker's ``Handler`` signature) or a bare book UUID
+    (tests, direct calls); both spellings are pinned by the plan.
+    """
+    book_id = target.book_id if isinstance(target, Job) else target
+    if book_id is None:
+        raise ValueError("ingest job has no book")
+    book = session.get(Book, book_id)
+    if book is None:  # deleted while the job was queued
+        return
+    book.status = "processing"
+    book.error = None
+    session.commit()
+    try:
+        _ingest(session, settings, book)
+    except Exception as exc:
+        session.rollback()
+        book = session.get(Book, book_id)
+        if book is not None:
+            book.status = "failed"
+            book.error = _readable_error(exc)
+            session.commit()
+        raise
+
+
+def _readable_error(exc: Exception) -> str:
+    # UnsupportedFormat already carries the spec's DRM message; everything
+    # else shows the exception text (never a traceback).
+    return str(exc) or type(exc).__name__
+
+
+def _ingest(session: Session, settings: Settings, book: Book) -> None:
+    original = session.scalar(
+        select(BookFile).where(BookFile.book_id == book.id, BookFile.kind == "original")
+    )
+    if original is None or not Path(original.path).is_file():
+        raise FileNotFoundError("The stored original file is missing.")
+    path = Path(original.path)
+    scanned = False
+    try:
+        extracted = _extract(settings, book, path)
+    except ScannedPDF as exc:  # spec step 5: still add metadata/cover, not playable
+        scanned = True
+        extracted = ExtractedBook(
+            chapters=[], metadata=exc.metadata or EmbeddedMetadata(), cover=exc.cover
+        )
+    _apply_metadata(book, extracted.metadata)
+    _store_cover(settings, book, extracted.cover)
+    _persist_chapters(session, settings, book, extracted.chapters)
+    book.status = "needs_ocr" if scanned else "ready"
+    session.commit()
+
+
+def _extract(settings: Settings, book: Book, path: Path) -> ExtractedBook:
+    fmt = detect_format(path)  # magic bytes, never the extension
+    if fmt is Format.EPUB:
+        return extract_epub(path)
+    if fmt is Format.PDF:
+        return extract_pdf(path)
+    if fmt is Format.KINDLE:
+        return extract_kindle(path, workdir=book_dir(settings, book.id))
+    raise UnsupportedFormat("kfx" if fmt is Format.KFX else "unknown")
+
+
+def _apply_metadata(book: Book, meta: EmbeddedMetadata) -> None:
+    """File metadata wins; locked_fields (set by M3 edits) is never overwritten."""
+    description = bleach.clean(meta.description, tags=[], strip=True) if meta.description else None
+    fields: dict[str, object | None] = {
+        "title": meta.title or book.title,  # book.title is the filename stem from upload
+        "authors": meta.authors or None,
+        "series": meta.series,
+        "series_index": meta.series_index,
+        "description": description,
+        "publisher": meta.publisher,
+        "published_date": meta.published_date,
+        "isbn10": meta.isbn10,
+        "isbn13": meta.isbn13,
+        "tags": meta.tags or None,
+        "language": meta.language or "en",
+    }
+    for name, value in fields.items():
+        if value is not None and name not in book.locked_fields:
+            setattr(book, name, value)
+
+
+def _cover_ext(data: bytes) -> str:
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    return "img"  # ponytail: unrecognised cover bytes are stored as-is; sniff more if real books hit it
+
+
+def _store_cover(settings: Settings, book: Book, cover: bytes | None) -> None:
+    if not cover:
+        return
+    path = cover_dir(settings, book.id) / f"original.{_cover_ext(cover)}"
+    ensure_dirs(path.parent)
+    path.write_bytes(cover)
+    book.cover_key = hashlib.sha256(cover).hexdigest()
+
+
+def _persist_chapters(
+    session: Session, settings: Settings, book: Book, chapters: list[ExtractedChapter]
+) -> None:
+    # Idempotent reprocess: segments cascade-delete with their chapters.
+    session.execute(delete(Chapter).where(Chapter.book_id == book.id))
+    language = book.language
+    total = 0
+    for idx, chapter in enumerate(clean_chapters(chapters, language)):
+        segmented = segment_chapter(chapter, language, max_chars=settings.tts_max_chars)
+        row = Chapter(
+            book_id=book.id,
+            idx=idx,
+            title=chapter.title.strip() or f"Chapter {idx + 1}",
+            char_count=len(chapter.text),
+        )
+        session.add(row)
+        session.flush()
+        for seg_idx, seg in enumerate(segmented.segments):
+            session.add(
+                Segment(
+                    chapter_id=row.id,
+                    idx=seg_idx,
+                    text=seg.text,
+                    char_start=seg.char_start,
+                    char_end=seg.char_end,
+                )
+            )
+        total += len(chapter.text)
+    book.total_chars = total
+    book.est_duration_s = total / settings.tts_chars_per_second

@@ -1,7 +1,4 @@
-"""Worker entry point: `python -m folio.worker` — claim and run jobs from the queue.
-
-Task 8 registers the ``ingest`` handler in ``HANDLERS`` at merge time.
-"""
+"""Worker entry point: `python -m folio.worker` — claim and run jobs from the queue."""
 
 import logging
 import signal
@@ -13,12 +10,13 @@ from sqlalchemy.orm import Session
 
 from folio.config import Settings, get_settings
 from folio.db import SessionLocal
+from folio.ingest.pipeline import process_book
 from folio.jobs import claim_next, finish, notify
 from folio.models.book import Job
 from folio.storage import ensure_dirs
 
 Handler = Callable[[Session, Settings, Job], None]
-HANDLERS: dict[str, Handler] = {}
+HANDLERS: dict[str, Handler] = {"ingest": process_book}
 
 IDLE_S = 0.5
 _stopping = False
