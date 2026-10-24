@@ -1,0 +1,8 @@
+# Test-stack override: the only place FOLIO_TEST_MODE may be set.
+# Usage: docker compose -f compose.yaml -f compose.test.yaml up -d --build
+services:
+  api:
+    build:
+      context: .
+    environment:
+      FOLIO_TEST_MODE: "true"

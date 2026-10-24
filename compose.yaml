@@ -1,0 +1,70 @@
+name: folio
+
+x-app-env: &app-env
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-folio}:${POSTGRES_PASSWORD:-folio}@db:5432/${POSTGRES_DB:-folio}
+    # The named volume, regardless of what .env says (local dev uses ./data).
+    DATA_DIR: /data
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-folio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-folio}
+      POSTGRES_DB: ${POSTGRES_DB:-folio}
+    ports:
+      # Loopback only: local dev + tests reach it on localhost:5432 (`make db`).
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - folio-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-folio} -d ${POSTGRES_DB:-folio}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    image: folio:latest
+    build: .
+    command: sh -c "alembic upgrade head && uvicorn folio.main:app --host 0.0.0.0 --port 8000"
+    <<: *app-env
+    volumes:
+      - folio-data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  worker:
+    image: folio:latest
+    build: .
+    command: python -m folio.worker
+    <<: *app-env
+    volumes:
+      - folio-data:/data
+    depends_on:
+      api:
+        condition: service_started
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, time; raise SystemExit(time.time() - os.path.getmtime('/data/.worker-heartbeat') > 60)"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 15s
+
+volumes:
+  folio-data:
+  folio-db:
