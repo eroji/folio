@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+body {
+  background: var(--page);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.bg-brand-gradient {
+  background: var(--brand-gradient);
+}
+
+/* Safe-area helpers (viewport-fit=cover is set in index.html). */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-blue);
+  outline-offset: 2px;
+}
