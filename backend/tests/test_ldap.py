@@ -13,6 +13,8 @@ from folio.ldap_auth import (
     InvalidCredentials,
     Ldap3Authenticator,
     NotAllowed,
+    bare_username,
+    filter_for,
     role_from_groups,
 )
 
@@ -145,6 +147,63 @@ def test_nested_group_dn_resolves_role_case_insensitively(
     ldap.search_result_for[IN_CHAIN_OID] = [FakeEntry("cn=FOLIO-user,dc=TEST", {})]
     user = authenticator.authenticate("alice", "pw")
     assert role_from_groups(user.groups, get_settings()) == "user"
+
+
+def test_domain_and_upn_spellings_resolve_to_the_bare_name(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
+) -> None:
+    _user_found(ldap)
+    ldap.search_result_for[IN_CHAIN_OID] = [FakeEntry(NESTED_GROUP_DN, {})]
+    user = authenticator.authenticate("CORP\\alice", "pw")
+    assert user.username == "alice"
+    assert any("sAMAccountName=alice" in f for _, f in ldap.searches)
+
+    ldap.connections = []
+    authenticator.authenticate("alice@corp.test", "pw")
+    assert any("sAMAccountName=alice" in f for _, f in ldap.searches)
+
+
+def test_bare_username_spellings() -> None:
+    assert bare_username("CORP\\alice") == "alice"
+    assert bare_username("alice@corp.test") == "alice"
+    assert bare_username("  alice  ") == "alice"
+
+
+def test_upn_placeholder_uses_the_base_dn(settings: Settings) -> None:
+    s = settings.model_copy(
+        update={"ldap_user_filter": "(&(objectClass=user)(userPrincipalName={upn}))"}
+    )
+    assert filter_for("CORP\\alice", s) == "(&(objectClass=user)(userPrincipalName=alice@test))"
+
+
+def test_canonical_username_comes_from_the_directory(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
+) -> None:
+    ldap.search_result_for["sAMAccountName=ALICE"] = [
+        FakeEntry(USER_DN, {"cn": [b"Alice"], "sAMAccountName": [b"Alice"]})
+    ]
+    ldap.search_result_for[IN_CHAIN_OID] = [FakeEntry(NESTED_GROUP_DN, {})]
+    # Typed in caps; the local users row must key off the directory spelling.
+    assert authenticator.authenticate("ALICE", "pw").username == "Alice"
+
+
+def test_ambiguous_search_results_are_rejected(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
+) -> None:
+    ldap.search_result_for["sAMAccountName=alice"] = [
+        FakeEntry(USER_DN, {}),
+        FakeEntry("CN=Other,DC=test", {}),
+    ]
+    with pytest.raises(InvalidCredentials):
+        authenticator.authenticate("alice", "pw")
+
+
+def test_empty_password_never_attempts_a_bind(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
+) -> None:
+    with pytest.raises(InvalidCredentials):
+        authenticator.authenticate("alice", "")
+    assert ldap.connections == []  # no anonymous/unauthenticated bind
 
 
 def test_admin_group_wins_over_user_group(settings: Settings) -> None:

@@ -77,6 +77,8 @@ class Ldap3Authenticator:
             use_ssl=use_ssl,
             tls=tls,
             connect_timeout=LDAP_CONNECT_TIMEOUT_S,
+            # Skip the RootDSE schema fetch: a measurable latency win per bind.
+            get_info=None,
         )
 
     def _connection(self, user: str, password: str) -> Connection:
@@ -85,25 +87,36 @@ class Ldap3Authenticator:
             user=user,
             password=password,
             receive_timeout=LDAP_RECEIVE_TIMEOUT_S,
+            # Never chase AD referrals to another forest during a login.
+            auto_referrals=False,
         )
 
     def authenticate(self, username: str, password: str) -> LdapUser:
         s = self._settings
+        # An empty password must never become an unauthenticated bind.
+        if not password:
+            raise InvalidCredentials
         try:
             service = self._connection(s.ldap_bind_dn, s.ldap_bind_password)
             try:
                 if not service.bind():
                     logger.warning("ldap login failed user=%s reason=service_bind", username)
                     raise InvalidCredentials
-                svc_filter = s.ldap_user_filter.format(username=escape_filter_chars(username))
+                svc_filter = filter_for(username, s)
                 service.search(
                     s.ldap_base_dn,
                     svc_filter,
                     search_scope=SUBTREE,
-                    attributes=["cn", "mail", "memberOf"],
+                    attributes=["cn", "mail", "sAMAccountName", "uid", "memberOf"],
                 )
-                if not service.entries:
-                    logger.info("ldap login failed user=%s reason=no_such_user", username)
+                # Exactly one entry: zero (unknown) and many (ambiguous) both
+                # mean "these credentials do not identify one account".
+                if len(service.entries) != 1:
+                    logger.info(
+                        "ldap login failed user=%s reason=entries_%d",
+                        username,
+                        len(service.entries),
+                    )
                     raise InvalidCredentials
                 entry = service.entries[0]
                 user_dn: str = entry.entry_dn
@@ -135,13 +148,47 @@ class Ldap3Authenticator:
         if role_from_groups(groups, s) is None:
             logger.info("ldap login refused user=%s reason=not_allowed", username)
             raise NotAllowed
+        # Canonical spelling from the directory, so `ALICE`, `DOMAIN\alice`
+        # and `alice@corp` all resolve to the one local users row.
+        canonical = _attr(entry, "sAMAccountName") or _attr(entry, "uid") or bare_username(username)
         return LdapUser(
             dn=user_dn,
-            username=username,
-            display_name=_attr(entry, "cn"),
+            username=canonical,
+            display_name=_attr(entry, "cn") or canonical,
             email=_attr(entry, "mail"),
             groups=groups,
         )
+
+
+def bare_username(typed: str) -> str:
+    """`CORP\\alice`, `alice@corp.example` and `alice` all mean `alice`."""
+    name = (typed or "").strip()
+    if "\\" in name:
+        name = name.rsplit("\\", 1)[1]
+    if "/" in name:
+        name = name.rsplit("/", 1)[1]
+    if "@" in name:
+        name = name.split("@", 1)[0]
+    return name
+
+
+def upn_suffix(base_dn: str) -> str:
+    """`@corp.example` derived from the `dc=` parts of the base DN."""
+    domains = [
+        part.split("=", 1)[1]
+        for part in base_dn.split(",")
+        if part.strip().lower().startswith("dc=") and "=" in part
+    ]
+    return "@" + ".".join(domains) if domains else ""
+
+
+def filter_for(username: str, settings: Settings) -> str:
+    """Build the user search filter, supporting both `{username}` and `{upn}`."""
+    bare = bare_username(username)
+    upn = f"{bare}{upn_suffix(settings.ldap_base_dn)}"
+    return settings.ldap_user_filter.replace("{username}", escape_filter_chars(bare)).replace(
+        "{upn}", escape_filter_chars(upn)
+    )
 
 
 def _attr(entry: object, name: str) -> str:
