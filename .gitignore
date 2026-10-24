@@ -15,6 +15,10 @@ dist/
 .env
 .env.local
 
+# Generated frontend build output (Task 4's Vite outDir)
+/backend/folio/static/*
+!/backend/folio/static/.gitkeep
+
 # Runtime data
 /data/
 *.db
