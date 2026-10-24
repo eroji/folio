@@ -25,3 +25,6 @@ One line each: decision, why, what it costs.
 - **ESLint 10 flat config (`eslint.config.js`)** — `.eslintrc.cjs` is removed in ESLint 9+; the plan's file list predates the pin; costs: none, config lives in one file.
 - **Theme via `[data-theme]` + semantic CSS vars, no `dark:` variants** — components consume `bg-page`/`text-ink`/`text-muted` mapped through `@theme inline`, so light/dark flips cascade from one token block; costs: brand-specific dark tweaks need a new token instead of a `dark:` class.
 - **Admin jobs table accepts bare array or `{items}`** — `GET /admin/jobs` response shape isn't pinned until T2 merges; costs: drop the normalization once the backend contract lands.
+- **Job statuses `queued → running → done | failed`** — the spec pins the `jobs` columns but not the status vocabulary; costs: the M3 admin jobs table must map these values to labels.
+- **`jobs.notify` commits before/while sending** — Postgres delivers NOTIFY only at transaction end, so a caller's open transaction would silently drop the event; costs: `notify` cannot be part of a larger atomic unit.
+- **`worker.run_once(session, settings) -> bool`** — the claim/dispatch/finish/notify body is extracted from `main()` so tests drive one iteration without threads or signals; costs: one extra module-level function beyond the plan's pinned surface.
