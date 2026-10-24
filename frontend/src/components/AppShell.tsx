@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { BookOpen, Moon, Shield, Sun, Upload } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
+import { useEvents } from "../hooks/useEvents";
 import { useTheme } from "../hooks/useTheme";
 
 const iconProps = { size: 20, strokeWidth: 1.75, "aria-hidden": true } as const;
@@ -11,6 +12,7 @@ const iconProps = { size: 20, strokeWidth: 1.75, "aria-hidden": true } as const;
 export function AppShell() {
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
+  useEvents();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   if (!user) return null; // RequireAuth guarantees a user before this renders.
