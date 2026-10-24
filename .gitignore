@@ -11,6 +11,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Built SPA, compiled into the API image at build time
+backend/folio/static/
+
 # Environment / secrets
 .env
 .env.local

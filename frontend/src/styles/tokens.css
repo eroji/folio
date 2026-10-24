@@ -1,0 +1,57 @@
+/* Brand tokens — values sampled from docs/folio-application-spec.md "Brand". */
+:root {
+  --brand-blue: #2381f7;
+  --brand-violet: #8b5cf6;
+  --brand-gradient: linear-gradient(135deg, #2381f7 0%, #8b5cf6 100%);
+  --brand-tint: #8ea2f9;
+  --ink: #1e2235;
+  --surface-light: #f6f7fb;
+  --surface-dark: #12141f;
+
+  /* Semantic surface set; light default, dark below. */
+  --page: var(--surface-light);
+  --card: #ffffff;
+  --fg: var(--ink);
+  --muted: #5b6275;
+  --line: #e2e5ef;
+  --danger: #b42318;
+}
+
+/* System default until JS pins an explicit choice via [data-theme]. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --page: var(--surface-dark);
+    --card: var(--ink);
+    --fg: #f7f8fc;
+    --muted: #a3a9ba;
+    --line: #2b3049;
+    --danger: #fda29b;
+  }
+}
+
+:root[data-theme="dark"] {
+  --page: var(--surface-dark);
+  --card: var(--ink);
+  --fg: #f7f8fc;
+  --muted: #a3a9ba;
+  --line: #2b3049;
+  --danger: #fda29b;
+}
+
+/* Tailwind 4 CSS-first theme. `inline` so utilities resolve the vars at use
+   site and flip live with [data-theme]. */
+@theme inline {
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-violet: var(--brand-violet);
+  --color-brand-tint: var(--brand-tint);
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-ink: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-danger: var(--danger);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --radius-card: 12px;
+  --radius-pill: 999px;
+}

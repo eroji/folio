@@ -21,3 +21,7 @@ One line each: decision, why, what it costs.
 - **Shared ingest types in `folio/ingest/__init__.py`** — Task 5a's file list has no `types.py` and the readers must not import each other; costs: the package `__init__` is the public surface for `ExtractedBook`/`UnsupportedFormat`/`ScannedPDF`.
 - **Kindle metadata via `ebook-meta` text parsing** — the plan pins `ebook-meta` for fields the converted EPUB lacks; we parse its stable `Key : value` output and only fill empty fields; costs: breaks if Calibre changes its output format, first author only.
 - **PDF front matter before the first outline entry is dropped** — outline entries define chapter starts; costs: a title page ahead of the first bookmark is not spoken.
+- **React 19 (19.3.1), not the spec's React 18** — pinned by the M1–M2 plan; the spec table predates the plan; costs: none known, `@types/react` 19 conventions (ref as prop) apply.
+- **ESLint 10 flat config (`eslint.config.js`)** — `.eslintrc.cjs` is removed in ESLint 9+; the plan's file list predates the pin; costs: none, config lives in one file.
+- **Theme via `[data-theme]` + semantic CSS vars, no `dark:` variants** — components consume `bg-page`/`text-ink`/`text-muted` mapped through `@theme inline`, so light/dark flips cascade from one token block; costs: brand-specific dark tweaks need a new token instead of a `dark:` class.
+- **Admin jobs table accepts bare array or `{items}`** — `GET /admin/jobs` response shape isn't pinned until T2 merges; costs: drop the normalization once the backend contract lands.
