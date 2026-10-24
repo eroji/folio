@@ -46,6 +46,14 @@ make logs               # api + worker logs
 
 Tests need PostgreSQL: set `TEST_DATABASE_URL` (default `postgresql+psycopg://folio:folio@localhost:5432/folio_test`). The harness creates the test database if it is missing. Never point tests at the development or production database.
 
+**When more than one backend workstream runs at the same time, each must use its own database** — otherwise their `TRUNCATE`s deadlock and pipeline tests fail with confusing `FileNotFoundError`s:
+
+```bash
+TEST_DATABASE_URL=postgresql+psycopg://folio:folio@127.0.0.1:5432/folio_test_<workstream> make test
+```
+
+The harness creates `folio_test_<workstream>` on first run.
+
 ## Two run modes, both required
 
 Every change must work in **both**:

@@ -14,29 +14,36 @@ test("an edited title survives a reprocess", async ({ page }) => {
 
   await page.goto("/upload");
   await page.setInputFiles('input[type="file"]', "../backend/tests/fixtures/epub3.epub");
-  const row = page.getByRole("listitem").filter({ hasText: /The Lighthouse at Low Tide/ });
-  // The fixture may already exist from upload.spec (shared serial database):
-  // a duplicate upload links to the existing book instead of ingesting.
-  await expect(row).toContainText(/Ready|already in your library/i, { timeout: 90_000 });
 
-  await page.goto("/");
-  await page.getByRole("link", { name: /The Lighthouse at Low Tide/ }).click();
+  // Fresh database: the row shows the extracted title and status. Reused
+  // database: the same bytes are a duplicate and the row shows the filename
+  // plus a link to the existing book. Both are valid entries to edit.
+  const row = page
+    .getByRole("listitem")
+    .filter({ hasText: /epub3\.epub|The Lighthouse at Low Tide/ });
+  await expect(row).toContainText(/Ready|already in your library/i, { timeout: 90_000 });
+  await row.getByRole("link").first().click();
 
   await page.getByRole("link", { name: "Edit" }).click();
-  await expect(page.getByLabel("Title")).toHaveValue("The Lighthouse at Low Tide");
-  await page.getByLabel("Title").fill("The Lighthouse at Low Tide (Edited)");
+  // Unique per run so a previous run's edit cannot satisfy the assertion.
+  const editedTitle = `The Lighthouse at Low Tide ${Date.now()}`;
+  await page.getByRole("textbox", { name: "Title", exact: true }).fill(editedTitle);
   await page.getByRole("button", { name: "Save" }).click();
 
-  const heading = page.getByRole("heading", { name: "The Lighthouse at Low Tide (Edited)" });
+  const heading = page.getByRole("heading", { name: editedTitle });
   await expect(heading).toBeVisible();
 
   // Reprocess through the API: the UI button is admin-only until the payload
   // exposes the uploader (see docs/DECISIONS.md).
   const bookId = new URL(page.url()).pathname.split("/")[2];
-  const reprocess = await page.request.post(`/api/v1/books/${bookId}/reprocess`);
+  const csrf = (await page.context().cookies()).find((c) => c.name === "folio_csrf")?.value;
+  const reprocess = await page.request.post(`/api/v1/books/${bookId}/reprocess`, {
+    headers: { "X-CSRF-Token": csrf ?? "" },
+  });
   expect(reprocess.ok()).toBeTruthy();
 
   await page.reload();
   await expect(page.getByText("Ready").first()).toBeVisible({ timeout: 90_000 });
-  await expect(heading).toBeVisible();
+  // The manual edit must survive the automatic re-ingest.
+  await expect(page.getByRole("heading", { name: editedTitle })).toBeVisible();
 });
