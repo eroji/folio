@@ -10,7 +10,7 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | 0 | Repo foundation (plan, AGENTS.md, docs, git) | done | Plan approved, `AGENTS.md` in place, first commit landed | `c21d675` |
 | 1 | Skeleton and auth | **accepted** | AD user in user group logs in; outsider refused; admin sees Admin menu | 144 backend / 9 web tests + 3 Playwright e2e green; `scripts/acceptance.sh` M1 checks pass |
 | 2 | Upload and ingestion | **accepted** | Each fixture reaches its expected status; duplicates detected | All 7 fixtures verified on the compose stack; duplicate, DRM, search, segments verified |
-| 3 | Metadata and covers | todo | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | — |
+| 3 | Metadata and covers | in progress | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | plan: `superpowers/plans/2026-10-24-m3-metadata-covers.md` |
 | 4 | TTS and player | todo | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | — |
 | 5 | Progress and settings | todo | Phone → desktop resumes within 3 s of the stop point | — |
 | 6 | PWA and polish | todo | Installs to a phone home screen; Lighthouse accessibility ≥ 90 | — |
@@ -63,6 +63,19 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | `drm_epub` | rejected, `unsupported_format` |
 
 **Acceptance script:** upload all seven fixtures; assert terminal statuses; upload `epub3` twice → second response carries `duplicate_of`; statuses update live over SSE without a reload; `GET /books?q=` finds an ingested title.
+
+## Milestone 3 — Metadata and covers
+
+**Workstreams:**
+
+| WS | Branch | Task | Deliverable | Depends on |
+|---|---|---|---|---|
+| K | `feat/covers` | A | Cover validation, storage, 600/200 WebP rendering, upload/URL/serve endpoints with ETag | — |
+| L | `feat/metadata-online` | B | Open Library + Google Books providers, similarity/ISBN decision, candidates, pipeline auto-fetch, search/apply endpoints, migration 0003 | K |
+| M | `feat/metadata-edit` | C | `PATCH /books/{id}`, validation, `locked_fields` accumulation | A |
+| N | `feat/web-metadata` | D | Edit screen, Find metadata panel, review banner, 2:3 canvas crop | contract pinned |
+
+**Acceptance script:** upload an ISBN EPUB → metadata/cover applied automatically; edit title/language → reprocess → edit preserved; replace cover by URL and by cropped upload → 600/200 variants served; rejected URL leaves the old cover; saved candidates surface the review banner.
 
 ## Remaining milestones (planned, not yet detailed)
 
