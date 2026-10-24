@@ -156,7 +156,8 @@ def upload_books(
             suffix = filename.suffix.removeprefix(".").lower()
             ext = suffix if _EXT_RE.fullmatch(suffix) else _FORMAT_EXT[fmt]
             book = Book(
-                title=filename.stem or "Untitled",
+                # Cap to the column width: client filenames are arbitrary length.
+                title=(filename.stem or "Untitled")[:512],
                 status="uploading",
                 uploaded_by=user.id,
                 language="en",
