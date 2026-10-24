@@ -30,12 +30,12 @@ from folio.db import Base
 # so the indexed expression goes through this wrapper. The same expression is
 # used by search queries (Task 8) so the GIN index is hit.
 BOOK_SEARCH_FUNC_SQL = """
-CREATE OR REPLACE FUNCTION folio_book_search_vector(t text, s text, a text[])
+CREATE OR REPLACE FUNCTION folio_book_search_vector(t text, s text, a text[], g text[])
 RETURNS tsvector
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS
-$$SELECT to_tsvector('simple', t || ' ' || array_to_string(a, ' ') || ' ' || coalesce(s, ''))$$
+$$SELECT to_tsvector('simple', t || ' ' || array_to_string(a, ' ') || ' ' || coalesce(s, '') || ' ' || array_to_string(g, ' '))$$
 """
-BOOK_SEARCH_EXPR = "folio_book_search_vector(title, series, authors)"
+BOOK_SEARCH_EXPR = "folio_book_search_vector(title, series, authors, tags)"
 
 
 @event.listens_for(Base.metadata, "before_create")

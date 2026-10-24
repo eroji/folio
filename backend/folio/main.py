@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import SQLAlchemyError
@@ -52,10 +52,21 @@ def create_app() -> FastAPI:
 
     app.add_api_route("/api/v1/admin/health", admin_health, methods=["GET"])
 
-    # Serve the compiled SPA last so /api and /healthz win. History-routing
-    # fallback arrives with the frontend (Task 4).
-    if (STATIC_DIR / "index.html").is_file():
-        app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    # Serve the compiled SPA last so /api and /healthz win. Deep links
+    # (/login, /books/:id) fall back to index.html for client-side routing.
+    index = STATIC_DIR / "index.html"
+    if index.is_file():
+        if (STATIC_DIR / "assets").is_dir():
+            app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
+        @app.get("/{path:path}", include_in_schema=False)
+        def spa(path: str) -> FileResponse:
+            if path.startswith("api/"):
+                raise ApiError("not_found", "Not found.", 404)
+            candidate = (STATIC_DIR / path).resolve()
+            if path and candidate.is_file() and candidate.is_relative_to(STATIC_DIR.resolve()):
+                return FileResponse(candidate)
+            return FileResponse(index)
 
     return app
 

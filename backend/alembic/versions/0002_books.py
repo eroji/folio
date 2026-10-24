@@ -134,5 +134,5 @@ def downgrade() -> None:
     op.drop_index("ix_book_files_book_id", table_name="book_files")
     op.drop_table("book_files")
     op.execute("DROP INDEX ix_books_search")
-    op.execute("DROP FUNCTION IF EXISTS folio_book_search_vector(text, text, text[])")
+    op.execute("DROP FUNCTION IF EXISTS folio_book_search_vector(text, text, text[], text[])")
     op.drop_table("books")
