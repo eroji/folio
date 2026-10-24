@@ -67,10 +67,16 @@ def create_app() -> FastAPI:
         if (STATIC_DIR / "assets").is_dir():
             app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
+        @app.api_route(
+            "/api/{path:path}",
+            methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            include_in_schema=False,
+        )
+        def api_not_found(path: str) -> None:
+            raise ApiError("not_found", "Not found.", 404)
+
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str) -> FileResponse:
-            if path.startswith("api/"):
-                raise ApiError("not_found", "Not found.", 404)
             candidate = (STATIC_DIR / path).resolve()
             if path and candidate.is_file() and candidate.is_relative_to(STATIC_DIR.resolve()):
                 return FileResponse(candidate)

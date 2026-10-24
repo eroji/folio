@@ -80,7 +80,12 @@ def db(_schema: None) -> Iterator[Session]:
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
 
     def truncate() -> None:
+        # Any connection still holding a transaction blocks TRUNCATE's ACCESS
+        # EXCLUSIVE lock (seen as an intermittent hang). Close the pool first,
+        # and fail loudly instead of hanging forever if something still leaks.
+        engine.dispose()
         with engine.begin() as conn:
+            conn.execute(text("SET LOCAL lock_timeout = '5s'"))
             conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
 
     truncate()
