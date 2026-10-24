@@ -209,8 +209,11 @@ class TestPdf:
     def test_scanned_pdf_raises(self, tmp_path: Path) -> None:
         path = tmp_path / "scanned.pdf"
         make_image_pdf(path, 3)
-        with pytest.raises(ScannedPDF):
+        with pytest.raises(ScannedPDF) as exc:
             extract_pdf(path)
+        # The book is still added as needs_ocr, so a cover must survive the error.
+        assert exc.value.metadata is not None
+        assert exc.value.cover is not None
 
     def test_cover_from_first_embedded_image(self, tmp_path: Path) -> None:
         png = tmp_path / "cover.png"

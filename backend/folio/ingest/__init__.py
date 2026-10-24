@@ -46,4 +46,18 @@ class UnsupportedFormat(Exception):
 
 
 class ScannedPDF(Exception):
-    """PDF averages under 200 extractable characters per page (needs OCR later)."""
+    """PDF averages under 200 extractable characters per page (needs OCR later).
+
+    Carries whatever metadata/cover was still readable so the pipeline can add
+    the book as ``needs_ocr`` instead of discarding it (spec, ingestion step 5).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        metadata: EmbeddedMetadata | None = None,
+        cover: bytes | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.metadata = metadata
+        self.cover = cover
