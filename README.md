@@ -45,10 +45,15 @@ Open <http://localhost:5173>. Both sides hot-reload. Local dev writes uploads to
 ```bash
 make test       # backend pytest (starts the db container if needed)
 make test-web   # frontend vitest
-make e2e        # full stack via compose.test.yaml + Playwright
+make e2e        # clean stack via compose.test.yaml + Playwright
 make fixtures   # regenerate the seven gitignored test books
 make lint       # ruff + mypy + eslint + tsc --noEmit
+
+# Milestone acceptance against a running stack (needs FOLIO_TEST_MODE=true)
+BASE=http://localhost:8000 ./scripts/acceptance.sh
 ```
+
+`make e2e` recreates the volumes on purpose: the suite asserts the empty library and uploads a fixture that content-hash dedupe would reject on a reused database. It needs Playwright's browser once (`cd frontend && npx playwright install chromium`).
 
 LDAP and TTS are faked or pointed at the mock server in every test; no test ever reaches a real directory or TTS backend. Real LDAP/TTS values come only from `.env`. Backend tests use `TEST_DATABASE_URL` (default `postgresql+psycopg://folio:folio@localhost:5432/folio_test`, created if missing) — never point it at a dev or production database. `FOLIO_TEST_MODE` is set only by `compose.test.yaml`.
 

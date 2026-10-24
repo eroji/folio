@@ -58,8 +58,11 @@ echo "PASS: DRM file rejected"
 echo "== M2: ingest each fixture =="
 declare -A EXPECTED=( [epub3]=ready [epub2]=ready [pdf_outline]=ready [pdf_flat]=ready [scanned_pdf]=needs_ocr )
 for name in epub3 epub2 pdf_outline pdf_flat scanned_pdf; do
-  ext=epub; [[ "$name" == pdf* ]] && ext=pdf
-  body=$(upload "$TMP/user.jar" "$FIXTURES/$name.$ext")
+  case "$name" in
+    pdf_outline|pdf_flat|scanned_pdf) file="$name.pdf" ;;
+    *) file="$name.epub" ;;
+  esac
+  body=$(upload "$TMP/user.jar" "$FIXTURES/$file")
   book_id=$(echo "$body" | json 'd[0]["book_id"]')
   [[ -n "$book_id" ]] || fail "$name upload returned no book id: $body"
   wait_status "$TMP/user.jar" "$book_id" "${EXPECTED[$name]}" 120
@@ -67,7 +70,7 @@ for name in epub3 epub2 pdf_outline pdf_flat scanned_pdf; do
 done
 
 # AZW3 needs Calibre; the compose image has it. Skip cleanly when absent.
-if command -v ebook-convert >/dev/null 2>&1 || docker compose exec -T api command -v ebook-convert >/dev/null 2>&1; then
+if command -v ebook-convert >/dev/null 2>&1 || docker compose exec -T api sh -c 'command -v ebook-convert' >/dev/null 2>&1; then
   body=$(upload "$TMP/user.jar" "$FIXTURES/azw3.azw3")
   book_id=$(echo "$body" | json 'd[0]["book_id"]')
   wait_status "$TMP/user.jar" "$book_id" ready 180

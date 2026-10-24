@@ -28,8 +28,12 @@ lint:
 	cd backend && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy folio
 	@if [ -f frontend/package.json ]; then cd frontend && npm run lint && npx tsc --noEmit; fi
 
+# Clean volume on purpose: the suite asserts the empty library and uploads a
+# fixture that content-hash dedupe would reject on a reused database.
 e2e:
+	docker compose -f compose.yaml -f compose.test.yaml down -v
 	docker compose -f compose.yaml -f compose.test.yaml up -d --build
+	@for i in $$(seq 1 60); do curl -fsS localhost:8000/healthz >/dev/null 2>&1 && break; sleep 2; done
 	cd frontend && npx playwright test
 
 up:
@@ -41,6 +45,7 @@ down:
 logs:
 	docker compose logs -f api worker
 
-# Task 3 owns backend/scripts/make_fixtures.py; this fails until it lands.
+# Fixture books are gitignored; azw3 falls back to a detection-only stub when
+# Calibre is not installed on the host (`make e2e` converts it in the image).
 fixtures:
 	cd backend && .venv/bin/python -m scripts.make_fixtures

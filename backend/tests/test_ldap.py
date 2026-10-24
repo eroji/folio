@@ -53,6 +53,9 @@ class FakeConnection:
             if needle in search_filter:
                 self.entries = entries
 
+    def unbind(self) -> None:
+        pass
+
     def close(self) -> None:
         pass
 
@@ -161,6 +164,25 @@ def test_server_error_maps_to_invalid_credentials_never_leaks(
     joined = " ".join(r.getMessage() for r in caplog.records)
     assert "hunter2secret" not in joined  # never the password
     assert "alice" in joined  # only username + failure class
+
+
+def test_transport_exception_maps_to_invalid_credentials(
+    authenticator: Ldap3Authenticator,
+    ldap: type[FakeConnection],
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DNS/socket failure is a 401, not a 500 (and never logs the password)."""
+
+    def boom(self: FakeConnection) -> bool:
+        raise OSError("name resolution failed")
+
+    monkeypatch.setattr(ldap, "bind", boom)
+    with caplog.at_level(logging.WARNING), pytest.raises(InvalidCredentials):
+        authenticator.authenticate("alice", "hunter2secret")
+    joined = " ".join(r.getMessage() for r in caplog.records)
+    assert "hunter2secret" not in joined
+    assert "alice" in joined
 
 
 def test_ldaps_by_default_with_certificate_validation() -> None:

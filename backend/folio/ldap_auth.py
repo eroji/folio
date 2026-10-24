@@ -8,6 +8,7 @@ or bind responses; log only the username and a failure class.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import ssl
 from typing import NamedTuple, Protocol
@@ -122,8 +123,11 @@ class Ldap3Authenticator:
                 )
                 groups += [g.entry_dn for g in as_user.entries]
             finally:
-                service.close()
-        except LDAPException as exc:
+                # ldap3 exposes unbind(), not close(); teardown must never mask
+                # the authentication result.
+                with contextlib.suppress(Exception):
+                    service.unbind()
+        except (LDAPException, OSError) as exc:
             # Transport/protocol failures must not reveal which LDAP step broke.
             logger.warning("ldap login failed user=%s reason=ldap_error", username)
             logger.debug("ldap error class: %s", type(exc).__name__)

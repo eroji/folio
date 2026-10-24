@@ -8,8 +8,8 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | # | Milestone | Status | Acceptance criteria | Evidence |
 |---|---|---|---|---|
 | 0 | Repo foundation (plan, AGENTS.md, docs, git) | done | Plan approved, `AGENTS.md` in place, first commit landed | `c21d675` |
-| 1 | Skeleton and auth | done (reviews pending) | AD user in user group logs in; outsider refused; admin sees Admin menu | T1/T2/T3/T4/T6 merged; 111 backend / 9 web tests green; browser acceptance in T10 |
-| 2 | Upload and ingestion | in progress | Each fixture reaches its expected status; duplicates detected | T5a/T5b/T7/T9 merged; T8 pipeline+API in flight |
+| 1 | Skeleton and auth | **accepted** | AD user in user group logs in; outsider refused; admin sees Admin menu | 144 backend / 9 web tests + 3 Playwright e2e green; `scripts/acceptance.sh` M1 checks pass |
+| 2 | Upload and ingestion | **accepted** | Each fixture reaches its expected status; duplicates detected | All 7 fixtures verified on the compose stack; duplicate, DRM, search, segments verified |
 | 3 | Metadata and covers | todo | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | — |
 | 4 | TTS and player | todo | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | — |
 | 5 | Progress and settings | todo | Phone → desktop resumes within 3 s of the stop point | — |
@@ -90,3 +90,15 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | 2026-10-24 | **T2 merged** (`6941f82`): LDAP (LDAPS + in-chain nested groups), server-side sessions with sliding expiry, HMAC CSRF, 10/15-min lockout, roles, admin list endpoints. Lead fixes: bounded login body, removed committed egg-info from git. |
 | 2026-10-24 | **T9 merged** (`7e2f035`): upload page with per-file XHR progress and SSE-driven status, library grid with search/sort/filter/skeletons, book detail, EventSource invalidation. 9 frontend tests green. |
 | 2026-10-24 | **M1 complete** (pending browser acceptance in T10). T8 pipeline/API/SSE dispatched. |
+| 2026-10-24 | **T8 merged** (`d82de39`): ingest pipeline, upload/list/detail/cover/delete/reprocess/segments API, SSE. Lead fixes: `python-multipart` added to the image lock (the app would not start without it), filename capped to the column width, `job_id` type corrected. |
+| 2026-10-24 | **M1 + M2 accepted on the compose stack.** `scripts/acceptance.sh`: role gating, DRM rejection, all 7 fixtures (epub3/epub2/pdf_outline/pdf_flat/azw3 → ready, scanned_pdf → needs_ocr), duplicate linking, search, segments. Playwright at 390×844: empty library after login, inline credential error, upload → Ready without reload. 144 backend tests, 9 web tests, ESLint/tsc/ruff/mypy clean. |
+| 2026-10-24 | Lead review fixes during acceptance: LDAP teardown used the nonexistent `Connection.close()` (500 on directory outage, now `unbind()` + `OSError` → generic 401); e2e specs raced on one seeded user (serial workers); `make e2e` now starts from a clean volume; upload e2e asserts the terminal state instead of a sub-second transient. |
+
+## Known gaps carried into M3+
+
+- **Cover resizing** is M3: `?size=200|600` is accepted and ignored today; covers are served at original resolution with immutable caching.
+- **`sort=progress`** falls back to recent until M5 adds the progress table.
+- **Uploader-only actions in the UI**: the API enforces "admin or uploader", but the book payload deliberately hides `uploaded_by`, so the UI shows Reprocess/Delete to admins only. Revisit in M5 with a `can_edit` flag.
+- **LDAP outage → generic 401**: transport failures are indistinguishable from bad passwords by design (no directory-internals leak). Operators see `reason=ldap_error` in logs.
+- **500-page ingest budget (< 60 s)** is not measured: fixtures are small. Measure with a real book before the performance sign-off in M6.
+- **Single-process login rate limiter**: correct for one uvicorn worker (the compose default); would need a DB-backed limiter if the API is scaled out.
