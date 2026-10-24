@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -32,8 +32,8 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 class LoginBody(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 class UserPublic(BaseModel):
