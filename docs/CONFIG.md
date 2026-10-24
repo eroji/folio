@@ -1,0 +1,70 @@
+# Configuration
+
+Every setting is an environment variable, read from `.env` at start-up (copy `.env.example`). Missing required variables fail start-up loudly. LDAP and TTS endpoints are reached **only** through these variables — there is no other config file, and no test ever contacts a real directory or TTS server.
+
+## Core
+
+| Variable | Default | Required | Notes |
+| --- | --- | --- | --- |
+| `FOLIO_BASE_URL` | none | **required** | Public URL; used for cookies and the PWA manifest. |
+| `FOLIO_SECRET_KEY` | none | **required** | Signs CSRF tokens. |
+| `DATABASE_URL` | none | **required** | Postgres connection string. The compose stack overrides it to point at the `db` service; the value here is what local dev/tests use. |
+| `DATA_DIR` | `/data` | optional | Originals, covers, audio cache. Compose overrides it to the `folio-data` volume; local dev uses `./data`. |
+| `MAX_UPLOAD_MB` | `200` | optional | Upload size limit. Keep nginx `client_max_body_size` at or above it. |
+
+## LDAP / Active Directory
+
+| Variable | Default | Required | Notes |
+| --- | --- | --- | --- |
+| `LDAP_URL` | none | **required** | e.g. `ldaps://dc1.example.local:636`. Plain LDAP only if `LDAP_ALLOW_INSECURE=true`. |
+| `LDAP_BIND_DN` | none | **required** | Read-only service account DN. |
+| `LDAP_BIND_PASSWORD` | none | **required** | Never logged. |
+| `LDAP_BASE_DN` | none | **required** | User search base. |
+| `LDAP_USER_FILTER` | `(&(objectClass=user)(sAMAccountName={username}))` | optional | `{username}` is escaped before the search. |
+| `FOLIO_LDAP_ADMIN_GROUP` | none | **required** | Group DN mapped to the `admin` role. First admin = first member. |
+| `FOLIO_LDAP_USER_GROUP` | none | **required** | Group DN mapped to the `user` role. |
+| `LDAP_CA_FILE` | system store | optional | Internal CA bundle for LDAPS verification. |
+| `LDAP_ALLOW_INSECURE` | `false` | optional | Permit plain (unencrypted) LDAP. Off in production. |
+
+## TTS
+
+Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without a TTS backend; these are validated when the TTS client is first constructed. Required in production from M4 on.
+
+| Variable | Default | Required | Notes |
+| --- | --- | --- | --- |
+| `TTS_BASE_URL` | none | required from M4 | OpenAI-compatible base, e.g. `http://tts.example.local/v1`. |
+| `TTS_API_KEY` | empty | optional | Bearer token, if the engine requires one. |
+| `TTS_MODEL` | `tts` | optional | `model` field sent to the API; part of the audio cache key. |
+| `TTS_FORMAT` | `opus` | optional | `opus` or `mp3`; falls back to `mp3` if the server rejects opus. |
+| `TTS_DEFAULT_VOICE` | none | required from M4 | Last-resort voice, e.g. `ashley-en`. |
+| `TTS_VOICE_MAP` | `{"en":"ashley-en","ja":"ashley-ja","ko":"ashley-kr","zh":"ashley-zh"}` | optional | Admin language → voice defaults; editable on the Admin page (M5). |
+| `TTS_VOICES` | empty | optional | Comma-separated fallback list, used only if the engine can't list voices. |
+| `TTS_VOICES_TTL` | `600` | optional | Seconds the discovered voice list is cached. |
+| `TTS_VOICE_LANG_PATTERN` | `-(en\|ja\|kr\|ko\|zh)$` | optional | Language suffix matched from voice IDs; `kr` is treated as `ko`. |
+| `TTS_MAX_CHARS` | `800` | optional | Max characters per TTS segment. |
+| `TTS_LOOKAHEAD` | `6` | optional | Segments generated ahead of playback. |
+| `TTS_CONCURRENCY` | `2` | optional | Max parallel TTS requests across all users (shared GPU). |
+| `TTS_CHARS_PER_SECOND` | `15` | optional | Duration estimate before audio exists. |
+
+## Audio cache and metadata
+
+| Variable | Default | Required | Notes |
+| --- | --- | --- | --- |
+| `AUDIO_CACHE_MAX_GB` | `50` | optional | Eviction threshold for `/data/audio` (LRU, never evicts active lookahead). |
+| `METADATA_ONLINE` | `true` | optional | Enable Open Library / Google Books lookups (M3). |
+| `GOOGLE_BOOKS_API_KEY` | empty | optional | Raises Google Books rate limits. |
+
+## Compose database (used by `compose.yaml` only)
+
+| Variable | Default | Required | Notes |
+| --- | --- | --- | --- |
+| `POSTGRES_USER` | `folio` | optional | db service superuser; `DATABASE_URL` is derived from it in compose. |
+| `POSTGRES_PASSWORD` | `folio` | optional | **Change in production.** |
+| `POSTGRES_DB` | `folio` | optional | Main database name. |
+
+## Test-only
+
+| Variable | Default | Required | Notes |
+| --- | --- | --- | --- |
+| `FOLIO_TEST_MODE` | `false` | never in production | Mounts `POST /api/v1/test/login` for headless tests. Only `compose.test.yaml` may set it; `compose.yaml` must never. |
+| `TEST_DATABASE_URL` | `postgresql+psycopg://folio:folio@localhost:5432/folio_test` | optional | Backend pytest target; created if missing. Never a dev or production database. |
