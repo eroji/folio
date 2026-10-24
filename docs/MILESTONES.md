@@ -8,8 +8,8 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | # | Milestone | Status | Acceptance criteria | Evidence |
 |---|---|---|---|---|
 | 0 | Repo foundation (plan, AGENTS.md, docs, git) | done | Plan approved, `AGENTS.md` in place, first commit landed | `c21d675` |
-| 1 | Skeleton and auth | in progress | AD user in user group logs in; outsider refused; admin sees Admin menu | T1 + T4 merged; T2 running; 67 backend / 3 web tests green |
-| 2 | Upload and ingestion | in progress | Each fixture reaches its expected status; duplicates detected | T5a + T5b merged; queue/API/UI remaining |
+| 1 | Skeleton and auth | done (reviews pending) | AD user in user group logs in; outsider refused; admin sees Admin menu | T1/T2/T3/T4/T6 merged; 111 backend / 9 web tests green; browser acceptance in T10 |
+| 2 | Upload and ingestion | in progress | Each fixture reaches its expected status; duplicates detected | T5a/T5b/T7/T9 merged; T8 pipeline+API in flight |
 | 3 | Metadata and covers | todo | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | — |
 | 4 | TTS and player | todo | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | — |
 | 5 | Progress and settings | todo | Phone → desktop resumes within 3 s of the stop point | — |
