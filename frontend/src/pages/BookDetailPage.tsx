@@ -1,12 +1,16 @@
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useBook, useDeleteBook, useReprocessBook } from "../api/books";
+import { useMetadataCandidates } from "../api/metadata";
 import { useAuth } from "../auth/AuthProvider";
 import { BookCover } from "../components/BookCard";
+import { FindMetadata } from "../components/FindMetadata";
 import { StatusBadge } from "../components/StatusBadge";
 import { EmptyState } from "../components/EmptyState";
 import { AlertTriangle, BookOpen } from "lucide-react";
+import type { Candidate } from "../api/types";
 
 function formatDuration(seconds: number | null): string | null {
   if (seconds == null) return null;
@@ -24,6 +28,9 @@ export function BookDetailPage() {
   const { data, isPending, error } = useBook(id);
   const reprocess = useReprocessBook(id);
   const remove = useDeleteBook(id);
+  const [findOpen, setFindOpen] = useState(false);
+  const [reviewItems, setReviewItems] = useState<Candidate[] | null>(null);
+  const candidates = useMetadataCandidates(id);
 
   if (error instanceof Error) {
     return (
@@ -56,6 +63,7 @@ export function BookDetailPage() {
   }
 
   const { book, chapters } = data;
+  const saved = candidates.data?.items ?? [];
   const length = formatDuration(book.est_duration_s);
   const series = book.series ? `${book.series}${book.series_index != null ? ` #${book.series_index}` : ""}` : null;
 
@@ -101,6 +109,46 @@ export function BookDetailPage() {
           </button>
           <p className="text-xs text-muted">Playback arrives in M4</p>
         </div>
+
+        {/* Edit / Find metadata: shown to every signed-in user; the server enforces
+            uploader-or-admin and the 403 message surfaces inline. */}
+        <div className="flex flex-wrap gap-2">
+          <Link
+            to={`/books/${id}/edit`}
+            className="inline-flex min-h-11 items-center rounded-pill border border-line bg-card px-4 text-sm font-medium"
+          >
+            Edit
+          </Link>
+          <button
+            type="button"
+            aria-expanded={findOpen}
+            onClick={() => {
+              setReviewItems(null);
+              setFindOpen((open) => !open);
+            }}
+            className="min-h-11 rounded-pill border border-line bg-card px-4 text-sm font-medium"
+          >
+            Find metadata
+          </button>
+        </div>
+
+        {saved.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-brand-blue/40 bg-page px-3 py-2">
+            <p className="text-sm text-muted">Online matches were found but not applied automatically.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setReviewItems(saved);
+                setFindOpen(true);
+              }}
+              className="min-h-11 rounded-pill bg-brand-blue px-4 text-sm font-medium text-white"
+            >
+              Review metadata matches
+            </button>
+          </div>
+        )}
+
+        {findOpen && <FindMetadata book={book} initialItems={reviewItems ?? undefined} />}
 
         {/* TODO(M5): the spec also allows the uploader; the Book payload does not expose
             uploaded_by, so until it does only admins see Reprocess/Delete. */}

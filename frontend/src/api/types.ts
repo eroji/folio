@@ -77,6 +77,25 @@ export interface EventFrame {
   status: string;
 }
 
+/** One metadata candidate (plan T-B/T-D contract). `source` is "openlibrary" | "googlebooks". */
+export interface Candidate {
+  id?: string;
+  source: string;
+  title: string;
+  authors: string[];
+  published_date: string | null;
+  publisher: string | null;
+  description: string | null;
+  language: string | null;
+  isbn10: string | null;
+  isbn13: string | null;
+  series: string | null;
+  series_index: number | null;
+  tags: string[];
+  cover_url: string | null;
+  score: number;
+}
+
 /** Row of GET /admin/jobs (Job model, plan T1/T2). */
 export interface Job {
   id: number;
