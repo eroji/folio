@@ -8,8 +8,8 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | # | Milestone | Status | Acceptance criteria | Evidence |
 |---|---|---|---|---|
 | 0 | Repo foundation (plan, AGENTS.md, docs, git) | done | Plan approved, `AGENTS.md` in place, first commit landed | `c21d675` |
-| 1 | Skeleton and auth | in progress | AD user in user group logs in; outsider refused; admin sees Admin menu | T1 merged, 17 tests green |
-| 2 | Upload and ingestion | todo | Each fixture reaches its expected status; duplicates detected | — |
+| 1 | Skeleton and auth | in progress | AD user in user group logs in; outsider refused; admin sees Admin menu | T1 + T4 merged; T2 running; 67 backend / 3 web tests green |
+| 2 | Upload and ingestion | in progress | Each fixture reaches its expected status; duplicates detected | T5a + T5b merged; queue/API/UI remaining |
 | 3 | Metadata and covers | todo | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | — |
 | 4 | TTS and player | todo | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | — |
 | 5 | Progress and settings | todo | Phone → desktop resumes within 3 s of the stop point | — |
@@ -80,3 +80,9 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | 2026-10-24 | Spec read; decisions taken: M1–M2 scope, mocked integrations, worktree-per-workstream. Plan and AGENTS.md drafted. |
 | 2026-10-24 | **T1 merged** (`c21d675`): schema + migrations 0001/0002, config, health, compose/Dockerfile, Makefile. Lead review fixes: tags added to the FTS index, editable install repaired, `DATA_DIR` split between local dev and compose, SPA history fallback. 17 tests, ruff, mypy green. |
 | 2026-10-24 | Wave 1 dispatched: T3 harness, T4 web shell, T5a extractors, T5b text pipeline, T6 docs (5 parallel worktrees). |
+| 2026-10-24 | **T6 merged** (`ec7d50d`): README (local dev/test/deploy), CONFIG, BACKUP, DECISIONS. Lead fixes: roadmap tables, `FOLIO_IMAGE` pull path. |
+| 2026-10-24 | **T5b merged** (`1ee16c9`): cleaning + sentence segmentation, 20 tests. Verified no-text-loss/offset/limit invariant independently. |
+| 2026-10-24 | **T3 merged** (`b7867aa`): harness, 7 fixture books, mock TTS, test-mode login. Lead fixes: pytest config consolidated into `pyproject.toml`, warning when test mode mounts. |
+| 2026-10-24 | **T5a merged** (`0d49af3`): magic-byte detection + EPUB/PDF/Kindle extraction. Lead fixes: `ScannedPDF` carries metadata/cover for `needs_ocr`; cover limited to page 1. Cross-branch extract→clean→segment run on 3 fixtures OK. |
+| 2026-10-24 | **T4 merged** (`99b98a7`): React 19/Vite 8/Tailwind 4 shell, brand tokens, login, admin placeholder, icons/manifest. Lead fix: generated SPA output untracked instead of a `.gitkeep`-restoring build plugin. Full checks green on `master`. |
+| 2026-10-24 | Wave 2 started: T2 auth dispatched; T7/T8/T9 next. |
