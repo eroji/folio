@@ -65,14 +65,14 @@ export interface BookDetailResponse {
 /** One entry of the POST /books response array. */
 export interface UploadResult {
   book_id: string;
-  job_id: number | null;
+  job_id: string | null;
   duplicate_of: string | null;
 }
 
 /** data: payload of an `event: job` / `event: book` frame on GET /events. */
 export interface EventFrame {
   event: string;
-  job_id?: number | null;
+  job_id?: string | null;
   book_id: string;
   status: string;
 }
