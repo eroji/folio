@@ -4,7 +4,7 @@ Folio is a self-hosted, mobile-first web app that turns uploaded ebooks — EPUB
 
 Users sign in with their existing LDAP / Active Directory account; Folio stores no passwords and maps roles (`admin` / `user`) from directory group membership. Everything runs as two containers built from one image — an API (which also serves the built React PWA) and a background worker — plus PostgreSQL 16 and a single `/data` volume, deployed with Docker Compose behind nginx. No Redis, no hosted model: the job queue lives in the `jobs` table and Folio is only a client of the TTS API.
 
-Current state: milestones M1–M2 (compose stack, schema + migrations, LDAP auth, upload → ingest pipeline). Metadata editing and cover tools (M3), the TTS player (M4), progress and settings (M5), and PWA polish + admin tools (M6) are **roadmap**, not yet available. See [`docs/MILESTONES.md`](docs/MILESTONES.md).
+This phase delivers milestones M1–M2: the compose stack, schema + migrations, LDAP auth, and the upload → ingest pipeline. Metadata editing and cover tools (M3), the TTS player (M4), progress and settings (M5), and PWA polish + admin tools (M6) are **roadmap**, not yet available. Live status per milestone: [`docs/MILESTONES.md`](docs/MILESTONES.md).
 
 ## Architecture
 
@@ -17,8 +17,8 @@ browser (PWA) ── HTTPS ──▶ nginx ──▶ api :8000   (FastAPI + buil
                               (PostgreSQL 16:      ingest pipeline, heartbeat file)
                                users, sessions,
                                books, chapters,          │
-                               segments, audio,          │
-                               progress, jobs)           ▼
+                               segments, jobs; audio/    │
+                               progress in M4–M5)        ▼
                                                    /data volume
                                                    books/<id>/original.<ext>,
                                                    covers/, audio/<kk>/<key>.<ext>
@@ -58,7 +58,10 @@ The target runs Docker Compose; nothing needs Python, Node or Calibre on the hos
 
 ```bash
 # 1. put a real .env on the host (every required var; see docs/CONFIG.md)
-# 2. start the stack — migrations run automatically on API start-up
+# 2a. build on the host (simplest; needs Docker only)
+docker compose up -d --build
+# 2b. or pull a published image from Harbor (set FOLIO_IMAGE in .env)
+#     FOLIO_IMAGE=harbor.example.com/library/folio:1.2.3
 docker compose pull && docker compose up -d
 # 3. verify
 curl -fsS http://<host>/healthz
