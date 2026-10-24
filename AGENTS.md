@@ -27,12 +27,36 @@ cd frontend && npm run lint && npx tsc --noEmit
 cd frontend && npm test -- --run
 cd frontend && npm run build
 
-# Fixtures and stack
-make fixtures            # regenerate the seven test books
-make up / make down      # compose stack
+# Local workflow
+make db                 # start only postgres (localhost:5432)
+make dev-backend        # alembic upgrade + uvicorn --reload on :8000
+make dev-web            # vite dev server on :5173, proxies /api to :8000
+make fixtures           # regenerate the seven test books
+
+# Test workflow
+make test               # backend pytest (starts db if needed)
+make test-web           # frontend vitest
+make e2e                # full stack via compose.test.yaml + Playwright
+
+# Full stack / deployment shape
+make up / make down     # docker compose, production-shaped
+make logs               # api + worker logs
 ```
 
-Tests need PostgreSQL: set `TEST_DATABASE_URL` (default `postgresql+psycopg://folio:folio@localhost:5432/folio_test`). Never point tests at the development or production database.
+Tests need PostgreSQL: set `TEST_DATABASE_URL` (default `postgresql+psycopg://folio:folio@localhost:5432/folio_test`). The harness creates the test database if it is missing. Never point tests at the development or production database.
+
+## Two run modes, both required
+
+Every change must work in **both**:
+
+1. **Local dev** — `make db`, then `make dev-backend` and `make dev-web`; Vite serves the SPA on :5173 and proxies `/api` to :8000. Hot reload on both sides.
+2. **Compose stack** — `make up` builds/pulls the single OCI image (frontend compiled into `backend/folio/static`, `api` + `worker` + `db`) and serves everything on `FOLIO_BASE_URL`. This is exactly what runs on the target server. Migrations run automatically on API start-up.
+
+`compose.test.yaml` is the only place allowed to set `FOLIO_TEST_MODE=true`; `compose.yaml` must never enable it or mount source code.
+
+## Deployment
+
+Target server runs Docker Compose. Deploy = put a real `.env` on the host, then `docker compose pull && docker compose up -d`; verify with `curl -fsS http://<host>/healthz` and `docker compose ps`. Roll back by pinning the previous image tag. Restore = Postgres dump + the `/data` volume (see `docs/BACKUP.md`). No host-installed Python, Node, or Calibre is allowed at runtime.
 
 ## Working agreement
 
