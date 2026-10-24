@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text as sa_text
@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session as DbSession
 
 from folio.config import get_settings
 from folio.db import get_session
+from folio.deps import get_current_user
 from folio.errors import ApiError, register_error_handlers
+from folio.models import User
+from folio.routers.admin import router as admin_router
+from folio.routers.auth import router as auth_router
 
 WORKER_HEARTBEAT_MAX_AGE_S = 60
 STATIC_DIR = Path(__file__).parent / "static"
@@ -22,12 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 def admin_health(
-    request: Request, session: Annotated[DbSession, Depends(get_session)]
+    session: Annotated[DbSession, Depends(get_session)],
+    user: Annotated[User, Depends(get_current_user)],
 ) -> JSONResponse:
-    # TODO(M1): replace the cookie-presence check with real session validation
-    # against the sessions table (Task 2 owns auth).
-    if not request.cookies.get("folio_session"):
-        raise ApiError("unauthenticated", "Authentication required.", 401)
     settings = get_settings()
     try:
         session.execute(sa_text("SELECT 1"))
@@ -53,6 +54,8 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.add_api_route("/api/v1/admin/health", admin_health, methods=["GET"])
+    app.include_router(auth_router)
+    app.include_router(admin_router)
 
     if get_settings().folio_test_mode:
         from folio.routers.test_auth import router as test_auth_router
