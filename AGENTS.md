@@ -17,10 +17,11 @@ docs/                   spec, milestones, decisions, backup, config, plans
 ## Commands
 
 ```bash
-# Backend
-cd backend && python -m pytest tests/ -v
-cd backend && ruff check . && ruff format --check . && mypy folio
-cd backend && alembic upgrade head
+# Backend (host has python3 only; everything runs from backend/.venv)
+make install            # once: create the venv, install pinned deps
+make test               # pytest (starts the db container)
+make lint               # ruff check/format + mypy
+cd backend && .venv/bin/alembic upgrade head
 
 # Frontend
 cd frontend && npm run lint && npx tsc --noEmit

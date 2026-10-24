@@ -7,8 +7,8 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 
 | # | Milestone | Status | Acceptance criteria | Evidence |
 |---|---|---|---|---|
-| 0 | Repo foundation (plan, AGENTS.md, docs, git) | in progress | Plan approved, `AGENTS.md` in place, first commit landed | this file |
-| 1 | Skeleton and auth | todo | AD user in user group logs in; outsider refused; admin sees Admin menu | — |
+| 0 | Repo foundation (plan, AGENTS.md, docs, git) | done | Plan approved, `AGENTS.md` in place, first commit landed | `c21d675` |
+| 1 | Skeleton and auth | in progress | AD user in user group logs in; outsider refused; admin sees Admin menu | T1 merged, 17 tests green |
 | 2 | Upload and ingestion | todo | Each fixture reaches its expected status; duplicates detected | — |
 | 3 | Metadata and covers | todo | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | — |
 | 4 | TTS and player | todo | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | — |
@@ -78,3 +78,5 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | Date | Event |
 |---|---|
 | 2026-10-24 | Spec read; decisions taken: M1–M2 scope, mocked integrations, worktree-per-workstream. Plan and AGENTS.md drafted. |
+| 2026-10-24 | **T1 merged** (`c21d675`): schema + migrations 0001/0002, config, health, compose/Dockerfile, Makefile. Lead review fixes: tags added to the FTS index, editable install repaired, `DATA_DIR` split between local dev and compose, SPA history fallback. 17 tests, ruff, mypy green. |
+| 2026-10-24 | Wave 1 dispatched: T3 harness, T4 web shell, T5a extractors, T5b text pipeline, T6 docs (5 parallel worktrees). |
