@@ -20,7 +20,7 @@ Every setting is an environment variable, read from `.env` at start-up (copy `.e
 | `LDAP_BIND_DN` | none | **required** | Read-only service account DN. |
 | `LDAP_BIND_PASSWORD` | none | **required** | Never logged. |
 | `LDAP_BASE_DN` | none | **required** | User search base. |
-| `LDAP_USER_FILTER` | `(&(objectClass=user)(sAMAccountName={username}))` | optional | `{username}` is escaped before the search. |
+| `LDAP_USER_FILTER` | `(&(objectClass=user)(sAMAccountName={username}))` | optional | Supports `{username}` (bare name — `DOMAIN\user`, `user@domain` and `user` all normalize to `user`) and `{upn}` (`user@domain`, derived from the base DN's `dc=` parts). Both are escaped. On AD, adding `(objectCategory=person)` excludes computer accounts. Exactly one entry must match. |
 | `FOLIO_LDAP_ADMIN_GROUP` | none | **required** | Group DN mapped to the `admin` role. First admin = first member. |
 | `FOLIO_LDAP_USER_GROUP` | none | **required** | Group DN mapped to the `user` role. |
 | `LDAP_CA_FILE` | system store | optional | Internal CA bundle for LDAPS verification. |
