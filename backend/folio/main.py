@@ -1,5 +1,6 @@
 """App factory: /healthz, admin health, error handlers, static SPA fallback."""
 
+import logging
 import time
 from pathlib import Path
 from typing import Annotated, Any
@@ -17,6 +18,7 @@ from folio.errors import ApiError, register_error_handlers
 
 WORKER_HEARTBEAT_MAX_AGE_S = 60
 STATIC_DIR = Path(__file__).parent / "static"
+logger = logging.getLogger(__name__)
 
 
 def admin_health(
@@ -51,6 +53,12 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.add_api_route("/api/v1/admin/health", admin_health, methods=["GET"])
+
+    if get_settings().folio_test_mode:
+        from folio.routers.test_auth import router as test_auth_router
+
+        logger.warning("FOLIO_TEST_MODE is enabled: unauthenticated test login is mounted")
+        app.include_router(test_auth_router)
 
     # Serve the compiled SPA last so /api and /healthz win. Deep links
     # (/login, /books/:id) fall back to index.html for client-side routing.
