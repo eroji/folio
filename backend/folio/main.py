@@ -52,6 +52,11 @@ def create_app() -> FastAPI:
 
     app.add_api_route("/api/v1/admin/health", admin_health, methods=["GET"])
 
+    if get_settings().folio_test_mode:
+        from folio.routers.test_auth import router as test_auth_router
+
+        app.include_router(test_auth_router)
+
     # Serve the compiled SPA last so /api and /healthz win. Deep links
     # (/login, /books/:id) fall back to index.html for client-side routing.
     index = STATIC_DIR / "index.html"
