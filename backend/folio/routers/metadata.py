@@ -91,7 +91,15 @@ def metadata_apply(
     book = _get_book(db, book_id)
     _require_edit(user, book)
     candidate = _candidate_from_payload(body.payload, body.source)
-    applied = metadata_service.apply_candidate(db, book, candidate, body.fields, get_settings())
+    applied = metadata_service.apply_candidate(
+        db, book, candidate, body.fields, get_settings(), respect_locks=False
+    )
+    # An explicit apply is a manual edit: lock what landed so a later automatic
+    # fetch cannot overwrite it (covers are not a Book column).
+    locked = [name for name in applied if name != "cover_url"]
+    if locked:
+        book.locked_fields = list(dict.fromkeys([*book.locked_fields, *locked]))
+        db.commit()
     return {"book": _public(book), "applied": applied}
 
 

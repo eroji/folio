@@ -412,3 +412,51 @@ async def test_metadata_endpoints_404_unknown_book(admin_client: httpx.AsyncClie
         headers=_csrf(admin_client),
     )
     assert apply.status_code == 404
+
+
+async def test_metadata_apply_locks_the_fields_it_wrote(
+    admin_client: httpx.AsyncClient, db: Session, settings: Settings
+) -> None:
+    book = _book(db, title="Old", publisher="OldPub")
+    payload = {"id": "x", "source": "openlibrary", "title": "New", "publisher": "NewPub"}
+    response = await admin_client.post(
+        f"/api/v1/books/{book.id}/metadata/apply",
+        json={"source": "openlibrary", "payload": payload, "fields": ["title"]},
+        headers=_csrf(admin_client),
+    )
+    assert response.status_code == 200, response.text
+    db.refresh(book)
+    # An explicit apply is a manual edit: a later auto-fetch must not clobber it.
+    assert "title" in book.locked_fields
+    assert "publisher" not in book.locked_fields
+
+
+async def test_metadata_apply_ignores_non_metadata_fields(
+    admin_client: httpx.AsyncClient, db: Session, settings: Settings
+) -> None:
+    book = _book(db, title="Old")
+    book_id = book.id
+    payload = {"id": "evil", "source": "openlibrary", "title": "New"}
+    response = await admin_client.post(
+        f"/api/v1/books/{book_id}/metadata/apply",
+        json={
+            "source": "openlibrary",
+            "payload": payload,
+            "fields": ["id", "status", "cover_key", "title"],
+        },
+        headers=_csrf(admin_client),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["applied"] == ["title"]
+    db.expire_all()
+    fresh = db.get(Book, book_id)
+    assert fresh is not None  # primary key untouched
+    assert fresh.status == "ready"
+
+
+def test_explicit_user_apply_may_overwrite_a_locked_field(db: Session, settings: Settings) -> None:
+    book = _book(db, title="Old", locked_fields=["title"])
+    candidate = Candidate(id="x", source="openlibrary", title="New")
+    applied = service.apply_candidate(db, book, candidate, ["title"], settings, respect_locks=False)
+    assert applied == ["title"]
+    assert book.title == "New"

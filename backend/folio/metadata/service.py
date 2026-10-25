@@ -48,6 +48,9 @@ AUTO_FIELDS = [
     "tags",
 ]
 
+#: The only fields a client may ask the apply endpoint to write.
+EDITABLE_FIELDS = frozenset([*AUTO_FIELDS, "cover_url"])
+
 # Column widths for provider strings we write straight to the model.
 _LIMITS = {
     "title": 512,
@@ -128,9 +131,19 @@ def search_book(
 
 
 def apply_candidate(
-    session: Session, book: Book, candidate: Candidate, fields: list[str], settings: Settings
+    session: Session,
+    book: Book,
+    candidate: Candidate,
+    fields: list[str],
+    settings: Settings,
+    respect_locks: bool = True,
 ) -> list[str]:
-    """Write only the requested, unlocked fields; return the names applied.
+    """Write only the requested, editable fields; return the names applied.
+
+    ``fields`` comes from the client, so anything outside the metadata columns
+    (``id``, ``status``, ``cover_key``…) is ignored rather than setattr'd.
+    ``respect_locks`` is False for an explicit user apply — the UI may re-apply
+    a field the user previously locked; automatic fetches keep it True.
 
     Descriptions are sanitized to plain text; a requested ``cover_url`` is
     fetched and stored (a failed download is logged, not raised, so the rest of
@@ -138,7 +151,9 @@ def apply_candidate(
     """
     applied: list[str] = []
     for name in fields:
-        if name in book.locked_fields:
+        if name not in EDITABLE_FIELDS:
+            continue
+        if respect_locks and name in book.locked_fields:
             continue
         if name == "cover_url":
             if not candidate.cover_url:
