@@ -8,6 +8,7 @@ import { BookDetailPage } from "./pages/BookDetailPage";
 import { EditBookPage } from "./pages/EditBookPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AdminPage } from "./pages/AdminPage";
+import { FullPlayer } from "./components/FullPlayer";
 
 function AdminRoute() {
   const { user } = useAuth();
@@ -25,6 +26,7 @@ export function App() {
           <Route path="/books/:id" element={<BookDetailPage />} />
           <Route path="/books/:id/edit" element={<EditBookPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/player" element={<FullPlayer />} />
           <Route path="/admin" element={<AdminRoute />} />
         </Route>
       </Route>

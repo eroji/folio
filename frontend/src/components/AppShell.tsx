@@ -5,12 +5,24 @@ import { BookOpen, Moon, Shield, Sun, Upload } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { useEvents } from "../hooks/useEvents";
 import { useTheme } from "../hooks/useTheme";
+import { MiniPlayer } from "./MiniPlayer";
+import { PlayerProvider } from "../player/PlayerProvider";
+import { usePlayer } from "../player/usePlayer";
 
 const iconProps = { size: 20, strokeWidth: 1.75, "aria-hidden": true } as const;
 
-/** Sticky header (logo, nav, theme toggle, avatar menu) + phone bottom nav. */
 export function AppShell() {
+  return (
+    <PlayerProvider>
+      <Shell />
+    </PlayerProvider>
+  );
+}
+
+/** Sticky header (logo, nav, theme toggle, avatar menu) + phone bottom nav + mini player. */
+function Shell() {
   const { user, logout } = useAuth();
+  const player = usePlayer();
   const { theme, toggle } = useTheme();
   useEvents();
   const navigate = useNavigate();
@@ -108,7 +120,7 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 pb-24 pt-4 md:pb-10">
+      <main className={clsx("mx-auto max-w-5xl px-4 pt-4 md:pb-10", player.book ? "pb-32" : "pb-24")}>
         <Outlet />
       </main>
 
@@ -133,6 +145,8 @@ export function AppShell() {
           )}
         </div>
       </nav>
+
+      <MiniPlayer />
     </div>
   );
 }
