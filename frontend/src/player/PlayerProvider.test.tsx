@@ -6,7 +6,7 @@ import { installMockEventSource } from "../test/eventsource";
 import { BOOK_ID, CH1, CH2, installPlayerFetch, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import type { AudioStatus } from "../api/audio";
 
-let prepareCalls: { segment_id: string; count: number }[] = [];
+let prepareCalls: { segment_id: string; count: number; voice?: string }[] = [];
 let played: HTMLMediaElement[] = [];
 
 beforeEach(() => {
@@ -131,5 +131,46 @@ describe("PlayerProvider", () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
     expect(getPlayer().playing).toBe(true);
+  });
+
+  it("starts at the saved default speed", async () => {
+    installPlayerFetch({ settings: { speed: 1.5 } });
+    const getPlayer = renderPlayer();
+    await waitFor(() => expect(getPlayer().rate).toBe(1.5));
+    expect(getPlayer().elements[0].playbackRate).toBe(1.5);
+  });
+
+  it("skips by the configured back and forward intervals", async () => {
+    installPlayerFetch({ settings: { skip_back: 2, skip_forward: 5 } });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await waitFor(() => expect(getPlayer().settings.skip_forward).toBe(5));
+    act(() => getPlayer().skipForward());
+    expect(getPlayer().chapterElapsed).toBeCloseTo(5, 5);
+    act(() => getPlayer().skipBack());
+    expect(getPlayer().chapterElapsed).toBeCloseTo(3, 5);
+  });
+
+  it("stops at the chapter end when auto-play-next is off", async () => {
+    installPlayerFetch({
+      segmentsByChapter: { [CH1]: makeSegments(CH1, 1), [CH2]: makeSegments(CH2, 1) },
+      settings: { auto_next: false },
+    });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await waitFor(() => expect(getPlayer().settings.auto_next).toBe(false));
+    act(() => {
+      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(false));
+    expect(getPlayer().chapter?.id).toBe(CH1);
+  });
+
+  it("passes the saved language voice to prepare", async () => {
+    const { prepareCalls: calls } = installPlayerFetch({ settings: { voices: { en: "danny-en" } } });
+    const getPlayer = renderPlayer();
+    await waitFor(() => expect(getPlayer().settings.voices.en).toBe("danny-en"));
+    await loadAndPlay(getPlayer);
+    expect(calls.some((call) => call.voice === "danny-en")).toBe(true);
   });
 });
