@@ -90,6 +90,16 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 
 **Acceptance:** cached chapter-boundary gap < 1 s; voices list matches the engine; preview plays; seek-ahead shows "Preparing audio…"; Media Session metadata and handlers present; admin health reports `tts: ok`; Range requests work on `/audio/{key}`.
 
+## Milestone 5 — Progress and settings
+
+| WS | Branch | Task | Deliverable | Depends on |
+|---|---|---|---|---|
+| S | `feat/progress-api` | P | progress table + GET/PUT/DELETE/finished, `/me/continue`, `/me/settings`, percent | — |
+| T | `feat/settings-sync` | R | server-backed settings, player reads speed/skips/auto-next/voice | contract pinned |
+| U | `feat/progress-ui` | Q | save/resume (3 s rewind), conflict prompt, Continue row, finished/reset | P, R |
+
+**Acceptance:** play → pause → reload resumes within 3 s; two devices prompt when one is > 60 s ahead; Continue row appears/disappears; settings affect the player without a reload.
+
 ## Remaining milestones (planned, not yet detailed)
 
 | # | Workstreams | Key risks |
