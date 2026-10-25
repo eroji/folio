@@ -10,13 +10,20 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from folio.config import Settings
 from folio.errors import ApiError
 from folio.jobs import notify
-from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
+from folio.models import (
+    Audio,
+    Book,
+    Chapter,
+    PronunciationRule,
+    Segment,
+    SegmentAudio,
+)
 from folio.tts import (
     TtsClient,
     TtsError,
@@ -26,6 +33,7 @@ from folio.tts import (
     normalize_speech_text,
     select_voice,
 )
+from folio.tts.pronunciation import apply_rules
 
 # Segments needed now go first; lookahead is lower priority (spec: Priority).
 PRIORITY_NOW = 10
@@ -50,6 +58,37 @@ def _ordered_segments(session: Session, book: Book) -> list[Segment]:
     )
 
 
+def _rules(session: Session, book_id: UUID) -> list[PronunciationRule]:
+    """The book's pronunciation rules in creation order (apply_rules order)."""
+    return list(
+        session.scalars(
+            select(PronunciationRule)
+            .where(PronunciationRule.book_id == book_id)
+            .order_by(PronunciationRule.created_at, PronunciationRule.id)
+        )
+    )
+
+
+def invalidate_book_audio(session: Session, book_id: UUID) -> None:
+    """Drop a book's queue rows after a pronunciation-rule change.
+
+    The next ``prepare`` re-queues every segment with the corrected text (new
+    cache keys); the old ``audio`` rows and files stay for eviction.
+    """
+    segment_ids = (
+        select(Segment.id)
+        .join(Chapter, Segment.chapter_id == Chapter.id)
+        .where(Chapter.book_id == book_id)
+        .scalar_subquery()
+    )
+    session.execute(delete(SegmentAudio).where(SegmentAudio.segment_id.in_(segment_ids)))
+    session.commit()
+    notify(
+        session,
+        {"event": "audio", "book_id": str(book_id), "segment_id": None, "status": "invalidated"},
+    )
+
+
 def prepare(
     session: Session,
     settings: Settings,
@@ -68,6 +107,7 @@ def prepare(
         voice = _resolve_voice(settings, book)
     if count is None:
         count = settings.tts_lookahead
+    rules = _rules(session, book.id)
     segments = _ordered_segments(session, book)
     start = next((i for i, s in enumerate(segments) if s.id == segment_id), None)
     if start is None:
@@ -82,7 +122,10 @@ def prepare(
     changed: list[tuple[Segment, SegmentAudio, bool]] = []
     for offset, segment in enumerate(segments[start : start + count + 1]):
         key = cache_key(
-            settings.tts_model, voice, settings.tts_format, normalize_speech_text(segment.text)
+            settings.tts_model,
+            voice,
+            settings.tts_format,
+            normalize_speech_text(apply_rules(segment.text, rules)),
         )
         audio = session.get(Audio, key)
         if audio is not None and not Path(audio.path).is_file():
@@ -155,8 +198,11 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
     try:
         if segment is None:
             raise TtsError("The segment no longer exists.", code="segment_gone")
+        rules = _rules(session, chapter.book_id) if chapter else []
         with TtsClient(settings) as client:
-            audio, _ = get_or_synthesize(session, settings, client, segment.text, row.voice)
+            audio, _ = get_or_synthesize(
+                session, settings, client, apply_rules(segment.text, rules), row.voice
+            )
         row.cache_key, row.status, row.error = audio.cache_key, "ready", None
     except TtsError as exc:
         row.status, row.error = "failed", exc.message

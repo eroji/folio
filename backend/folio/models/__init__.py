@@ -1,5 +1,5 @@
 from folio.models.audio import Audio, SegmentAudio
-from folio.models.book import Book, BookFile, Chapter, Job, Segment
+from folio.models.book import Book, BookFile, Chapter, Job, PronunciationRule, Segment
 from folio.models.metadata import MetadataCandidate
 from folio.models.progress import Progress
 from folio.models.user import Session, User
@@ -12,6 +12,7 @@ __all__ = [
     "Job",
     "MetadataCandidate",
     "Progress",
+    "PronunciationRule",
     "Segment",
     "SegmentAudio",
     "Session",
