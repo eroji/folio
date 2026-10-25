@@ -242,19 +242,19 @@ describe("AppShell", () => {
   it("loads the most recent book paused on start so Resume is one click away", async () => {
     renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
     await boot();
-    const panel = await screen.findByRole("complementary", { name: "Now playing" });
-    expect(within(panel).getByRole("button", { name: "Play" })).toBeTruthy(); // paused, not playing
+    const bar = await screen.findByRole("region", { name: "Now playing" });
+    expect(within(bar).getByRole("button", { name: "Play" })).toBeTruthy(); // paused, not playing
   });
 
   it("shows no player surfaces without listening history", async () => {
     renderShell();
     await boot();
-    expect(screen.queryByRole("complementary", { name: "Now playing" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
   });
 
-  it('collapses with "p", opens focus mode with "f" on desktop and returns on Escape', async () => {
+  it("renders the player bar and no phone mini player on desktop", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: true, // desktop, and contents open by default
+      matches: true, // desktop: player bar, no mini player
       media: query,
       addEventListener: () => {},
       removeEventListener: () => {},
@@ -262,22 +262,14 @@ describe("AppShell", () => {
     }));
     renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
     await boot();
-    await screen.findByRole("complementary", { name: "Now playing" });
-    fireEvent.keyDown(document.body, { key: "p" });
-    await waitFor(() => expect(localStorage.getItem("folio-player-collapsed")).toBe("true"));
-    fireEvent.keyDown(document.body, { key: "p" });
-    await waitFor(() => expect(localStorage.getItem("folio-player-collapsed")).toBe("false"));
-    fireEvent.keyDown(document.body, { key: "f" });
-    await screen.findByRole("button", { name: "Exit focus mode" });
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Exit focus mode" })).toBeNull());
-    // The overlay is state, not a route: the page and panel are exactly as left.
-    expect(screen.getByRole("complementary", { name: "Now playing" })).toBeTruthy();
+    const bar = await screen.findByRole("region", { name: "Now playing" });
+    expect(within(bar).getByRole("button", { name: "Stop and close player" })).toBeTruthy();
+    expect(within(bar).getByRole("link", { name: "Open player" })).toBeTruthy();
   });
 
-  it("does not open focus mode with f below the desktop breakpoint", async () => {
+  it("renders the phone mini player below 768px", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: false,
+      matches: false, // phone: no sidebar, mini player instead of the bar
       media: query,
       addEventListener: () => {},
       removeEventListener: () => {},
@@ -285,8 +277,8 @@ describe("AppShell", () => {
     }));
     renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
     await boot();
-    await screen.findByRole("complementary", { name: "Now playing" });
-    fireEvent.keyDown(document.body, { key: "f" });
-    expect(screen.queryByRole("button", { name: "Exit focus mode" })).toBeNull();
+    const mini = await screen.findByRole("region", { name: "Now playing" });
+    expect(within(mini).getByRole("link", { name: /Open player/ })).toBeTruthy();
+    expect(within(mini).queryByRole("button", { name: "Stop and close player" })).toBeNull();
   });
 });
