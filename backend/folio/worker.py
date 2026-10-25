@@ -14,6 +14,7 @@ from folio.ingest.pipeline import process_book
 from folio.jobs import claim_next, finish, notify
 from folio.models.book import Job
 from folio.storage import ensure_dirs
+from folio.tts.queue import claim_next_tts, run_tts_job
 
 Handler = Callable[[Session, Settings, Job], None]
 HANDLERS: dict[str, Handler] = {"ingest": process_book}
@@ -29,7 +30,15 @@ def _stop(signum: int, frame: FrameType | None) -> None:
 
 
 def run_once(session: Session, settings: Settings) -> bool:
-    """Claim and run one job end to end; False when the queue is empty."""
+    """Claim and run one unit of work end to end; False when both queues are empty.
+
+    TTS rows go before ingest jobs (spec: segments needed now come first);
+    a synthesis in flight always finishes before SIGTERM stops the loop.
+    """
+    row = claim_next_tts(session)
+    if row is not None:
+        run_tts_job(session, settings, row)
+        return True
     job = claim_next(session)
     if job is None:
         return False

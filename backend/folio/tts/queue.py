@@ -1,0 +1,179 @@
+"""``segment_audio`` as the TTS generation queue (plan Wave 1, Task B).
+
+Playback tops the queue up with ``prepare`` (current segment + lookahead);
+the worker claims rows ``FOR UPDATE SKIP LOCKED`` and runs ``run_tts_job``.
+No separate jobs plumbing: the rows double as queue and state.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from folio.config import Settings
+from folio.errors import ApiError
+from folio.jobs import notify
+from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
+from folio.tts import (
+    TtsClient,
+    TtsError,
+    cache_key,
+    discover_voices,
+    get_or_synthesize,
+    normalize_speech_text,
+    select_voice,
+)
+
+# Segments needed now go first; lookahead is lower priority (spec: Priority).
+PRIORITY_NOW = 10
+PRIORITY_LOOKAHEAD = 100
+
+
+def _resolve_voice(settings: Settings, book: Book) -> str:
+    """Run the selection order against the engine's current voice list."""
+    with TtsClient(settings) as client:
+        voices = discover_voices(settings, client)
+    return select_voice(book, {}, settings, voices)
+
+
+def _ordered_segments(session: Session, book: Book) -> list[Segment]:
+    return list(
+        session.scalars(
+            select(Segment)
+            .join(Chapter, Segment.chapter_id == Chapter.id)
+            .where(Chapter.book_id == book.id)
+            .order_by(Chapter.idx, Segment.idx)
+        )
+    )
+
+
+def prepare(
+    session: Session,
+    settings: Settings,
+    book: Book,
+    segment_id: UUID,
+    count: int | None = None,
+    voice: str | None = None,
+) -> list[tuple[Segment, SegmentAudio]]:
+    """Queue ``count + 1`` segments from ``segment_id``; cache hits go straight to ready.
+
+    ``count`` defaults to ``settings.tts_lookahead``. Idempotent: an existing
+    ``generating`` row is preserved, a ``queued`` row only gains priority (a
+    seek raises it), and ``failed`` waits for the retry button.
+    """
+    if voice is None:
+        voice = _resolve_voice(settings, book)
+    if count is None:
+        count = settings.tts_lookahead
+    segments = _ordered_segments(session, book)
+    start = next((i for i, s in enumerate(segments) if s.id == segment_id), None)
+    if start is None:
+        raise ApiError("not_found", "Segment not found.", 404)
+
+    # ponytail: concurrent prepares of the same (segment, voice) can race the
+    # unique index and surface a 500; re-select on IntegrityError if it bites.
+    window: list[tuple[Segment, SegmentAudio]] = []
+    for offset, segment in enumerate(segments[start : start + count + 1]):
+        key = cache_key(
+            settings.tts_model, voice, settings.tts_format, normalize_speech_text(segment.text)
+        )
+        audio = session.get(Audio, key)
+        if audio is not None and not Path(audio.path).is_file():
+            audio = None  # row survived an eviction that removed the file
+        row = session.scalar(
+            select(SegmentAudio).where(
+                SegmentAudio.segment_id == segment.id, SegmentAudio.voice == voice
+            )
+        )
+        priority = PRIORITY_NOW if offset == 0 else PRIORITY_LOOKAHEAD
+        if row is None:
+            row = SegmentAudio(segment_id=segment.id, voice=voice, priority=priority)
+            session.add(row)
+        if audio is not None:
+            row.cache_key, row.status, row.error = audio.cache_key, "ready", None
+        elif row.status == "queued":
+            row.priority = min(row.priority, priority)
+        elif row.status == "ready":
+            row.cache_key, row.status, row.error = None, "queued", None  # file was cleared
+        # generating keeps its claim; failed waits for retry()
+        window.append((segment, row))
+
+    session.commit()
+    for segment, row in window:
+        _notify(session, str(book.id), segment.id, row.status)
+    return window
+
+
+def _notify(session: Session, book_id: str | None, segment_id: UUID, status: str) -> None:
+    notify(
+        session,
+        {"event": "audio", "book_id": book_id, "segment_id": str(segment_id), "status": status},
+    )
+
+
+def claim_next_tts(session: Session) -> SegmentAudio | None:
+    """Claim the most urgent queued row, or None. SKIP LOCKED: workers never collide."""
+    row = (
+        session.execute(
+            select(SegmentAudio)
+            .where(SegmentAudio.status == "queued")
+            .order_by(SegmentAudio.priority, SegmentAudio.created_at, SegmentAudio.id)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+        .scalars()
+        .first()
+    )
+    if row is None:
+        session.commit()  # end the read transaction so no locks linger
+        return None
+    row.status = "generating"
+    session.commit()
+    return row
+
+
+def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None:
+    """Synthesize one claimed row to ready, or fail it with a readable error.
+
+    Always releases the row: after this returns it is never ``generating``.
+    """
+    segment = session.get(Segment, row.segment_id)
+    chapter = session.get(Chapter, segment.chapter_id) if segment else None
+    book_id = str(chapter.book_id) if chapter else None
+    try:
+        if segment is None:
+            raise TtsError("The segment no longer exists.", code="segment_gone")
+        with TtsClient(settings) as client:
+            audio, _ = get_or_synthesize(session, settings, client, segment.text, row.voice)
+        row.cache_key, row.status, row.error = audio.cache_key, "ready", None
+    except TtsError as exc:
+        row.status, row.error = "failed", exc.message
+    except Exception as exc:  # noqa: BLE001 - a stuck generating row is worse than a failure
+        session.rollback()
+        row.status, row.error = "failed", f"{type(exc).__name__}: {exc}"
+    session.commit()
+    _notify(session, book_id, row.segment_id, row.status)
+
+
+def retry(
+    session: Session, settings: Settings, segment_id: UUID, voice: str | None = None
+) -> SegmentAudio:
+    """Reset a failed segment for the player's retry button (failed → queued)."""
+    del settings  # pinned signature; nothing here needs config
+    stmt = select(SegmentAudio).where(SegmentAudio.segment_id == segment_id)
+    if voice is not None:
+        stmt = stmt.where(SegmentAudio.voice == voice)
+    else:  # the retry button retries the segment's failed row, whatever voice it used
+        stmt = stmt.where(SegmentAudio.status == "failed")
+    row = session.scalar(stmt.order_by(SegmentAudio.created_at.desc()).limit(1))
+    if row is None:
+        raise ApiError("not_found", "No failed audio to retry for this segment.", 404)
+    row.status, row.error, row.cache_key, row.priority = "queued", None, None, PRIORITY_NOW
+    session.commit()
+    segment = session.get(Segment, segment_id)
+    chapter = session.get(Chapter, segment.chapter_id) if segment else None
+    _notify(session, str(chapter.book_id) if chapter else None, segment_id, row.status)
+    return row
