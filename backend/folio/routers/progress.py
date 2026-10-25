@@ -55,11 +55,14 @@ def _get_book(db: DbSession, book_id: uuid.UUID) -> Book:
 
 
 def _chars_before(db: DbSession, chapter: Chapter) -> int:
-    """Book-global character offset where this chapter starts."""
+    """Book-global character offset where this chapter starts (excluded
+    chapters count as nothing, matching the recomputed ``total_chars``)."""
     return (
         db.scalar(
             select(func.coalesce(func.sum(Chapter.char_count), 0)).where(
-                Chapter.book_id == chapter.book_id, Chapter.idx < chapter.idx
+                Chapter.book_id == chapter.book_id,
+                Chapter.idx < chapter.idx,
+                Chapter.excluded.is_(False),
             )
         )
         or 0

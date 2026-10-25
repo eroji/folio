@@ -5,6 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Connection,
     DateTime,
     Float,
@@ -114,6 +115,11 @@ class Chapter(Base):
     idx: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Front matter / appendices the listener never plays; excluded from
+    # totals, playback ordering and the detail listing.
+    excluded: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class Segment(Base):

@@ -141,6 +141,71 @@ def test_search_book_merges_and_dedupes_by_isbn(
 # --- apply_candidate ---------------------------------------------------------
 
 
+def _mock_http(
+    monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]
+) -> None:
+    """Route the cover fetch inside ``apply_candidate`` through a MockTransport."""
+    real = httpx.Client
+    monkeypatch.setattr(
+        metadata_service.httpx,
+        "Client",
+        lambda *args, **kwargs: real(transport=httpx.MockTransport(handler), follow_redirects=True),
+    )
+
+
+def test_apply_fetches_candidate_cover_when_book_has_none(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    book = _book(db, title="Old", cover_key=None)
+    image = _image_bytes()
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, stream=httpx.ByteStream(image))
+
+    _mock_http(monkeypatch, handler)
+    candidate = _candidate(title="New", cover_url="https://covers.test/c.jpg")
+    applied = metadata_service.apply_candidate(db, book, candidate, ["title"], settings)
+    assert applied == ["title", "cover_url"]  # cover lands without being requested
+    assert seen == ["https://covers.test/c.jpg"]
+    book = _reload(db, book.id)
+    assert book.cover_key == hashlib.sha256(image).hexdigest()
+    assert list(cover_dir(settings, book.id).glob("original.*"))  # store_cover wrote a file
+
+
+def test_apply_keeps_existing_cover_when_not_requested(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    book = _book(db, title="Old", cover_key="existing-key")
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, stream=httpx.ByteStream(_image_bytes()))
+
+    _mock_http(monkeypatch, handler)
+    candidate = _candidate(title="New", cover_url="https://covers.test/c.jpg")
+    applied = metadata_service.apply_candidate(db, book, candidate, ["title"], settings)
+    assert applied == ["title"]
+    assert seen == []  # no fetch: the book already has a cover
+    book = _reload(db, book.id)
+    assert book.cover_key == "existing-key"
+
+
+def test_apply_explicit_cover_url_overwrites_existing_cover(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    book = _book(db, cover_key="existing-key")
+    image = _image_bytes(fmt="PNG")
+    _mock_http(monkeypatch, lambda request: httpx.Response(200, stream=httpx.ByteStream(image)))
+    candidate = _candidate(cover_url="https://covers.test/c.png")
+    applied = metadata_service.apply_candidate(db, book, candidate, ["cover_url"], settings)
+    assert applied == ["cover_url"]
+    book = _reload(db, book.id)
+    assert book.cover_key == hashlib.sha256(image).hexdigest()
+
+
 def test_apply_writes_only_the_selected_fields(db: Session, settings: Settings) -> None:
     book = _book(db, title="Old", publisher="OldPub", description="OldDesc", authors=["Z"])
     candidate = _candidate(title="New", publisher="NewPub", description="NewDesc", authors=["A"])
@@ -335,6 +400,47 @@ async def test_metadata_search_endpoint_returns_candidates(
     items = response.json()["items"]
     assert items[0]["source"] == "openlibrary"
     assert items[0]["title"] == "Found Book"
+
+
+async def test_metadata_search_scores_candidates_against_the_book(
+    admin_client: httpx.AsyncClient,
+    db: Session,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        metadata_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"metadata_online": True}),
+    )
+    match_book = _book(db, title="Found Book", authors=["Ann"])
+    other_book = _book(db, title="A Totally Different Name", authors=["Zoe Q."])
+    ol = {
+        "docs": [
+            {
+                "key": "/works/OL1",
+                "title": "Found Book",
+                "author_name": ["Ann"],
+                "isbn": ["9781111111117"],
+            }
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "openlibrary.org":
+            return httpx.Response(200, json=ol)
+        return httpx.Response(429, json={})
+
+    _override_client(admin_client, handler)
+    same = await admin_client.get(
+        f"/api/v1/books/{match_book.id}/metadata/search", params={"q": "Found Book"}
+    )
+    assert same.status_code == 200, same.text
+    assert same.json()["items"][0]["score"] >= 0.9  # same title + author
+    different = await admin_client.get(
+        f"/api/v1/books/{other_book.id}/metadata/search", params={"q": "Found Book"}
+    )
+    assert different.json()["items"][0]["score"] < 0.5
 
 
 async def test_metadata_apply_endpoint_writes_selected_fields(

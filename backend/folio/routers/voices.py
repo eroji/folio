@@ -24,11 +24,13 @@ router = APIRouter(prefix="/api/v1/voices", tags=["voices"])
 _MEDIA_TYPE = {"opus": "audio/ogg", "mp3": "audio/mpeg"}
 
 # Short spoken samples per language; unknown voices fall back to English.
+# Non-English samples are pure target-language text (no Latin words): a mixed
+# script makes some engines read that word in English (demo finding).
 _SAMPLES = {
     "en": "Hello, this is a voice preview from Folio.",
-    "ja": "これはFolioからのボイスプレビューです。",
-    "ko": "Folio 음성 미리 듣기입니다.",
-    "zh": "這是 Folio 的語音預覽。",
+    "ja": "これは音声のプレビューです。",
+    "ko": "음성 미리 듣기입니다.",
+    "zh": "這是語音預覽。",
 }
 
 
@@ -66,8 +68,11 @@ def list_voices(
 
 def _default_sample(voice: str, settings: Settings) -> str:
     match = re.search(settings.tts_voice_lang_pattern, voice)
-    code = match.group(1).lower() if match and match.lastindex else "en"
-    return _SAMPLES["ko" if code == "kr" else code] if code in _SAMPLES else _SAMPLES["en"]
+    code = match.group(1).lower() if match and match.lastindex else ""
+    if not code:
+        # Region suffixes (``ashley-zh-TW``): the language is an earlier part.
+        code = next((p for p in voice.lower().split("-") if p in _SAMPLES or p == "kr"), "en")
+    return _SAMPLES["ko" if code == "kr" else code]
 
 
 @router.post("/preview")

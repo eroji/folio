@@ -21,6 +21,7 @@ os.environ.setdefault("FOLIO_LDAP_ADMIN_GROUP", "x")
 os.environ.setdefault("FOLIO_LDAP_USER_GROUP", "x")
 os.environ["DATA_DIR"] = tempfile.mkdtemp(prefix="folio-live-smoke-")
 
+import sys
 import time
 
 import httpx
@@ -31,8 +32,8 @@ from folio.tts.cache import duration_seconds
 from folio.tts.voices import discover_voices
 
 BASE = "http://vllm.dotslash.io:8880/v1"
-VOICE = "ashley-en"
-TEXT = "Folio can now speak this sentence out loud."
+VOICE = sys.argv[1] if len(sys.argv) > 1 else "ashley-en"
+TEXT = sys.argv[2] if len(sys.argv) > 2 else "Folio can now speak this sentence out loud."
 
 
 def main() -> None:
@@ -51,7 +52,7 @@ def main() -> None:
     path = settings.data_dir / f"live-smoke.{fmt}"
     path.write_bytes(data)
     print(
-        f"synthesized {len(data)} bytes as {fmt} in {elapsed:.2f}s, "
+        f"[{VOICE}] synthesized {len(data)} bytes as {fmt} in {elapsed:.2f}s, "
         f"duration {duration_seconds(path):.2f}s"
     )
 

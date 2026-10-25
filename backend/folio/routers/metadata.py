@@ -22,6 +22,7 @@ from folio.deps import can_edit_book, get_current_user
 from folio.errors import ApiError
 from folio.metadata import Candidate
 from folio.metadata import service as metadata_service
+from folio.metadata.match import score_candidate
 from folio.metadata.service import search_book
 from folio.models import Book, MetadataCandidate, User
 from folio.routers.books import _public
@@ -76,6 +77,11 @@ def metadata_search(
     book = _get_book(db, book_id)
     _require_edit(user, book)
     candidates = search_book(get_settings(), q, isbn, http_client)
+    # Providers return their own relevance order; the UI shows a match
+    # percentage, so score every candidate against this book (as auto_fetch does).
+    for candidate in candidates:
+        candidate.score = score_candidate(book, candidate)
+    candidates.sort(key=lambda candidate: candidate.score, reverse=True)
     return {"items": [dataclasses.asdict(candidate) for candidate in candidates]}
 
 
