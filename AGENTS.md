@@ -46,6 +46,8 @@ make logs               # api + worker logs
 
 Tests need PostgreSQL: set `TEST_DATABASE_URL` (default `postgresql+psycopg://folio:folio@localhost:5432/folio_test`). The harness creates the test database if it is missing. Never point tests at the development or production database.
 
+**After adding a migration, recreate the test database.** The harness builds the schema with `Base.metadata.create_all`, which never adds a column to an existing table — a stale `folio_test` produces dozens of confusing failures (e.g. `column chapters.excluded does not exist`). Run `make reset-test-db` once.
+
 **When more than one backend workstream runs at the same time, each must use its own database** — otherwise their `TRUNCATE`s deadlock and pipeline tests fail with confusing `FileNotFoundError`s:
 
 ```bash

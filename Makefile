@@ -1,4 +1,4 @@
-.PHONY: install db dev-backend dev-web test test-web lint e2e up down logs fixtures
+.PHONY: install db reset-test-db dev-backend dev-web test test-web lint e2e up down logs fixtures
 
 # Host has python3, not python; everything backend-side runs from this venv.
 VENV := backend/.venv
@@ -17,6 +17,12 @@ dev-backend:
 
 dev-web:
 	cd frontend && npm run dev
+
+# create_all never alters an existing table: after adding a migration, reset
+# the test schema or every test touching the new column fails.
+reset-test-db: db
+	docker compose exec -T db psql -U folio -d postgres \
+		-c 'DROP DATABASE IF EXISTS folio_test' -c 'CREATE DATABASE folio_test OWNER folio'
 
 test: db
 	cd backend && .venv/bin/python -m pytest tests/
