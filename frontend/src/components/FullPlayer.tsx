@@ -1,11 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { Check, FastForward, Gauge, List, Mic, Moon, Pause, Play, RotateCcw, Type, X } from "lucide-react";
-import { SPEED_MAX, SPEED_MIN, type SleepChoice } from "../player/PlayerProvider";
+import {
+  Check,
+  ChevronsLeft,
+  ChevronsRight,
+  FastForward,
+  Gauge,
+  Mic,
+  Moon,
+  Pause,
+  Play,
+  RotateCcw,
+  Type,
+  X,
+} from "lucide-react";
+import { SPEED_MAX, SPEED_MIN, formatTime, type SleepChoice } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
-import { ChapterSheet } from "./ChapterSheet";
 import { ReadAlong } from "./ReadAlong";
 import { ResumePrompt } from "./ResumePrompt";
 
@@ -24,13 +36,6 @@ function sleepLabel(choice: SleepChoice): string {
   return choice === "chapter" ? "End of chapter" : `${choice} min`;
 }
 
-function formatTime(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds));
-  const m = Math.floor(total / 60);
-  const s = String(total % 60).padStart(2, "0");
-  return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${s}` : `${m}:${s}`;
-}
-
 const secondaryButton =
   "flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-pill px-2 text-xs font-medium text-muted hover:text-ink";
 const skipButton =
@@ -42,7 +47,6 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
   const player = usePlayer();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [sleepOpen, setSleepOpen] = useState(false);
   const [readAlong, setReadAlong] = useState(true);
   const p = useRef(player);
@@ -95,9 +99,10 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
   }
 
   const book = player.book;
-  const duration = player.chapterDuration;
+  const duration = player.chapterTotal;
   const elapsed = Math.min(player.chapterElapsed, duration);
   const remaining = Math.max(0, duration - elapsed);
+  const chapterIdx = player.chapters.findIndex((chapter) => chapter.id === player.chapter?.id);
 
   const cycleSpeed = () => player.setRate(player.rate >= SPEED_MAX ? SPEED_MIN : player.rate + 0.25);
 
@@ -131,6 +136,44 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
             {book.title}
             {book.authors[0] ? ` · ${book.authors[0]}` : ""}
           </p>
+
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Previous chapter"
+              disabled={chapterIdx <= 0}
+              onClick={() => void player.stepChapter(-1)}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-pill border border-line bg-card text-ink disabled:opacity-40"
+            >
+              <ChevronsLeft size={20} strokeWidth={1.75} aria-hidden />
+            </button>
+            <select
+              aria-label="Chapter"
+              value={player.chapter?.id ?? ""}
+              onChange={(event) => {
+                const chapterId = event.target.value;
+                if (chapterId && chapterId !== player.chapter?.id) {
+                  void player.goToChapter(chapterId).then(() => void player.play());
+                }
+              }}
+              className="h-11 min-w-0 flex-1 rounded-card border border-line bg-card px-3 text-sm"
+            >
+              {player.chapters.map((chapter) => (
+                <option key={chapter.id} value={chapter.id}>
+                  {chapter.idx + 1} · {chapter.title}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              aria-label="Next chapter"
+              disabled={chapterIdx >= player.chapters.length - 1}
+              onClick={() => void player.stepChapter(1)}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-pill border border-line bg-card text-ink disabled:opacity-40"
+            >
+              <ChevronsRight size={20} strokeWidth={1.75} aria-hidden />
+            </button>
+          </div>
 
           {player.resumePrompt && (
             <div className="mt-3">
@@ -259,16 +302,6 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
             </div>
             <button
               type="button"
-              aria-label="Chapters"
-              aria-expanded={sheetOpen}
-              onClick={() => setSheetOpen(true)}
-              className={secondaryButton}
-            >
-              <List size={20} strokeWidth={1.75} aria-hidden />
-              <span>Chapters</span>
-            </button>
-            <button
-              type="button"
               aria-label="Read along"
               aria-pressed={readAlong}
               onClick={() => setReadAlong((open) => !open)}
@@ -291,19 +324,6 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
 
         {readAlong && <ReadAlong className="mt-4" />}
       </div>
-
-      {sheetOpen && (
-        <ChapterSheet
-          book={book}
-          chapters={player.chapters}
-          currentId={player.chapter?.id ?? null}
-          onSelect={(chapterId) => {
-            player.goToChapter(chapterId);
-            setSheetOpen(false);
-          }}
-          onClose={() => setSheetOpen(false)}
-        />
-      )}
     </div>
   );
 }

@@ -84,8 +84,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch {
   const chapters = fixture.chapters ?? [
-    { id: CH1, idx: 1, title: "Chapter One", char_count: 600 },
-    { id: CH2, idx: 2, title: "Chapter Two", char_count: 600 },
+    { id: CH1, idx: 0, title: "Chapter One", char_count: 600 },
+    { id: CH2, idx: 1, title: "Chapter Two", char_count: 600 },
   ];
   const byChapter = fixture.segmentsByChapter ?? {
     [CH1]: makeSegments(CH1, 2),

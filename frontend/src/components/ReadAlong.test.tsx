@@ -22,7 +22,7 @@ describe("ReadAlong", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
+    delete (Element.prototype as unknown as { scrollTo?: unknown }).scrollTo;
   });
 
   async function play(getPlayer: () => PlayerContextValue, fakeTimers = false) {
@@ -45,10 +45,38 @@ describe("ReadAlong", () => {
     expect(document.querySelector(".sr-only")?.textContent).toContain(`Two ${CH1}-seg1 here`);
   });
 
+  it("auto-scrolls the panel, never the window", async () => {
+    vi.useFakeTimers();
+    const getPlayer = renderPlayer(<ReadAlong />);
+    await play(getPlayer, true);
+    const panel = document.querySelector<HTMLElement>(".reader-scroll")!;
+    let scrollTop = 0;
+    Object.defineProperty(panel, "scrollTop", { configurable: true, get: () => scrollTop, set: (v: number) => (scrollTop = v) });
+    Object.defineProperty(panel, "clientHeight", { configurable: true, get: () => 400 });
+    for (const span of panel.querySelectorAll("span")) {
+      Object.defineProperty(span, "offsetTop", { configurable: true, get: () => 900 });
+    }
+    panel.scrollTo = vi.fn((options?: ScrollToOptions) => {
+      scrollTop = options?.top ?? 0;
+    }) as unknown as typeof panel.scrollTo;
+    const windowScroll = vi.spyOn(window, "scrollTo");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300); // past the throttle
+    });
+    const el = getPlayer().elements[0];
+    act(() => {
+      el.currentTime = 6;
+      el.dispatchEvent(new Event("timeupdate"));
+    });
+    expect(panel.scrollTop).toBe(700); // active sentence centered in the panel
+    expect(window.scrollY).toBe(0);
+    expect(windowScroll).not.toHaveBeenCalled();
+  });
+
   it("auto-scrolls at most every 250 ms while time advances", async () => {
     vi.useFakeTimers();
     const scroll = vi.fn();
-    Element.prototype.scrollIntoView = scroll;
+    Element.prototype.scrollTo = scroll;
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer, true);
     const el = getPlayer().elements[0];
@@ -72,7 +100,7 @@ describe("ReadAlong", () => {
   it("pauses auto-scroll for ~5 s after a manual scroll", async () => {
     vi.useFakeTimers();
     const scroll = vi.fn();
-    Element.prototype.scrollIntoView = scroll;
+    Element.prototype.scrollTo = scroll;
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer, true);
     const el = getPlayer().elements[0];

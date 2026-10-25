@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installMockEventSource } from "../test/eventsource";
-import { BOOK_ID, CH1, installPlayerFetch, renderPlayer, stubMedia } from "../test/player";
+import { BOOK_ID, CH1, CH2, installPlayerFetch, renderPlayer, stubMedia } from "../test/player";
 import { FullPlayer } from "./FullPlayer";
 
 describe("FullPlayer", () => {
@@ -32,6 +32,30 @@ describe("FullPlayer", () => {
     await waitFor(() => expect(screen.queryAllByText(sentence)).toHaveLength(0));
     fireEvent.click(screen.getByRole("button", { name: "Read along" }));
     expect((await screen.findAllByText(sentence)).length).toBeGreaterThan(0);
+  });
+
+  it("lists chapters in a select and plays the chosen one", async () => {
+    const getPlayer = await renderFull();
+    const select = screen.getByRole("combobox", { name: "Chapter" });
+    expect(within(select).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "1 · Chapter One",
+      "2 · Chapter Two",
+    ]);
+    fireEvent.change(select, { target: { value: CH2 } });
+    await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+  });
+
+  it("flanks the chapter select with previous/next buttons that step chapters", async () => {
+    const getPlayer = await renderFull();
+    const prev = screen.getByRole("button", { name: "Previous chapter" });
+    const next = screen.getByRole("button", { name: "Next chapter" });
+    expect((prev as HTMLButtonElement).disabled).toBe(true); // chapter 1 of 2
+    fireEvent.click(next);
+    await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
+    expect((screen.getByRole("button", { name: "Next chapter" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Previous chapter" }));
+    await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH1));
   });
 
   it("sleep menu lists the choices, marks the active one, and sets it", async () => {
