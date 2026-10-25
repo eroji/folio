@@ -6,9 +6,12 @@ import { VoicePicker } from "./VoicePicker";
 const VOICES = {
   items: [
     { id: "ashley-en", language: "en", description: null, available: true },
+    { id: "alex-en", language: "en", description: null, available: true },
     { id: "ashley-ja", language: "ja", description: null, available: true },
+    { id: "ashley-tw", language: "zh-TW", description: null, available: true },
     { id: "ashley-old", language: "en", description: null, available: false },
-    { id: "tts", language: null, description: "engine default", available: true },
+    // Tagged on purpose: the picker must hide "tts" even if the API sends it.
+    { id: "tts", language: "en", description: "engine default", available: true },
   ],
 };
 
@@ -55,23 +58,45 @@ function renderPicker(
 }
 
 describe("VoicePicker", () => {
-  it("lists the language's voices plus any-language voices until Show all is checked", async () => {
+  it("lists only the language's voices and never the tts pseudo-voice", async () => {
     renderPicker(<VoicePicker value={null} language="en" onChange={() => undefined} />);
     expect(await screen.findByRole("option", { name: "ashley-en" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "tts — engine default" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "alex-en" })).toBeTruthy();
     expect(screen.queryByRole("option", { name: "ashley-ja" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("checkbox", { name: /Show all voices/ }));
-    expect(await screen.findByRole("option", { name: "ashley-ja" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /tts/ })).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull(); // no "Show all voices" toggle
   });
 
-  it("marks the saved voice No longer available when it is absent from the engine", async () => {
+  it("matches zh-TW pickers to zh voices", async () => {
+    renderPicker(<VoicePicker value={null} language="zh-TW" onChange={() => undefined} />);
+    expect(await screen.findByRole("option", { name: "ashley-tw" })).toBeTruthy();
+  });
+
+  it("preselects the first available voice without calling onChange", async () => {
+    const onChange = vi.fn();
+    renderPicker(<VoicePicker value={null} language="en" onChange={onChange} />);
+    const select = await screen.findByRole("combobox", { name: "en voice" });
+    await vi.waitFor(() => expect(select).toHaveProperty("value", "ashley-en"));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Preview" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("calls onChange with the explicitly chosen voice", async () => {
+    const onChange = vi.fn();
+    renderPicker(<VoicePicker value="ashley-en" language="en" onChange={onChange} />);
+    const select = await screen.findByRole("combobox", { name: "en voice" });
+    await screen.findByRole("option", { name: "alex-en" });
+    fireEvent.change(select, { target: { value: "alex-en" } });
+    expect(onChange).toHaveBeenCalledWith("alex-en");
+  });
+
+  it("notes a saved voice that left the engine and shows the first available instead", async () => {
     renderPicker(<VoicePicker value="ghost-voice" language="en" onChange={() => undefined} />);
     const note = await screen.findByText(/is no longer available/i);
     const select = screen.getByRole("combobox", { name: "en voice" });
-    expect((select as HTMLSelectElement).value).toBe("ghost-voice");
+    expect(select).toHaveProperty("value", "ashley-en");
     expect(note).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Preview" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Preview" }).hasAttribute("disabled")).toBe(false);
   });
 
   it("marks an engine voice that turned unavailable", async () => {
@@ -81,12 +106,23 @@ describe("VoicePicker", () => {
       expect(option.textContent).toMatch(/No longer available/);
       expect(option.hasAttribute("disabled")).toBe(true);
     });
+    expect(await screen.findByText(/is no longer available/i)).toBeTruthy();
+  });
+
+  it("disables the picker and hides Preview when the language has no voices", async () => {
+    renderPicker(<VoicePicker value={null} language="ko" onChange={() => undefined} />);
+    const select = await screen.findByRole("combobox", { name: "ko voice" });
+    await vi.waitFor(() => expect(select.hasAttribute("disabled")).toBe(true));
+    expect(screen.getByText("No voices available for this language")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Preview" })).toBeNull();
   });
 
   it("previews the selected voice and revokes the previous object URL", async () => {
-    const onChange = vi.fn();
-    renderPicker(<VoicePicker value="ashley-en" language="en" onChange={onChange} />);
+    renderPicker(<VoicePicker value={null} language="en" onChange={() => undefined} />);
     await screen.findByRole("combobox", { name: "en voice" });
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "Preview" }).hasAttribute("disabled")).toBe(false),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1));
@@ -99,13 +135,5 @@ describe("VoicePicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(2));
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:sample-1");
-  });
-
-  it("calls onChange with null when Default is picked", async () => {
-    const onChange = vi.fn();
-    renderPicker(<VoicePicker value="ashley-en" language="en" onChange={onChange} />);
-    const select = await screen.findByRole("combobox", { name: "en voice" });
-    fireEvent.change(select, { target: { value: "" } });
-    expect(onChange).toHaveBeenCalledWith(null);
   });
 });
