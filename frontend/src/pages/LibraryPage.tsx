@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { Library } from "lucide-react";
 import clsx from "clsx";
 import { useBooks, type BookSort } from "../api/books";
@@ -83,6 +83,14 @@ export function LibraryPage() {
   const [sort, setSort] = useState<BookSort>("recent");
   const [status, setStatus] = useState<BookStatus | "">("");
   const [page, setPage] = useState(1);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const location = useLocation();
+
+  // The shell's Search entry and the "/" shortcut land on /?focus=search.
+  // location.key changes on every navigation, so pressing "/" twice refocuses.
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get("focus") === "search") searchRef.current?.focus();
+  }, [location.key, location.search]);
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search.trim()), 250);
@@ -107,6 +115,7 @@ export function LibraryPage() {
       <ContinueRow />
       <div className="flex flex-wrap items-center gap-2">
         <input
+          ref={searchRef}
           type="search"
           aria-label="Search books"
           placeholder="Search title, author, series"

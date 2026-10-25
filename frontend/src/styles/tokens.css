@@ -43,6 +43,10 @@
 
   /* Spacing: Tailwind's default 4px scale. Common values: 4 6 8 10 12 14 20 28 */
 
+  /* Layout: the icon-rail shell starts at 1050px (handoff "Desktop shell");
+     below it the phone/tablet shell (header + tab bar) takes over. */
+  --breakpoint-desktop: 1050px;
+
   /* Brand (fixed, never themed) */
   --color-brand-blue: #2381F7;
   --color-brand-violet: #8B5CF6;
