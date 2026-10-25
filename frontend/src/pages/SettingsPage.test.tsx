@@ -7,6 +7,7 @@ import { SettingsPage } from "./SettingsPage";
 const VOICES = {
   items: [
     { id: "ashley-en", language: "en", description: null, available: true },
+    { id: "alex-en", language: "en", description: null, available: true },
     { id: "ashley-ja", language: "ja", description: null, available: true },
     { id: "ashley-kr", language: "ko", description: null, available: false },
   ],
@@ -141,17 +142,28 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("combobox", { name: "en voice" })).toHaveProperty("value", "ashley-en");
   });
 
-  it("persists the per-language voice and marks unavailable voices", async () => {
+  it("preselects a voice without saving, then persists an explicit choice", async () => {
     renderSettings();
-    await screen.findByRole("option", { name: "ashley-en" });
-    fireEvent.change(screen.getByRole("combobox", { name: "en voice" }), {
-      target: { value: "ashley-en" },
-    });
-    expect(localStorage.getItem("folio-voice-en")).toBe("ashley-en");
+    const en = await screen.findByRole("combobox", { name: "en voice" });
+    await vi.waitFor(() => expect(en).toHaveProperty("value", "ashley-en"));
+    expect(settingsPutBodies()).toEqual([]);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "ko voice" }), {
-      target: { value: "ashley-kr" },
-    });
+    fireEvent.change(en, { target: { value: "alex-en" } });
+    expect(localStorage.getItem("folio-voice-en")).toBe("alex-en");
+    await waitFor(() => expect(settingsPutBodies()).toHaveLength(1));
+    expect(settingsPutBodies()[0]).toEqual({ voices: { en: "alex-en" } });
+  });
+
+  it("notes a saved voice that is no longer available", async () => {
+    serverSettings = { ...DEFAULT_SETTINGS, voices: { ko: "ashley-kr" } };
+    renderSettings();
     expect(await screen.findByText(/is no longer available/i)).toBeTruthy();
+  });
+
+  it("disables language rows that have no voices", async () => {
+    renderSettings();
+    const zhTw = await screen.findByRole("combobox", { name: "zh-TW voice" });
+    await vi.waitFor(() => expect(zhTw.hasAttribute("disabled")).toBe(true));
+    expect(screen.getAllByText("No voices available for this language").length).toBeGreaterThan(0);
   });
 });

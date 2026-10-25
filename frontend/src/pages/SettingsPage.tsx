@@ -119,11 +119,8 @@ export function SettingsPage() {
           ? "Couldn’t save — using this device’s settings."
           : null;
 
-  function changeVoice(language: string, voice: string | null) {
-    const voices = { ...settings.voices };
-    if (voice) voices[language] = voice;
-    else delete voices[language];
-    update({ voices });
+  function changeVoice(language: string, voice: string) {
+    update({ voices: { ...settings.voices, [language]: voice } });
   }
 
   return (
