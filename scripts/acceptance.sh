@@ -188,6 +188,19 @@ curl -fsS -b "$TMP/user.jar" -H "X-CSRF-Token: $csrf" -X DELETE -o /dev/null "$A
   || fail "progress was not cleared"
 echo "PASS: finished removes from continue, reset clears progress"
 
+echo "== UX2: per-book pronunciation rules and voice policy =="
+csrf=$(csrf_of "$TMP/admin.jar")
+rule=$(curl -fsS -b "$TMP/admin.jar" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  -d '{"match":"Lighthouse","say":"Light house","whole_word":true}' "$API/books/$dup/pronunciation")
+rule_id=$(echo "$rule" | json 'd["rule"]["id"]')
+[[ -n "$rule_id" ]] || fail "pronunciation rule was not created: $rule"
+curl -fsS -b "$TMP/admin.jar" "$API/books/$dup/pronunciation" | grep -q '"Light house"' \
+  || fail "pronunciation rule not listed"
+curl -fsS -b "$TMP/admin.jar" -H "X-CSRF-Token: $csrf" -X DELETE -o /dev/null \
+  "$API/books/$dup/pronunciation/$rule_id" || fail "pronunciation rule delete failed"
+curl -fsS -b "$TMP/admin.jar" "$API/voices" | grep -q '"id": *"tts"' && fail "the tts fallback voice is still listed"
+echo "PASS: pronunciation rule CRUD; tts voice hidden"
+
 echo "== M3: online metadata search (live Open Library; optional) =="
 items=$(curl -fsS -b "$TMP/admin.jar" "$API/books/$dup/metadata/search?isbn=9780140328721")
 count=$(echo "$items" | json 'len(d.get("items", []))')

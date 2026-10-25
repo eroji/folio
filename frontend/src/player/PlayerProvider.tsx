@@ -368,7 +368,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       const detail = await queryClient.fetchQuery({ queryKey: ["book", bookId], queryFn: () => fetchBookDetail(bookId) });
       s.book = detail.book;
-      s.chapters = detail.chapters;
+      // Excluded chapters are returned for the book-settings UI but must never
+      // be opened by the player (their segments endpoint 404s by design).
+      s.chapters = detail.chapters.filter((chapter) => !chapter.excluded);
       s.finished = Boolean(detail.progress?.finished_at);
       s.finishedMarked = s.finished;
       s.resumePrompt = null;
