@@ -183,8 +183,8 @@ Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Imp
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Foundations: tokens (with temporary aliases), Plus Jakarta Sans + Newsreader, theme resolution, Material Symbols `<Icon>` pipeline | in progress |
-| 2 | Desktop icon rail + account menu; phone header/tab bar; remove old top nav | planned |
+| 1 | Foundations: tokens (with temporary aliases), Plus Jakarta Sans + Newsreader, theme resolution, Material Symbols `<Icon>` pipeline | **done** — 135 web tests, self-hosted fonts, theme hook tested |
+| 2 | Desktop icon rail + account menu; phone header/tab bar; remove old top nav | in progress |
 | 3 | Now Playing panel (desktop) + sheet (phone) bound to the single player; collapse/expand, focus mode | planned |
 | 4 | Book page: hero, progress badge, primary-action states, ⋯ menu + toast, Chapters/About/Manage tabs | planned |
 | 5 | Restyle undesigned screens with the new tokens/components (structure unchanged) | planned |
