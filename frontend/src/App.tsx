@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { RequireAuth, useAuth } from "./auth/AuthProvider";
 import { LoginPage } from "./auth/LoginPage";
 import { AppShell } from "./components/AppShell";
+import { HomePage } from "./pages/HomePage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { SearchPage } from "./pages/SearchPage";
 import { UploadPage } from "./pages/UploadPage";
@@ -30,8 +31,7 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
-          {/* Phase 5 replaces this with the Home shelves. */}
-          <Route path="/" element={<LibraryRoute />} />
+          <Route path="/" element={<HomePage />} />
           <Route path="/library" element={<LibraryRoute />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/upload" element={<UploadPage />} />

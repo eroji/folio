@@ -16,6 +16,30 @@ const LANGUAGES = [
 ];
 const OTHER = "__other__";
 
+/** Mirrors backend config.GENRES (handoff §5.1): suggestions, free text allowed. */
+export const GENRES = [
+  "Classics",
+  "Literary fiction",
+  "Science fiction",
+  "Fantasy",
+  "Mystery & thriller",
+  "Gothic & horror",
+  "Romance",
+  "Historical fiction",
+  "Myth & epic",
+  "Poetry",
+  "Drama",
+  "Biography & memoir",
+  "History",
+  "Science",
+  "Philosophy",
+  "Nonfiction",
+  "Children's",
+  "Japanese literature",
+  "Korean literature",
+  "Chinese literature",
+];
+
 const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
 const buttonClass =
   "tap inline-flex h-9 items-center gap-1.5 rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50";
@@ -46,11 +70,14 @@ interface Form {
   isbn10: string;
   isbn13: string;
   tags: string[];
+  genre: string;
+  otherGenre: string;
   narratorVoice: string;
 }
 
 function fromBook(book: Book): Form {
   const known = LANGUAGES.some((entry) => entry.code === book.language);
+  const genreValue = book.genre ? (GENRES.includes(book.genre) ? book.genre : OTHER) : "";
   return {
     title: book.title,
     subtitle: book.subtitle ?? "",
@@ -65,6 +92,8 @@ function fromBook(book: Book): Form {
     isbn10: book.isbn10 ?? "",
     isbn13: book.isbn13 ?? "",
     tags: [...book.tags],
+    genre: genreValue,
+    otherGenre: genreValue === OTHER ? (book.genre ?? "") : "",
     narratorVoice: book.narrator_voice ?? "",
   };
 }
@@ -96,6 +125,8 @@ export function buildPatch(form: Form, book: Book): BookPatch {
   if (authors.join("\u0000") !== book.authors.join("\u0000")) patch.authors = authors;
   const tags = form.tags.map((tag) => tag.trim()).filter(Boolean);
   if (tags.join("\u0000") !== book.tags.join("\u0000")) patch.tags = tags;
+  const genre = form.genre === OTHER ? trimmed(form.otherGenre) : (form.genre || null);
+  if (genre !== (book.genre ?? null)) patch.genre = genre;
   const index = form.seriesIndex.trim() === "" ? null : Number(form.seriesIndex);
   if (index !== book.series_index) patch.series_index = index;
   return patch;
@@ -270,6 +301,26 @@ function EditForm({ book }: { book: Book }) {
             <input value={form.otherLanguage} aria-label="Language code" placeholder="e.g. fr-CA" onChange={(event) => set("otherLanguage", event.target.value)} className={inputClass} />
           )}
           {languageError && <span className="text-xs text-danger">{languageError}</span>}
+        </Field>
+        <Field label="Genre">
+          <select value={form.genre} onChange={(event) => set("genre", event.target.value)} className={inputClass}>
+            <option value="">No genre</option>
+            {GENRES.map((genre) => (
+              <option key={genre} value={genre}>
+                {genre}
+              </option>
+            ))}
+            <option value={OTHER}>Other…</option>
+          </select>
+          {form.genre === OTHER && (
+            <input
+              value={form.otherGenre}
+              aria-label="New genre"
+              placeholder="e.g. Nautical history"
+              onChange={(event) => set("otherGenre", event.target.value)}
+              className={inputClass}
+            />
+          )}
         </Field>
         <Field label="Narrator voice override">
           <input value={form.narratorVoice} placeholder="e.g. ashley-en" onChange={(event) => set("narratorVoice", event.target.value)} className={inputClass} />
