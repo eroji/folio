@@ -6,7 +6,7 @@ import { useContinueListening } from "../api/progress";
 import { useEvents } from "../hooks/useEvents";
 import { useTheme } from "../hooks/useTheme";
 import { AccountMenu } from "./AccountMenu";
-import { FullPlayer } from "./FullPlayer";
+import { FocusMode } from "./FocusMode";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { PlayerSurfaces, usePlayerCollapsed } from "./NowPlaying";
@@ -35,6 +35,11 @@ const tabItem = ({ isActive }: { isActive: boolean }) =>
 
 /** Search is not a route: it lands on the library with the field focused. */
 const SEARCH_HREF = "/?focus=search";
+
+/** Focus mode is desktop-only; on phones the /player route is the full player. */
+function isDesktop(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1050px)").matches;
+}
 
 function RailLink({ to, icon, label }: { to: string; icon: IconName; label: string }) {
   return (
@@ -92,7 +97,7 @@ function Shell() {
       if (event.metaKey || event.ctrlKey || event.altKey || focusRef.current || !p.current.book) return;
       const key = event.key.toLowerCase();
       if (key === "p") toggleCollapse();
-      else if (key === "f") setFocus(true);
+      else if (key === "f" && isDesktop()) setFocus(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -189,7 +194,7 @@ function Shell() {
       </nav>
 
       <PlayerSurfaces collapsed={collapsed} onToggleCollapse={toggleCollapse} onFocus={() => setFocus(true)} />
-      {focus && player.book && <FullPlayer onExit={() => setFocus(false)} />}
+      {focus && player.book && <FocusMode onExit={() => setFocus(false)} />}
     </div>
   );
 }
