@@ -12,7 +12,7 @@ test("play ~5 s, pause, reload → resumes within 3 s of the stop point", async 
   // Earlier specs leave Ready books in the shared catalog; use one instead of
   // uploading (which would collide with the upload spec's fixture).
   await page.goto("/");
-  await page.getByRole("link").filter({ hasText: "Ready" }).first().click();
+  await page.locator('main a[href^="/books/"]').first().click();
   const bookId = new URL(page.url()).pathname.split("/").pop()!;
 
   const elapsed = page.getByTestId("player-elapsed");

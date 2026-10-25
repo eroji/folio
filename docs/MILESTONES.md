@@ -188,7 +188,9 @@ Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Imp
 | 3 | Now Playing panel (desktop) + sheet (phone) bound to the single player; collapse/expand, focus mode | **done** — 153 web tests; 50/50 panel, collapsed bar, sheet verified at 1440/390; focus reuses the full player |
 | 4 | Book page: hero, progress badge, primary-action states, ⋯ menu + toast, Chapters/About/Manage tabs | **done** — 157 web tests; hero/tabs/manage verified at 1440 and 390 |
 | 5 | Restyle undesigned screens with the new tokens/components (structure unchanged) | **done** — 167 web tests; Library/Search, Upload/Login, Settings/Admin/Edit/Player |
-| 6 | Remove lucide, unused styles; update DESIGN.md and DECISIONS.md | in progress |
+| 6 | Remove lucide, unused styles; update DESIGN.md and DECISIONS.md | **done** — lucide/Inter/Outfit removed, alias layer deleted, DESIGN.md rewritten |
+
+**Status: complete 2026-10-25.** All six phases shipped. 167 web tests, 9 Playwright, acceptance all-pass, Lighthouse accessibility **100** on login/library/book/player with no failing audits. Reference screenshots: `docs/screenshots/redesign-*.png`.
 
 **Notes:** the reference HTML uses `data-theme` on `<html>`; the app now resolves System at runtime. Filled icon variants are not shipped in `@material-symbols/svg-400` (rounded/outlined only) — play/pause/skip are visually filled already. Lighthouse runs must be done outside the repo (an earlier run dumped a Chrome profile into it; ignored now).
 

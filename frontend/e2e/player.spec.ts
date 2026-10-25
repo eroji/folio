@@ -12,7 +12,7 @@ test("playing a ready book shows the pause control and a running clock", async (
   // Earlier specs leave Ready books in the shared catalog; use one instead of
   // uploading (which would collide with the upload spec's fixture).
   await page.goto("/");
-  await page.getByRole("link").filter({ hasText: "Ready" }).first().click();
+  await page.locator('main a[href^="/books/"]').first().click();
   await expect(page).toHaveURL(/\/books\/[0-9a-f-]+$/);
   const bookId = new URL(page.url()).pathname.split("/").pop()!;
 

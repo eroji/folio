@@ -17,7 +17,7 @@ test("test-mode session lands on the empty library", async ({ page }) => {
 test("bad credentials show the server error inline", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Username").fill("nobody");
-  await page.getByLabel("Password").fill("wrong-password");
+  await page.getByRole("textbox", { name: "Password" }).fill("wrong-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
   await expect(page.getByRole("alert")).toContainText("Incorrect username or password");

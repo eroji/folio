@@ -158,7 +158,6 @@ export function AccountMenu({
       ) : placement === "sheet" ? (
         <button
           {...triggerProps}
-          aria-label="You"
           className="tap flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-2xs font-medium text-fg-2"
         >
           <span

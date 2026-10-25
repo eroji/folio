@@ -65,15 +65,15 @@ const STATUS_LINES: Partial<
   failed: { label: "Couldn't process", icon: "error", tone: "text-danger" },
 };
 
-/** Progress state in the cover's accessible name (handoff "Cover progress badge"). */
+/** Progress state appended to a card's visible text (handoff "Cover progress badge"). */
 export function coverName(
   book: Book,
   progress: Progress | null | undefined,
 ): string {
-  if (progress?.finished_at) return `${book.title}, finished`;
+  if (progress?.finished_at) return "finished";
   if (progress && progress.percent > 0)
-    return `${book.title}, ${Math.round(progress.percent)}% listened`;
-  return book.title;
+    return `${Math.round(progress.percent)}% listened`;
+  return "";
 }
 
 /** Grid card (handoff "Library"): cover with progress badge, 2-line title,
@@ -93,11 +93,9 @@ export function BookCard({
   const status =
     book.status === "ready" ? undefined : STATUS_LINES[book.status];
   return (
-    <Link
-      to={`/books/${book.id}`}
-      aria-label={coverName(book, progress)}
-      className="flex min-w-0 flex-col gap-2"
-    >
+    <Link to={`/books/${book.id}`} className="flex min-w-0 flex-col gap-2">
+      {/* No aria-label: the accessible name is the visible title/author/status,
+          so WCAG 2.5.3 cannot drift. State is appended for screen readers. */}
       <span className="relative block aspect-[2/3] overflow-hidden rounded-cover shadow-(--shadow-cover)">
         <BookCover book={book} className="absolute inset-0 h-full w-full" />
         <CoverProgressBadge percent={percent} finished={finished} />
@@ -122,6 +120,7 @@ export function BookCard({
           </span>
         )}
       </span>
+      {coverName(book, progress) && <span className="sr-only">{coverName(book, progress)}</span>}
     </Link>
   );
 }

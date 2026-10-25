@@ -141,23 +141,23 @@ describe("LibraryPage", () => {
     renderLibrary();
     expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
 
-    const ready = await screen.findByRole("link", { name: "Dune" });
+    const ready = await screen.findByRole("link", { name: /Dune/ });
     expect(ready.getAttribute("href")).toBe(`/books/${DUNE_ID}`);
     expect(
       within(ready).queryByText(/Processing|Needs OCR|Couldn.t process/),
     ).toBeNull();
     expect(
-      within(screen.getByRole("link", { name: "Neuromancer" })).getByText(
+      within(screen.getByRole("link", { name: /Neuromancer/ })).getByText(
         "Processing…",
       ),
     ).toBeTruthy();
     expect(
-      within(screen.getByRole("link", { name: "Scanned Ledger" })).getByText(
+      within(screen.getByRole("link", { name: /Scanned Ledger/ })).getByText(
         "Needs OCR",
       ),
     ).toBeTruthy();
     expect(
-      within(screen.getByRole("link", { name: "Broken Book" })).getByText(
+      within(screen.getByRole("link", { name: /Broken Book/ })).getByText(
         "Couldn't process",
       ),
     ).toBeTruthy();
@@ -179,7 +179,7 @@ describe("LibraryPage", () => {
   it("hides the Continue listening section when /me/continue is empty", async () => {
     mockList([makeBook()]);
     renderLibrary();
-    await screen.findByRole("link", { name: "Dune" });
+    await screen.findByRole("link", { name: /Dune/ });
     expect(
       screen.queryByRole("region", { name: "Continue listening" }),
     ).toBeNull();
@@ -219,10 +219,10 @@ describe("LibraryPage", () => {
   it("badges grid cards and carries progress in the card name", async () => {
     mockList([makeBook()], [{ book: makeBook(), progress: makeProgress() }]);
     renderLibrary();
-    const card = await screen.findByRole("link", {
-      name: "Dune, 25% listened",
+    const cards = await screen.findAllByRole("link", {
+      name: /Dune.*25% listened/,
     });
-    expect(within(card).getByText("25%")).toBeTruthy();
+    expect(cards.some((card) => within(card).queryByText("25%"))).toBe(true);
   });
 
   it("names a finished card and hides the badge percent", async () => {
@@ -240,7 +240,7 @@ describe("LibraryPage", () => {
       ],
     );
     renderLibrary();
-    const card = await screen.findByRole("link", { name: "Dune, finished" });
+    const card = await screen.findByRole("link", { name: /Dune.*finished/ });
     expect(within(card).queryByText("100%")).toBeNull();
   });
 
@@ -284,17 +284,17 @@ describe("LibraryPage", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
     await waitFor(() =>
-      expect(screen.queryByRole("link", { name: "Neuromancer" })).toBeNull(),
+      expect(screen.queryByRole("link", { name: /Neuromancer/ })).toBeNull(),
     );
     expect(
-      screen.getByRole("link", { name: "Dune, 25% listened" }),
-    ).toBeTruthy();
+      screen.getAllByRole("link", { name: /Dune.*25% listened/ }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("refetches with sort=progress when Progress is chosen", async () => {
     mockList([makeBook()]);
     renderLibrary();
-    await screen.findByRole("link", { name: "Dune" });
+    await screen.findByRole("link", { name: /Dune/ });
     fireEvent.change(screen.getByRole("combobox", { name: "Sort by" }), {
       target: { value: "progress" },
     });
@@ -325,7 +325,7 @@ describe("LibraryPage", () => {
       [{ book: timeMachine, progress: makeProgress({ percent: 40 }) }],
     );
     renderLibrary();
-    await screen.findByRole("link", { name: "Dune" });
+    await screen.findByRole("link", { name: /Dune/ });
     fireEvent.change(searchField(), { target: { value: "wells" } });
 
     const status = await screen.findByRole("status");
@@ -351,20 +351,20 @@ describe("LibraryPage", () => {
   it("Escape clears the search and returns to the grid", async () => {
     mockList([makeBook()]);
     renderLibrary();
-    await screen.findByRole("link", { name: "Dune" });
+    await screen.findByRole("link", { name: /Dune/ });
     const input = searchField();
     fireEvent.change(input, { target: { value: "dune" } });
     await screen.findByRole("status");
     fireEvent.keyDown(input, { key: "Escape" });
     expect((input as HTMLInputElement).value).toBe("");
-    await screen.findByRole("link", { name: "Dune" });
+    await screen.findByRole("link", { name: /Dune/ });
     expect(screen.queryByText(/results for/)).toBeNull();
   });
 
   it("shows the no-match state with an upload link", async () => {
     mockList([makeBook()]);
     renderLibrary();
-    await screen.findByRole("link", { name: "Dune" });
+    await screen.findByRole("link", { name: /Dune/ });
     fireEvent.change(searchField(), { target: { value: "zzz" } });
     expect(
       await screen.findByRole("heading", { name: "No books match “zzz”" }),

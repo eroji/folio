@@ -100,7 +100,7 @@ function ContinueRow({ items }: { items: ContinueItem[] }) {
           <li key={book.id} className="min-w-0">
             <Link
               to={`/player?book=${book.id}&chapter=${progress.chapter_id}`}
-              aria-label={`${coverName(book, progress)}, resume`}
+              aria-label={[book.title, coverName(book, progress), "resume"].filter(Boolean).join(", ")}
               className="tap flex min-w-0 items-center gap-3 rounded-lg border border-divider bg-surface p-2"
             >
               <span className="relative block aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-cover shadow-(--shadow-cover)">

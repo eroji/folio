@@ -20,19 +20,18 @@ test("the narrator voice override persists across a reload", async ({ page }) =>
   await expect(row).toContainText(/Ready|already in your library/i, { timeout: 90_000 });
   await row.getByRole("link").first().click();
 
-  // The book page offers the voice picker for the book's language.
+  // The book page opens the voice picker from the narrator icon button.
+  const voiceButton = page.getByRole("button", { name: /Narrator voice/ });
+  await voiceButton.click();
   const picker = page.getByLabel("en voice");
   await expect(picker).toBeVisible();
   await picker.selectOption("ashley-en");
   await expect(picker).toHaveValue("ashley-en");
 
   await page.reload();
+  await page.getByRole("button", { name: /Narrator voice/ }).click();
   await expect(page.getByLabel("en voice")).toHaveValue("ashley-en");
 
-  // Playback links carry the book and its first chapter.
-  const play = page.getByRole("link", { name: "Play" });
-  await expect(play).toHaveAttribute(
-    "href",
-    /\/player\?book=[0-9a-f-]+&chapter=[0-9a-f-]+/,
-  );
+  // The primary action starts the shared player (the panel on desktop).
+  await expect(page.getByRole("button", { name: /Play|Resume/ })).toBeVisible();
 });

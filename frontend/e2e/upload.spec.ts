@@ -23,6 +23,6 @@ test("uploading an EPUB reaches Ready without a reload", async ({ page }) => {
 
   await page.goto("/");
   await expect(
-    page.getByRole("link").filter({ hasText: "Ready" }).first(),
+    page.locator('main a[href^="/books/"]').first(),
   ).toBeVisible({ timeout: 15_000 });
 });

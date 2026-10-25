@@ -116,7 +116,7 @@ describe("AppShell", () => {
       "/?focus=search",
     );
     expect(within(tabs).getByRole("link", { name: "Upload" })).toBeTruthy();
-    expect(within(tabs).getByRole("button", { name: "You" })).toBeTruthy();
+    expect(within(tabs).getByRole("button", { name: /You/ })).toBeTruthy();
   });
 
   it("opens the account menu with ArrowDown and closes it with Escape, restoring focus", async () => {
