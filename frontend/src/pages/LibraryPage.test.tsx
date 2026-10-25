@@ -106,10 +106,6 @@ function renderLibrary(initialEntries: string[] = ["/"]) {
   );
 }
 
-function searchField(): HTMLElement {
-  return screen.getByRole("searchbox", { name: "Search books" });
-}
-
 beforeEach(() => {
   localStorage.clear();
 });
@@ -304,89 +300,5 @@ describe("LibraryPage", () => {
         .mock.calls.find(([url]) => String(url).includes("sort=progress"));
       expect(call).toBeTruthy();
     });
-  });
-
-  it("groups search results with a count line, marks matches and links authors", async () => {
-    const timeMachine = makeBook({
-      id: "22222222-2222-2222-2222-222222222222",
-      title: "The Time Machine",
-      authors: ["H. G. Wells"],
-      series: null,
-      est_duration_s: 12720,
-    });
-    const worlds = makeBook({
-      id: "33333333-3333-3333-3333-333333333333",
-      title: "The War of the Worlds",
-      authors: ["H. G. Wells"],
-      series: null,
-    });
-    mockList(
-      [makeBook(), timeMachine, worlds],
-      [{ book: timeMachine, progress: makeProgress({ percent: 40 }) }],
-    );
-    renderLibrary();
-    await screen.findByRole("link", { name: /Dune/ });
-    fireEvent.change(searchField(), { target: { value: "wells" } });
-
-    const status = await screen.findByRole("status");
-    expect(status.textContent).toBe(
-      "2 results for “wells” in titles, authors and series",
-    );
-
-    const authors = await screen.findByRole("region", { name: "Authors" });
-    const authorLink = within(authors).getByRole("link", { name: /Wells/ });
-    expect(authorLink.getAttribute("href")).toBe("/?q=H.%20G.%20Wells");
-    expect(within(authorLink).getByText("2 books")).toBeTruthy();
-    expect(authorLink.querySelector("mark")?.textContent).toBe("Wells");
-
-    const books = await screen.findByRole("region", { name: "Books" });
-    const row = within(books).getByRole("link", { name: /The Time Machine/ });
-    expect(within(row).getByText("2 h 7 m left")).toBeTruthy(); // 12 720 s × 60 %
-    expect(row.querySelector("mark")?.textContent).toBe("Wells");
-    expect(within(books).getByText("Not started · 10 m")).toBeTruthy();
-    // The grid is replaced by the result rows while searching.
-    expect(screen.queryByRole("group", { name: "Filter books" })).toBeNull();
-  });
-
-  it("Escape clears the search and returns to the grid", async () => {
-    mockList([makeBook()]);
-    renderLibrary();
-    await screen.findByRole("link", { name: /Dune/ });
-    const input = searchField();
-    fireEvent.change(input, { target: { value: "dune" } });
-    await screen.findByRole("status");
-    fireEvent.keyDown(input, { key: "Escape" });
-    expect((input as HTMLInputElement).value).toBe("");
-    await screen.findByRole("link", { name: /Dune/ });
-    expect(screen.queryByText(/results for/)).toBeNull();
-  });
-
-  it("shows the no-match state with an upload link", async () => {
-    mockList([makeBook()]);
-    renderLibrary();
-    await screen.findByRole("link", { name: /Dune/ });
-    fireEvent.change(searchField(), { target: { value: "zzz" } });
-    expect(
-      await screen.findByRole("heading", { name: "No books match “zzz”" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Upload a book" })).toBeTruthy();
-  });
-
-  it("starts a search from a ?q= link", async () => {
-    mockList([
-      makeBook({
-        id: "22222222-2222-2222-2222-222222222222",
-        title: "The Time Machine",
-        authors: ["H. G. Wells"],
-        series: null,
-      }),
-      makeBook(),
-    ]);
-    renderLibrary(["/?q=wells"]);
-    await waitFor(() =>
-      expect((searchField() as HTMLInputElement).value).toBe("wells"),
-    );
-    const status = await screen.findByRole("status");
-    expect(status.textContent).toContain("results for “wells”");
   });
 });

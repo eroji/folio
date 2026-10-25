@@ -1,12 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { useBooks, type BookSort } from "../api/books";
-import {
-  useContinueListening,
-  useFinishedListening,
-  type ContinueItem,
-} from "../api/progress";
+import { useContinueListening, useProgressMembership, type ContinueItem } from "../api/progress";
 import { BookCard, BookCover, coverName } from "../components/BookCard";
 import { CoverProgressBadge } from "../components/CoverProgressBadge";
 import { EmptyState } from "../components/EmptyState";
@@ -133,8 +129,9 @@ function ContinueRow({ items }: { items: ContinueItem[] }) {
   );
 }
 
-/** Search view (handoff "Search"): count line, Authors, Books. */
-function SearchResults({
+/** Search view: count line, Authors, Books. Reused by SearchPage until the
+ * Phase 6 redesign. */
+export function SearchResults({
   query,
   books,
   total,
@@ -178,7 +175,7 @@ function SearchResults({
               {authors.map(([author, count]) => (
                 <Link
                   key={author}
-                  to={`/?q=${encodeURIComponent(author)}`}
+                  to={`/search?q=${encodeURIComponent(author)}`}
                   className="tap flex min-w-0 items-center gap-3 rounded-md bg-raised p-2"
                 >
                   <span
@@ -237,79 +234,24 @@ function SearchResults({
           </section>
         </>
       )}
-      <p className="text-xs text-fg-2">
-        Press / anywhere to search · Esc to clear
-      </p>
     </div>
   );
 }
 
 export function LibraryPage() {
-  const location = useLocation();
-  const urlQuery = useMemo(
-    () => new URLSearchParams(location.search).get("q") ?? "",
-    [location.search],
-  );
-  const [search, setSearch] = useState(urlQuery);
-  const [query, setQuery] = useState(urlQuery.trim());
   const [sort, setSort] = useState<BookSort>("recent");
   const [filter, setFilter] = useState<Filter>("all");
   const [page, setPage] = useState(1);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  // The shell's Search entry and the "/" shortcut land on /?focus=search.
-  // location.key changes on every navigation, so pressing "/" twice refocuses.
-  useEffect(() => {
-    if (new URLSearchParams(location.search).get("focus") === "search")
-      searchRef.current?.focus();
-  }, [location.key, location.search]);
-
-  // Author/tag links arrive as ?q=…; adopt it without clobbering a search the
-  // user is typing when the URL carries no query.
-  useEffect(() => {
-    if (!urlQuery) return;
-    setSearch(urlQuery);
-    setQuery(urlQuery.trim());
-  }, [location.key, urlQuery]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setQuery(search.trim()), 250);
-    return () => clearTimeout(timer);
-  }, [search]);
 
   useEffect(() => {
     setPage(1);
-  }, [query, sort, filter]);
+  }, [sort, filter]);
 
-  const { data, isPending, error } = useBooks({
-    q: query || undefined,
-    sort,
-    page,
-  });
+  const { data, isPending, error } = useBooks({ sort, page });
   const { data: continueData } = useContinueListening(50);
-  const { data: finishedData } = useFinishedListening(50);
+  const { progressById, inProgress, finished } = useProgressMembership();
   const books = data?.items ?? [];
   const pages = data ? Math.ceil(data.total / data.page_size) : 1;
-  const searching = query.length > 0;
-
-  // Progress membership for the chips and the badges. The API exposes no
-  // per-book progress on /books, so in-progress/finished come from
-  // /me/continue and /me/finished (capped at 50 each, docs/DECISIONS.md).
-  const { progressById, inProgress, finished } = useMemo(() => {
-    const progressById = new Map<string, Progress>();
-    const inProgress = new Set<string>();
-    const finished = new Set<string>();
-    for (const item of continueData?.items ?? []) {
-      progressById.set(item.book.id, item.progress);
-      if (item.progress.finished_at) finished.add(item.book.id);
-      else inProgress.add(item.book.id);
-    }
-    for (const item of finishedData?.items ?? []) {
-      progressById.set(item.book.id, item.progress);
-      finished.add(item.book.id);
-    }
-    return { progressById, inProgress, finished };
-  }, [continueData, finishedData]);
 
   const counts: Record<Filter, number> = {
     all: data?.total ?? 0,
@@ -330,57 +272,11 @@ export function LibraryPage() {
           : !inProgress.has(book.id) && !finished.has(book.id),
   );
 
-  const clearSearch = () => {
-    setSearch("");
-    setQuery("");
-  };
-
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3 desktop:flex-row desktop:items-center">
-        <h1 className="font-display text-xl font-bold tracking-[-0.01em]">
-          Library
-        </h1>
-        <div className="relative min-w-0 flex-1">
-          <Icon
-            name="search"
-            size={20}
-            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-fg-2"
-          />
-          <input
-            ref={searchRef}
-            type="search"
-            aria-label="Search books"
-            placeholder="Search titles, authors, series"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                clearSearch();
-                searchRef.current?.focus();
-              }
-            }}
-            className={clsx(
-              "tap h-9 w-full rounded-md border bg-surface pr-9 pl-[38px] text-base text-fg outline-none placeholder:text-fg-2",
-              searching ? "border-2 border-progress" : "border-control-border",
-            )}
-          />
-          {search && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => {
-                clearSearch();
-                searchRef.current?.focus();
-              }}
-              className="absolute top-1/2 right-0.5 grid size-8 -translate-y-1/2 place-items-center rounded-md text-fg-2 hover:bg-raised"
-            >
-              <Icon name="close" size={18} />
-            </button>
-          )}
-        </div>
-      </div>
+      <h1 className="font-display text-xl font-bold tracking-[-0.01em]">
+        Library
+      </h1>
 
       {error instanceof Error && (
         <p role="alert" className="text-sm text-danger">
@@ -400,16 +296,7 @@ export function LibraryPage() {
         </div>
       )}
 
-      {!isPending && !error && searching && (
-        <SearchResults
-          query={query}
-          books={books}
-          total={data?.total ?? 0}
-          progressById={progressById}
-        />
-      )}
-
-      {!isPending && !error && !searching && (
+      {!isPending && !error && (
         <>
           <ContinueRow items={continueData?.items ?? []} />
           <section aria-label="All books" className="flex flex-col gap-3">

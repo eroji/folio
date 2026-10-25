@@ -1,20 +1,25 @@
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import clsx from "clsx";
 import { useAuth } from "../auth/AuthProvider";
 import { Icon } from "./Icon";
 
-/** Where the trigger lives; decides trigger look and menu anchoring.
- * rail: avatar at the rail bottom (popover to the right), header: ⋯ in the
- * phone header (popover below), sheet: "You" tab (bottom sheet). */
-export type AccountPlacement = "rail" | "header" | "sheet";
+const row = "flex min-h-10 items-center gap-3.5 rounded-sm px-4 text-left text-md whitespace-nowrap hover:bg-border";
 
-const row =
-  "flex min-h-8 items-center gap-2 rounded-md px-2 pr-3 text-left text-base whitespace-nowrap hover:bg-raised";
+function Avatar({ initial, size }: { initial: string; size: number }) {
+  return (
+    <span
+      aria-hidden
+      style={{ width: size, height: size }}
+      className="grid shrink-0 place-items-center rounded-full bg-accent text-lg text-on-fg font-bold"
+    >
+      {initial}
+    </span>
+  );
+}
 
-/** Avatar trigger plus the account menu: identity header, Settings, Admin
+/** Accent avatar plus the account menu: identity header, Settings, Admin
  * (admins only), Sign out. The app is dark only — there is no theme control. */
-export function AccountMenu({ placement }: { placement: AccountPlacement }) {
+export function AccountMenu({ size = 36 }: { size?: number }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -67,77 +72,20 @@ export function AccountMenu({ placement }: { placement: AccountPlacement }) {
     navigate("/login", { replace: true });
   }
 
-  const triggerProps = {
-    ref: triggerRef,
-    type: "button" as const,
-    "aria-haspopup": "menu" as const,
-    "aria-expanded": open,
-    onClick: () => setOpen((value) => !value),
-  };
-
-  const menu = (
-    <div ref={itemsRef} role="menu" aria-label="Account" className="flex flex-col">
-      <div className="mb-1 flex items-center gap-2.5 border-b border-divider p-2">
-        <span
-          aria-hidden
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-avatar text-on-avatar text-xs font-semibold"
-        >
-          {initial}
-        </span>
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate text-base font-semibold">{user.display_name}</span>
-          <span className="text-xs text-fg-2">
-            {user.username} · {user.role === "admin" ? "Administrator" : "Member"}
-          </span>
-        </span>
-      </div>
-      <Link to="/settings" role="menuitem" className={row} onClick={() => close(false)}>
-        <Icon name="settings" size={18} /> Settings
-      </Link>
-      {user.role === "admin" && (
-        <Link to="/admin" role="menuitem" className={row} onClick={() => close(false)}>
-          <Icon name="admin_panel_settings" size={18} /> Admin
-        </Link>
-      )}
-      <div className="my-1 h-px bg-divider" aria-hidden />
-      <button type="button" role="menuitem" className={row} onClick={signOut}>
-        <Icon name="logout" size={18} /> Sign out
-      </button>
-    </div>
-  );
-
   return (
-    <div className={clsx(placement === "sheet" ? "contents" : "relative")} onKeyDown={onKeyDown}>
-      {placement === "header" ? (
-        <button
-          {...triggerProps}
-          aria-label="Account menu"
-          className="tap grid size-11 place-items-center rounded-md text-fg"
-        >
-          <Icon name="more_horiz" size={22} />
-        </button>
-      ) : placement === "sheet" ? (
-        <button
-          {...triggerProps}
-          className="tap flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-2xs font-medium text-fg-2"
-        >
-          <span
-            aria-hidden
-            className="grid size-6 place-items-center rounded-full bg-avatar text-on-avatar text-xs font-semibold"
-          >
-            {initial}
-          </span>
-          <span>You</span>
-        </button>
-      ) : (
-        <button
-          {...triggerProps}
-          aria-label="Account menu"
-          className="tap grid size-9 place-items-center rounded-full bg-avatar text-on-avatar text-sm font-semibold"
-        >
-          {initial}
-        </button>
-      )}
+    <div className="relative" onKeyDown={onKeyDown}>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label="Account menu"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        style={{ width: size, height: size }}
+        className="tap grid shrink-0 place-items-center rounded-full bg-accent text-on-fg text-md font-bold"
+      >
+        {initial}
+      </button>
       {open && (
         <>
           <button
@@ -147,20 +95,32 @@ export function AccountMenu({ placement }: { placement: AccountPlacement }) {
             className="fixed inset-0 z-30 cursor-default"
             onClick={() => close(false)}
           />
-          {placement === "sheet" ? (
-            <div className="fixed inset-x-0 bottom-0 z-40 rounded-t-lg border-t border-divider bg-surface p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[var(--shadow-menu)]">
-              {menu}
-            </div>
-          ) : (
-            <div
-              className={clsx(
-                "absolute z-40 w-max rounded-lg border border-divider bg-surface p-1 shadow-[var(--shadow-menu)]",
-                placement === "rail" ? "bottom-0 left-full ml-2" : "right-0 top-full",
+          <div className="absolute right-0 top-full z-40 w-max rounded-lg border border-border bg-raised p-1 shadow-(--shadow-menu)">
+            <div ref={itemsRef} role="menu" aria-label="Account" className="flex flex-col">
+              <div className="mb-1.5 flex items-center gap-3 border-b border-border px-3 pt-1 pb-3">
+                <Avatar initial={initial} size={40} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-md font-bold">{user.display_name}</span>
+                  <span className="text-sm text-fg-2">
+                    @{user.username}
+                    {user.role === "admin" && " · Admin"}
+                  </span>
+                </span>
+              </div>
+              <Link to="/settings" role="menuitem" className={row} onClick={() => close(false)}>
+                <Icon name="Settings" size={20} /> Settings
+              </Link>
+              {user.role === "admin" && (
+                <Link to="/admin" role="menuitem" className={row} onClick={() => close(false)}>
+                  <Icon name="Shield" size={20} /> Admin
+                </Link>
               )}
-            >
-              {menu}
+              <div className="my-1.5 h-px bg-border" aria-hidden />
+              <button type="button" role="menuitem" className={row} onClick={signOut}>
+                <Icon name="LogOut" size={20} /> Sign out
+              </button>
             </div>
-          )}
+          </div>
         </>
       )}
     </div>
