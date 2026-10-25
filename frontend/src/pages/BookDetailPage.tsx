@@ -418,7 +418,7 @@ export function BookDetailPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-5">
       {!desktop && (
         <div className="fixed top-[calc(env(safe-area-inset-top)+0.125rem)] right-2 z-30">
           <BookMenu
