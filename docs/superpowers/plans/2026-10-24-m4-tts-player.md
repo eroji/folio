@@ -67,7 +67,9 @@
 
 **Files:** `frontend/src/player/{PlayerProvider,usePlayer}.tsx|ts`, `components/{FullPlayer,MiniPlayer,ChapterSheet,ReadAlong}.tsx`, `api/audio.ts`, `AppShell.tsx` (mount MiniPlayer), `App.tsx` (route `/player`), tests.
 
-**Behavior:** two `<audio>` elements, preload next segment, start on `ended`; play/pause, ±15/30 s, prev/next chapter, per-chapter scrubber, 0.75–2.5× in 0.25 steps, sleep timer; prepare on seek/advance (show "Preparing audio…"); auto-advance to the next chapter; Media Session metadata + handlers; read-along highlights the current sentence by character share; mini player on every page; audio refetches on `audio` SSE frames.
+**Behavior:** two `<audio>` elements, preload next segment, start on `ended`; play/pause, ±15/30 s, prev/next chapter, per-chapter scrubber, 0.75–2.5× in 0.25 steps, sleep timer; prepare on seek/advance (show "Preparing audio…"); auto-advance to the next chapter; Media Session metadata + handlers; mini player on every page; audio refetches on `audio` SSE frames.
+
+**Read-along (explicit product requirement):** render the whole current chapter as continuous paragraphs, map the spoken position (segment index + `currentTime/duration` within it) to a character offset, highlight the active sentence **and** the active line, and auto-scroll the container to keep it near the middle (`scrollIntoView block:"center"`, throttled ~250 ms, `behavior:"auto"` under `prefers-reduced-motion`). A manual scroll pauses auto-follow for ~5 s. Tapping a paragraph seeks to the matching segment/offset. `aria-live="off"` on the moving text.
 
 ### Task D: Voice selection UI + book/settings surfaces
 

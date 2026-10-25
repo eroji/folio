@@ -77,6 +77,19 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 
 **Acceptance script:** upload an ISBN EPUB → metadata/cover applied automatically; edit title/language → reprocess → edit preserved; replace cover by URL and by cropped upload → 600/200 variants served; rejected URL leaves the old cover; saved candidates surface the review banner.
 
+## Milestone 4 — TTS and player
+
+**Workstreams:**
+
+| WS | Branch | Task | Deliverable | Depends on |
+|---|---|---|---|---|
+| O | `feat/tts-core` | A | TTS client, voice discovery, cache/synthesis/eviction, text prep, migration 0004 | — |
+| P | `feat/tts-api` | B | `segment_audio` queue, prepare/stream/voices/preview endpoints, admin cache clear + TTS health | O |
+| Q | `feat/player` | C | Provider, gapless double-audio player, mini player, read-along, Media Session, sleep timer | contract pinned |
+| R | `feat/voices-ui` | D | Voice picker, Settings voices + preview, book narrator override, Play/Resume | contract pinned |
+
+**Acceptance:** cached chapter-boundary gap < 1 s; voices list matches the engine; preview plays; seek-ahead shows "Preparing audio…"; Media Session metadata and handlers present; admin health reports `tts: ok`; Range requests work on `/audio/{key}`.
+
 ## Remaining milestones (planned, not yet detailed)
 
 | # | Workstreams | Key risks |
