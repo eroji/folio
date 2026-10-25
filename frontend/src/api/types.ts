@@ -46,6 +46,8 @@ export interface Chapter {
   idx: number;
   title: string;
   char_count: number;
+  /** Excluded chapters are skipped by playback; absent means included. */
+  excluded?: boolean;
 }
 
 export interface BookListResponse {

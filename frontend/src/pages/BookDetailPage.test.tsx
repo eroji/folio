@@ -1,11 +1,14 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthProvider";
 import { BookDetailPage } from "./BookDetailPage";
+import { PlayerProvider } from "../player/PlayerProvider";
+import { installMockEventSource } from "../test/eventsource";
 import { makeProgress } from "../test/player";
-import type { Book, Candidate, Chapter, Progress } from "../api/types";
+import { DEFAULT_SETTINGS } from "../api/settings";
+import type { Book, Candidate, Chapter, Progress, Role } from "../api/types";
 
 const ID = "11111111-1111-1111-1111-111111111111";
 
@@ -75,27 +78,39 @@ let candidates: Candidate[] = [CANDIDATE];
 let book: Book = makeBook();
 let chapters: Chapter[] = CHAPTERS;
 let progress: Progress | null = null;
+let role: Role = "user";
 
 beforeEach(() => {
   candidates = [CANDIDATE];
   book = makeBook();
   chapters = CHAPTERS;
   progress = null;
+  role = "user";
   localStorage.clear();
+  installMockEventSource();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      const chapterPatch = url.match(new RegExp(`/books/${ID}/chapters/([^/?]+)$`));
+      if (chapterPatch && init?.method === "PATCH") {
+        const { excluded } = JSON.parse(String(init.body)) as { excluded: boolean };
+        chapters = chapters.map((chapter) =>
+          chapter.id === chapterPatch[1] ? { ...chapter, excluded } : chapter,
+        );
+        return jsonResponse(200, { chapter: chapters.find((chapter) => chapter.id === chapterPatch[1]) });
+      }
       if (init?.method === "PATCH" && url.includes(`/books/${ID}`)) {
         book = { ...book, ...(JSON.parse(String(init.body)) as Partial<Book>) };
         return jsonResponse(200, { book });
       }
       if (url.includes("/auth/me")) {
         return jsonResponse(200, {
-          user: { id: "u1", username: "reader", display_name: "Reader", email: null, role: "user" },
+          user: { id: "u1", username: "reader", display_name: "Reader", email: null, role },
           csrf_token: "token",
         });
       }
+      if (url.includes("/me/settings")) return jsonResponse(200, { settings: DEFAULT_SETTINGS });
       if (url.includes("/metadata/candidates")) return jsonResponse(200, { items: candidates });
       if (url.includes("/voices")) return jsonResponse(200, VOICES);
       if (url.includes(`/books/${ID}/progress/finished`) && init?.method === "PUT") {
@@ -125,11 +140,13 @@ function renderDetail() {
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[`/books/${ID}`]}>
-        <AuthProvider>
-          <Routes>
-            <Route path="/books/:id" element={<BookDetailPage />} />
-          </Routes>
-        </AuthProvider>
+        <PlayerProvider>
+          <AuthProvider>
+            <Routes>
+              <Route path="/books/:id" element={<BookDetailPage />} />
+            </Routes>
+          </AuthProvider>
+        </PlayerProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -184,11 +201,69 @@ describe("BookDetailPage", () => {
   it("shows Resume with the saved position and offers progress actions", async () => {
     progress = makeProgress({ percent: 40, chapter_id: "c2" });
     renderDetail();
-    const resume = await screen.findByRole("link", { name: /Resume/ });
+    const resume = await screen.findByRole("link", { name: "Resume 40%" });
     expect(resume.getAttribute("href")).toBe(`/player?book=${ID}&chapter=c2`);
     expect(screen.getByText("40%")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Mark finished" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reset progress" })).toBeTruthy();
+  });
+
+  it("pins Play in a sticky bottom action bar", async () => {
+    renderDetail();
+    const bar = await screen.findByTestId("book-actions");
+    expect(bar.className).toContain("sticky");
+    expect(within(bar).getByRole("link", { name: "Play" })).toBeTruthy();
+  });
+
+  it("collapses the chapter list until the disclosure is opened", async () => {
+    renderDetail();
+    const toggle = await screen.findByRole("button", { name: /Chapters \(2\)/ });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("One Way")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("One Way")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /The Other/ }).getAttribute("href")).toBe(`/player?book=${ID}&chapter=c2`);
+    fireEvent.click(toggle);
+    expect(screen.queryByText("One Way")).toBeNull();
+  });
+
+  it("hides the include-in-playback switches from non-admins", async () => {
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: /Chapters \(2\)/ }));
+    await screen.findByText("One Way");
+    expect(screen.queryByRole("switch")).toBeNull();
+  });
+
+  it("excludes a chapter with PATCH and re-enables it from the excluded disclosure", async () => {
+    role = "admin";
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: /Chapters \(2\)/ }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Include The Other in playback" }));
+    await vi.waitFor(() => {
+      const call = vi
+        .mocked(fetch)
+        .mock.calls.find(([url, init]) => String(url).includes(`/books/${ID}/chapters/c2`) && init?.method === "PATCH");
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ excluded: true });
+    });
+    expect(await screen.findByRole("button", { name: /Chapters \(1\)/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /The Other/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Excluded chapters \(1\)/ }));
+    const reenable = await screen.findByRole("switch", { name: "Include The Other in playback" });
+    expect(reenable.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(reenable);
+    await vi.waitFor(() => {
+      const call = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([url, init]) => String(url).includes(`/books/${ID}/chapters/c2`) && String(init?.body ?? "").includes('"excluded":false'),
+        );
+      expect(call).toBeTruthy();
+    });
+    expect(await screen.findByRole("link", { name: /The Other/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Excluded chapters/ })).toBeNull();
   });
 
   it("marks finished and back with the finished flag in the body", async () => {
