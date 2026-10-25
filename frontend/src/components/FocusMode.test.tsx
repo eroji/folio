@@ -123,7 +123,7 @@ describe("FocusMode", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: "15 minutes" }));
     expect(getPlayer().sleep).toBe(15);
     expect(within(card).getByRole("button", { name: "Sleep timer, 15 minutes" })).toBeTruthy();
-    expect(within(card).getByRole("button", { name: "Narrator voice, default" })).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: /Narrator voice/ })).toBeNull(); // lives on the book page only
   });
 
   it("sets the reading page lang from the book", async () => {

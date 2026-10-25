@@ -229,26 +229,6 @@ function SleepButton() {
   );
 }
 
-/** The panel's voice button goes to the book page, like the full player's. */
-function VoiceButton() {
-  const player = usePlayer();
-  const navigate = useNavigate();
-  const book = player.book;
-  if (!book) return null;
-  const voice = book.narrator_voice ?? player.settings.voices[book.language] ?? "default";
-  return (
-    <button
-      type="button"
-      aria-label={`Narrator voice, ${voice}`}
-      title="Narrator voice"
-      onClick={() => navigate(`/books/${book.id}`)}
-      className={quietButton}
-    >
-      <Icon name="record_voice_over" size={20} />
-    </button>
-  );
-}
-
 function OtherDeviceLine({ dense }: { dense?: boolean }) {
   const player = usePlayer();
   if (!player.lastDevice || player.playing) return null;
@@ -349,7 +329,6 @@ function Panel({ collapsed, onToggleCollapse, onFocus }: SurfacesProps) {
           <Icon name="skip_next" size={20} />
         </button>
         <SleepButton />
-        <VoiceButton />
       </div>
       <ReadAlong compact className="min-h-0 flex-1" />
     </aside>

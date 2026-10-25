@@ -17,7 +17,8 @@ interface Sentence {
   segmentIdx: number;
 }
 
-const SCROLL_MS = 250; // auto-scroll throttle
+const SCROLL_MS = 250; // auto-scroll target refresh throttle
+const SCROLL_ANIM_MS = 300; // ease-out animation toward the target
 const MANUAL_MS = 5000; // auto-scroll pause after the user scrolls
 const FONT_KEY = "folio-readalong-font";
 /** A− / A+ steps applied to the base clamp(); two steps up from the default. */
@@ -66,6 +67,7 @@ export function ReadAlong({
   const panel = useRef<HTMLDivElement>(null);
   const lastScroll = useRef(0);
   const manualUntil = useRef(0);
+  const animation = useRef<number | null>(null);
 
   const groups = useMemo(
     () =>
@@ -95,8 +97,9 @@ export function ReadAlong({
   }
   const activeSentence: Sentence | undefined = all[active];
 
-  // Runs on every render (timeupdate bumps it); the throttle keeps scrolling ≤ 4/s.
-  // Scrolls the panel only — the window must never jump.
+  // Runs on every render (timeupdate bumps it); the throttle refreshes the
+  // target ≤ 4/s and each refresh replaces the in-flight animation, so the
+  // panel glides instead of jumping. Scrolls the panel only — never the window.
   useEffect(() => {
     if (!player.playing) return;
     const now = Date.now();
@@ -105,14 +108,38 @@ export function ReadAlong({
     const node = box?.querySelector<HTMLElement>('[aria-current="true"]');
     if (!box || !node) return;
     lastScroll.current = now;
+    stopAnimation();
     const reduced =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    box.scrollTo?.({ top: node.offsetTop - box.clientHeight / 2, behavior: reduced ? "auto" : "smooth" });
+    const from = box.scrollTop;
+    const to = node.offsetTop - box.clientHeight / 2;
+    if (reduced || from === to) {
+      box.scrollTop = to;
+      return;
+    }
+    let start: number | null = null;
+    const frame = (time: number) => {
+      start ??= time;
+      const t = Math.min(1, (time - start) / SCROLL_ANIM_MS);
+      box.scrollTop = from + (to - from) * (1 - (1 - t) * (1 - t)); // ease-out quad
+      animation.current = t < 1 ? requestAnimationFrame(frame) : null;
+    };
+    animation.current = requestAnimationFrame(frame);
   });
+
+  useEffect(() => stopAnimation, []);
+
+  function stopAnimation() {
+    if (animation.current !== null) {
+      cancelAnimationFrame(animation.current);
+      animation.current = null;
+    }
+  }
 
   const markManual = () => {
     manualUntil.current = Date.now() + MANUAL_MS;
+    stopAnimation(); // a manual scroll wins immediately; auto-scroll resumes after the pause
   };
 
   const tapSentence = (sentence: Sentence) => {

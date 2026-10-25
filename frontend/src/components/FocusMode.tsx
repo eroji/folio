@@ -7,7 +7,6 @@
  * exiting returns to the exact page and panel state. Desktop only — on
  * phones the /player route plays this role. */
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { SPEED_MAX, SPEED_MIN, formatTime, type SleepChoice } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
@@ -96,7 +95,6 @@ function SleepButton() {
 
 export function FocusMode({ onExit }: { onExit: () => void }) {
   const player = usePlayer();
-  const navigate = useNavigate();
   const [contents, setContents] = useState(
     () => typeof window.matchMedia !== "function" || window.matchMedia("(min-width: 1280px)").matches,
   );
@@ -136,7 +134,6 @@ export function FocusMode({ onExit }: { onExit: () => void }) {
     player.chapterTotal > 0 ? Math.round((player.chapterElapsed / player.chapterTotal) * 100) : null;
   const total = player.chapterTotal;
   const elapsed = Math.min(player.chapterElapsed, total);
-  const voice = book.narrator_voice ?? player.settings.voices[book.language] ?? "default";
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-paper text-fg">
@@ -324,15 +321,6 @@ export function FocusMode({ onExit }: { onExit: () => void }) {
             </button>
             <span aria-hidden className="w-4" />
             <SleepButton />
-            <button
-              type="button"
-              aria-label={`Narrator voice, ${voice}`}
-              title="Narrator voice"
-              onClick={() => navigate(`/books/${book.id}`)}
-              className={quietButton}
-            >
-              <Icon name="record_voice_over" size={22} />
-            </button>
           </div>
         </div>
       </section>
