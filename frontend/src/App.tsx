@@ -7,6 +7,7 @@ import { UploadPage } from "./pages/UploadPage";
 import { BookDetailPage } from "./pages/BookDetailPage";
 import { EditBookPage } from "./pages/EditBookPage";
 import { AdminPage } from "./pages/AdminPage";
+import { FullPlayer } from "./components/FullPlayer";
 
 function AdminRoute() {
   const { user } = useAuth();
@@ -23,6 +24,7 @@ export function App() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/books/:id" element={<BookDetailPage />} />
           <Route path="/books/:id/edit" element={<EditBookPage />} />
+          <Route path="/player" element={<FullPlayer />} />
           <Route path="/admin" element={<AdminRoute />} />
         </Route>
       </Route>
