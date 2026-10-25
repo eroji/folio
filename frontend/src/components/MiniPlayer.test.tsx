@@ -26,29 +26,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function renderAtRoot() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/"]}>
+        <PlayerProvider>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <>
+                  <Probe />
+                  <MiniPlayer />
+                </>
+              }
+            />
+            <Route path="/player" element={<p>Full player screen</p>} />
+          </Routes>
+        </PlayerProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 describe("MiniPlayer", () => {
   it("renders once a book is loaded and opens the full player on tap", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/"]}>
-          <PlayerProvider>
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  <>
-                    <Probe />
-                    <MiniPlayer />
-                  </>
-                }
-              />
-              <Route path="/player" element={<p>Full player screen</p>} />
-            </Routes>
-          </PlayerProvider>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    renderAtRoot();
 
     expect(screen.queryByRole("button", { name: "Open player" })).toBeNull();
     await act(async () => {
@@ -62,5 +66,21 @@ describe("MiniPlayer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open player" }));
     expect(await screen.findByText("Full player screen")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Open player" })).toBeNull(); // hidden on /player
+  });
+
+  it("renders at desktop width and navigates to the player", async () => {
+    renderAtRoot();
+    await act(async () => {
+      await current!.load(BOOK_ID);
+    });
+
+    const open = await screen.findByRole("button", { name: "Open player" });
+    // jsdom applies no media queries: the guard is that the bar carries no md:hidden.
+    const bar = open.closest("div.fixed");
+    expect(bar).not.toBeNull();
+    expect(bar!.className).not.toContain("md:hidden");
+
+    fireEvent.click(open);
+    expect(await screen.findByText("Full player screen")).toBeTruthy();
   });
 });
