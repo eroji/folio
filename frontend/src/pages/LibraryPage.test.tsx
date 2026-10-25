@@ -212,13 +212,15 @@ describe("LibraryPage", () => {
     expect(within(section).getAllByRole("link")).toHaveLength(4);
   });
 
-  it("badges grid cards and carries progress in the card name", async () => {
+  it("carries progress in the card name, not a visible percent (D cover bar)", async () => {
     mockList([makeBook()], [{ book: makeBook(), progress: makeProgress() }]);
     renderLibrary();
     const cards = await screen.findAllByRole("link", {
       name: /Dune.*25% listened/,
     });
-    expect(cards.some((card) => within(card).queryByText("25%"))).toBe(true);
+    // Direction D replaced the percent badge with a bar on the cover: no
+    // visible "25%" text anywhere; the state lives in the accessible name.
+    expect(cards.every((card) => within(card).queryByText("25%") === null)).toBe(true);
   });
 
   it("names a finished card and hides the badge percent", async () => {

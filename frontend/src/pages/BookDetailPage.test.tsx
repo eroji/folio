@@ -29,6 +29,7 @@ function makeBook(overrides: Partial<Book> = {}): Book {
     isbn10: null,
     isbn13: null,
     tags: [],
+    genre: null,
     narrator_voice: null,
     cover_url: null,
     status: "ready",
@@ -90,10 +91,10 @@ function makeRule(overrides: Partial<PronunciationRule> = {}): PronunciationRule
 const VOICES = {
   items: [
     { id: "ashley-en", language: "en", description: null, available: true, display_name: "Ashley" },
-    // No display_name: the menu must fall back to the parsed name ("Zoe").
+    // No display_name: the dialog must fall back to the parsed name ("Zoe").
     { id: "zoe-en", language: "en", description: null, available: true },
     { id: "ashley-ja", language: "ja", description: null, available: true },
-    // Tagged on purpose: the menu must hide "tts" even if the API sends it.
+    // Tagged on purpose: the dialog must hide "tts" even if the API sends it.
     { id: "tts", language: "en", description: "engine default", available: true },
   ],
 };
@@ -120,6 +121,7 @@ let chapterPatchBodies: Record<string, unknown>[] = [];
 let chapterPatchFails = false;
 let reprocessCalls = 0;
 let prepareStatuses: Record<string, string> = {};
+let media: { played: HTMLMediaElement[]; paused: HTMLMediaElement[] };
 
 beforeEach(() => {
   candidates = [CANDIDATE];
@@ -139,7 +141,7 @@ beforeEach(() => {
   prepareStatuses = {};
   localStorage.clear();
   installMockEventSource();
-  stubMedia();
+  media = stubMedia();
   URL.createObjectURL = vi.fn(() => "blob:preview-1");
   URL.revokeObjectURL = vi.fn();
   vi.stubGlobal(
@@ -169,7 +171,7 @@ beforeEach(() => {
         if (method === "PATCH") {
           if (rulesFail) return jsonResponse(500, { error: { code: "nope", message: "nope" } });
           const rule = rules.find((candidate) => candidate.id === ruleItem[1]);
-          if (!rule) return jsonResponse(404, { error: { code: "nope", message: "nope" } });
+          if (!rule) return jsonResponse(404, { error: { code: "not_found", message: "not_found" } });
           const next = { ...rule, ...body };
           rules = rules.map((candidate) => (candidate.id === rule.id ? next : candidate));
           return jsonResponse(200, { rule: next });
@@ -282,6 +284,8 @@ function renderDetail() {
           <AuthProvider>
             <Routes>
               <Route path="/" element={<WhereAmI />} />
+              <Route path="/library" element={<WhereAmI />} />
+              <Route path="/search" element={<WhereAmI />} />
               <Route path="/books/:id" element={<BookDetailPage />} />
               <Route path="/player" element={<WhereAmI />} />
             </Routes>
@@ -292,7 +296,7 @@ function renderDetail() {
   );
 }
 
-/** Render at the desktop breakpoint (≥1050px) instead of the phone default. */
+/** Render at the desktop breakpoint (≥768px) instead of the phone default. */
 function stubViewport(desktop: boolean) {
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: desktop,
@@ -307,29 +311,43 @@ async function openMore() {
   fireEvent.click(await screen.findByRole("button", { name: "More options for this book" }));
 }
 
+async function openNarratorDialog() {
+  await openMore();
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Narrator voice…" }));
+  return screen.findByRole("dialog", { name: "Narrator voice" });
+}
+
+function lastPatchBody(): unknown {
+  const call = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "PATCH");
+  return JSON.parse(String(call?.[1]?.body ?? "null"));
+}
+
 describe("BookDetailPage", () => {
-  it("plays from the start when the book was never started", async () => {
+  it("plays from the start when the book was never started and turns into Pause", async () => {
     renderDetail();
     const play = await screen.findByRole("button", { name: "Play" });
     fireEvent.click(play);
     await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s1")).toBe(true));
-    expect(await screen.findByRole("button", { name: "Playing now" })).toBeTruthy();
+    const pause = await screen.findByRole("button", { name: "Pause" });
+    fireEvent.click(pause);
+    await vi.waitFor(() => expect(media.paused.length).toBeGreaterThan(0));
+    expect(await screen.findByRole("button", { name: "Resume Chapter 1" })).toBeTruthy();
   });
 
-  it("shows Resume when progress exists and plays from the saved chapter", async () => {
+  it("shows Resume Chapter N when progress exists and plays from the saved chapter", async () => {
     progress = makeProgress({ percent: 40, chapter_id: "c2", segment_id: "s4" });
     renderDetail();
-    const resume = await screen.findByRole("button", { name: "Resume" });
+    const resume = await screen.findByRole("button", { name: "Resume Chapter 2" });
     fireEvent.click(resume);
     await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s3")).toBe(true));
   });
 
-  it("turns the primary action into Playing now and opens the phone player from it", async () => {
+  it("labels a finished book Play again and restarts it from chapter 1", async () => {
+    progress = makeProgress({ percent: 100, chapter_id: "c2", segment_id: "s4", finished_at: "2026-01-03T00:00:00Z" });
     renderDetail();
-    fireEvent.click(await screen.findByRole("button", { name: "Play" }));
-    const now = await screen.findByRole("button", { name: "Playing now" });
-    fireEvent.click(now);
-    expect(await screen.findByText(new RegExp(`at /player\\?book=${ID}`))).toBeTruthy();
+    const again = await screen.findByRole("button", { name: "Play again" });
+    fireEvent.click(again);
+    await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s1")).toBe(true));
   });
 
   it("disables the primary action for a failed book", async () => {
@@ -340,15 +358,17 @@ describe("BookDetailPage", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/Could not extract text/);
   });
 
-  it("shows a percent badge on the cover and names the state on the cover", async () => {
+  it("shows an accent progress bar on the cover and names the state", async () => {
     progress = makeProgress({ percent: 38, chapter_id: "c2", segment_id: "s3" });
     renderDetail();
-    const badge = await screen.findByText("38%");
-    expect(badge.getAttribute("aria-hidden")).toBe("true");
-    expect(screen.getByRole("img", { name: "Dune, 38% listened" })).toBeTruthy();
+    const cover = await screen.findByRole("img", { name: "Dune, 38% listened" });
+    // The bar: an aria-hidden track with a width-styled accent fill.
+    expect(cover.querySelector("[aria-hidden='true'] span[style*='width']")).toBeTruthy();
+    expect(screen.queryByText("38%", { exact: true })).toBeNull(); // no percent badge any more
   });
 
-  it("shows a check badge and no percent when the book is finished", async () => {
+  it("shows a round accent check and no percent when the book is finished", async () => {
+    stubViewport(true);
     progress = makeProgress({ percent: 100, chapter_id: "c2", segment_id: "s4", finished_at: "2026-01-03T00:00:00Z" });
     renderDetail();
     expect(await screen.findByRole("img", { name: "Dune, finished" })).toBeTruthy();
@@ -358,7 +378,7 @@ describe("BookDetailPage", () => {
     expect(within(screen.getByRole("button", { name: /The Other/ })).getByText("Played")).toBeTruthy();
   });
 
-  it("marks finished from the menu, shows the undo toast, and undo unmarks", async () => {
+  it("marks finished from the ⋮ menu, shows the undo toast, and undo unmarks", async () => {
     progress = makeProgress({ percent: 40, chapter_id: "c2", segment_id: "s4" });
     renderDetail();
     await openMore();
@@ -401,12 +421,12 @@ describe("BookDetailPage", () => {
     renderDetail();
     await openMore();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Reset progress" }));
-    const dialog = await screen.findByRole("dialog", { name: "Reset listening progress" });
+    const dialog = await screen.findByRole("dialog", { name: "Reset your progress in Dune?" });
     expect(within(dialog).getByText("This cannot be undone.")).toBeTruthy();
 
     // Cancel does not delete anything.
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await screen.findByRole("button", { name: "Resume" });
+    await screen.findByRole("button", { name: "Resume Chapter 2" });
     expect(vi.mocked(fetch).mock.calls.some(([url, init]) => init?.method === "DELETE" && String(url).includes("/progress"))).toBe(false);
 
     // Confirm deletes, clears the local position and starts playback at chapter 1.
@@ -447,7 +467,7 @@ describe("BookDetailPage", () => {
     expect(played.querySelector("svg")).toBeTruthy(); // the check icon
     const current = screen.getByRole("button", { name: /The Other/ });
     expect(current.getAttribute("aria-current")).toBe("true");
-    expect(current.getAttribute("aria-current")).toBeTruthy();
+    expect(current.getAttribute("aria-label") ?? current.textContent).toMatch(/Playing,/);
     expect(within(current).queryByText("Played")).toBeNull();
   });
 
@@ -458,23 +478,17 @@ describe("BookDetailPage", () => {
     await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s1")).toBe(true));
   });
 
-  it("shows a spinner in the clicked row and Preparing on the primary action until audio starts", async () => {
+  it("shows Preparing on the primary action until audio starts", async () => {
     prepareStatuses = { s1: "generating" };
     renderDetail();
     fireEvent.click(await screen.findByRole("button", { name: /One Way/ }));
     const preparing = await screen.findByRole("button", { name: "Preparing…" });
     expect(preparing.querySelector("svg")).toBeTruthy(); // the spinner icon
-    const row = screen.getByRole("button", { name: /One Way/ });
-    expect(within(row).getByText("Preparing")).toBeTruthy();
-    expect(within(row).queryByText("5 m")).toBeNull(); // the spinner replaces the length
     prepareStatuses = {};
     await act(async () => {
       MockEventSource.instances[0]!.emit("audio", { book_id: ID, segment_id: "s1" });
     });
-    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Playing now" })).toBeTruthy());
-    const played = screen.getByRole("button", { name: /One Way/ });
-    expect(within(played).queryByText("Preparing")).toBeNull();
-    expect(within(played).getByText("5 m")).toBeTruthy();
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy());
   });
 
   it("clears the preparing state when the player errors", async () => {
@@ -486,19 +500,17 @@ describe("BookDetailPage", () => {
       expect(screen.queryByRole("button", { name: "Preparing…" })).toBeNull(),
       { timeout: 3000 },
     );
-    expect(within(screen.getByRole("button", { name: /One Way/ })).queryByText("Preparing")).toBeNull();
   });
 
-  it("shows the chapter percent on the current row on desktop", async () => {
+  it("shows the percent and time left on the playing chapter row", async () => {
     stubViewport(true);
     progress = makeProgress({ percent: 75, chapter_id: "c2", segment_id: "s4" });
     renderDetail();
     const current = await screen.findByRole("button", { name: /The Other/ });
-    expect(within(current).getByText("50%")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Library" })).toBeTruthy();
+    expect(within(current).getByText(/50%/)).toBeTruthy();
   });
 
-  it("shows the desktop ⋯ menu next to the primary action", async () => {
+  it("shows the desktop ⋮ menu next to the primary action", async () => {
     stubViewport(true);
     renderDetail();
     expect(await screen.findByRole("button", { name: "More options for this book" })).toBeTruthy();
@@ -511,24 +523,24 @@ describe("BookDetailPage", () => {
     expect(screen.queryByRole("tab", { name: "Manage" })).toBeNull();
   });
 
-  it("shows Manage to an uploader with all actions", async () => {
+  it("shows Manage to an uploader with all sections", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    expect((await screen.findByRole("link", { name: "Edit details" })).getAttribute("href")).toBe(`/books/${ID}/edit`);
+    expect((await screen.findByRole("link", { name: /Edit details/ })).getAttribute("href")).toBe(`/books/${ID}/edit`);
     expect(screen.getByText(/protected from automatic updates/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Find metadata" }));
     expect(await screen.findByRole("button", { name: "Search" })).toBeTruthy();
 
-    const checkbox = screen.getByRole("checkbox", { name: /One Way/ });
-    expect(checkbox.getAttribute("checked")).not.toBeNull();
-    fireEvent.click(checkbox);
+    const toggle = screen.getByRole("switch", { name: "Narrate One Way" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
     await vi.waitFor(() =>
       expect(chapterPatchBodies).toContainEqual({ excluded: true, chapterId: "c1" }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Reprocess book" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reprocess" }));
     await vi.waitFor(() => expect(reprocessCalls).toBe(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Delete book" }));
@@ -539,10 +551,23 @@ describe("BookDetailPage", () => {
       const call = vi.mocked(fetch).mock.calls.find(([url, init]) => String(url).includes(`/books/${ID}`) && init?.method === "DELETE");
       expect(call).toBeTruthy();
     });
-    expect(await screen.findByText("at /")).toBeTruthy();
+    expect(await screen.findByText("at /library")).toBeTruthy();
   });
 
-  it("collapses the chapter list to fifteen with Show all and Show less", async () => {
+  it("opens the Change cover dialog with upload, URL and crop controls", async () => {
+    book = makeBook({ can_edit: true });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Change cover" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change cover" });
+    expect(within(dialog).getByRole("textbox", { name: "Cover image URL" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Fetch URL" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Close" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Change cover" })).toBeNull();
+  });
+
+  it("collapses the Manage chapter list to four with Show all and Show less", async () => {
     book = makeBook({ can_edit: true });
     chapters = Array.from({ length: 17 }, (_, index) => ({
       id: `c${index + 1}`,
@@ -552,23 +577,22 @@ describe("BookDetailPage", () => {
     }));
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    expect(await screen.findByText("17 of 17 included")).toBeTruthy();
-    expect(screen.queryByRole("checkbox", { name: /Chapter 16/ })).toBeNull();
+    expect(await screen.findByText("17 of 17 on")).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "Narrate Chapter 16" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Show all 17" }));
-    expect(await screen.findByRole("checkbox", { name: /Chapter 17/ })).toBeTruthy();
+    expect(await screen.findByRole("switch", { name: "Narrate Chapter 17" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show less" }));
-    expect(screen.queryByRole("checkbox", { name: /Chapter 16/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Narrate Chapter 16" })).toBeNull();
   });
 
-  it("updates the Chapters tab and the included count when a chapter is excluded", async () => {
+  it("updates the Chapters tab and the on-count when a chapter is excluded", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /One Way/ }));
-    expect(await screen.findByText("1 of 2 included")).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: "Narrate One Way" }));
+    expect(await screen.findByText("1 of 2 on")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
     // Excluded chapters have no row at all; Manage is where they are re-enabled.
-    expect(screen.queryByTitle("Excluded from narration")).toBeNull();
     expect(screen.queryByRole("button", { name: /One Way/ })).toBeNull();
     const remaining = screen.getByRole("button", { name: /The Other/ });
     expect(within(remaining).getByText("1")).toBeTruthy();
@@ -579,11 +603,11 @@ describe("BookDetailPage", () => {
     chapterPatchFails = true;
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    const checkbox = screen.getByRole("checkbox", { name: /One Way/ }) as HTMLInputElement;
-    fireEvent.click(checkbox);
+    const toggle = screen.getByRole("switch", { name: "Narrate One Way" });
+    fireEvent.click(toggle);
     await vi.waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/nope/));
-    expect(checkbox.checked).toBe(true);
-    expect(screen.getByText("2 of 2 included")).toBeTruthy();
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(await screen.findByText("2 of 2 on")).toBeTruthy();
   });
 
   it("numbers included chapters sequentially after excluding a middle chapter", async () => {
@@ -595,8 +619,8 @@ describe("BookDetailPage", () => {
     ];
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Two/ }));
-    await vi.waitFor(() => expect(screen.getByText("2 of 3 included")).toBeTruthy());
+    fireEvent.click(screen.getByRole("switch", { name: "Narrate Two" }));
+    await vi.waitFor(() => expect(screen.getByText("2 of 3 on")).toBeTruthy());
     fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
     expect(await screen.findByRole("button", { name: /^1\D*One/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^2\D*Three/ })).toBeTruthy();
@@ -608,74 +632,88 @@ describe("BookDetailPage", () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /One Way/ }));
-    await vi.waitFor(() => expect(screen.getByText("1 of 2 included")).toBeTruthy());
-    fireEvent.click(screen.getByRole("checkbox", { name: /The Other/ }));
-    await vi.waitFor(() => expect(screen.getByText("0 of 2 included")).toBeTruthy());
+    fireEvent.click(screen.getByRole("switch", { name: "Narrate One Way" }));
+    await vi.waitFor(() => expect(screen.getByText("1 of 2 on")).toBeTruthy());
+    fireEvent.click(screen.getByRole("switch", { name: "Narrate The Other" }));
+    await vi.waitFor(() => expect(screen.getByText("0 of 2 on")).toBeTruthy());
     fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
     expect(await screen.findByText("No chapters are set to narrate. Include chapters under Manage.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /One Way|The Other/ })).toBeNull();
   });
 
-  it("shows only populated About rows and links authors and tags to searches", async () => {
-    book = makeBook({ publisher: "Seabed Press", isbn13: "9781234567890", tags: ["Mystery"], description: "A ledger.", published_date: "1965" });
+  it("shows only populated About rows and links authors, genre and tags to searches", async () => {
+    book = makeBook({
+      publisher: "Seabed Press",
+      isbn13: "9781234567890",
+      tags: ["Mystery"],
+      description: "A ledger.",
+      published_date: "1965",
+      genre: "Science fiction",
+    });
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "About" }));
     expect(await screen.findByText("Publisher")).toBeTruthy();
     expect(screen.getByText("Seabed Press")).toBeTruthy();
+    expect(screen.getByText("Genre")).toBeTruthy();
+    expect(screen.getByText("Science fiction")).toBeTruthy();
     expect(screen.getByText("1965")).toBeTruthy();
     expect(screen.getByText("9781234567890")).toBeTruthy();
-    expect(screen.queryByText("Series")).toBeNull();
+    expect(screen.queryByText("Series")).toBeNull(); // empty rows are hidden
     expect(screen.getByText("A ledger.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Mystery" }).getAttribute("href")).toBe("/search?q=Mystery");
-    expect(screen.getByRole("link", { name: "Frank Herbert" }).getAttribute("href")).toBe("/search?q=Frank%20Herbert");
+    // The author is linked twice: the hero and the About row.
+    const authorLinks = screen.getAllByRole("link", { name: "Frank Herbert" });
+    expect(authorLinks[0]!.getAttribute("href")).toBe("/search?q=Frank%20Herbert");
   });
 
-  it("opens the narrator voice menu and saves the choice with a PATCH", async () => {
+  it("has no narrator voice button in the hero — only the ⋮ menu entry", async () => {
     renderDetail();
-    const trigger = await screen.findByRole("button", { name: "Narrator voice: default" });
-    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(trigger);
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    const menu = await screen.findByRole("menu", { name: "Narrator voice" });
+    await screen.findByRole("button", { name: "Play" });
+    expect(screen.queryByRole("button", { name: /Narrator voice/ })).toBeNull();
+    await openMore();
+    expect(await screen.findByRole("menuitem", { name: "Narrator voice…" })).toBeTruthy();
+  });
+
+  it("opens the narrator dialog from the ⋮ menu and saves the choice with a PATCH", async () => {
+    renderDetail();
+    const dialog = await openNarratorDialog();
     // Language voices only, by display name or the parsed fallback.
-    expect(within(menu).getByRole("menuitemradio", { name: /Ashley/ })).toBeTruthy();
-    expect(within(menu).getByRole("menuitemradio", { name: /Zoe/ })).toBeTruthy();
-    expect(within(menu).queryByRole("menuitemradio", { name: /ashley-ja/ })).toBeNull();
-    expect(within(menu).queryByRole("menuitemradio", { name: /tts/ })).toBeNull();
-    fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Zoe/ }));
-    expect(screen.queryByRole("menu")).toBeNull();
-    await vi.waitFor(() => {
-      const patch = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "PATCH");
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ narrator_voice: "zoe-en" });
-    });
+    await within(dialog).findByRole("button", { name: "Ashley" });
+    const zoe = within(dialog).getByRole("button", { name: "Zoe" });
+    expect(within(dialog).queryByRole("button", { name: /ashley-ja/ })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /tts/ })).toBeNull();
+    fireEvent.click(zoe);
+    expect(screen.queryByRole("dialog", { name: "Narrator voice" })).toBeNull();
+    await vi.waitFor(() => expect(lastPatchBody()).toEqual({ narrator_voice: "zoe-en" }));
   });
 
-  it("checks the current voice in the menu and closes on Escape, refocusing the trigger", async () => {
-    book = makeBook({ narrator_voice: "ashley-en" });
+  it("previews a voice from the dialog without selecting it", async () => {
     renderDetail();
-    const trigger = await screen.findByRole("button", { name: "Narrator voice: ashley-en" });
-    fireEvent.click(trigger);
-    const ashley = await screen.findByRole("menuitemradio", { name: /Ashley/ });
-    expect(ashley.getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("menuitemradio", { name: /Zoe/ }).getAttribute("aria-checked")).toBe("false");
-    fireEvent.keyDown(ashley, { key: "Escape" });
-    expect(screen.queryByRole("menu")).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("previews a voice from the menu without selecting it", async () => {
-    renderDetail();
-    fireEvent.click(await screen.findByRole("button", { name: /Narrator voice/ }));
-    await screen.findByRole("menuitemradio", { name: /Ashley/ });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const dialog = await openNarratorDialog();
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Preview Ashley" }));
     await vi.waitFor(() => {
       const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes("/voices/preview"));
       expect(JSON.parse(String(call?.[1]?.body))).toEqual({ voice: "ashley-en" });
     });
-    expect(screen.queryByRole("menu")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Narrator voice" })).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
+
+  it("marks the saved voice pressed and clears it with Use my default", async () => {
+    book = makeBook({ narrator_voice: "ashley-en" });
+    renderDetail();
+    const dialog = await openNarratorDialog();
+    const ashley = await within(dialog).findByRole("button", { name: "Ashley" });
+    expect(ashley.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use my default for English" }));
+    await vi.waitFor(() => expect(lastPatchBody()).toEqual({ narrator_voice: null }));
+  });
+
+  it("goes to the author from the ⋮ menu", async () => {
+    renderDetail();
+    await openMore();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Go to author" }));
+    expect(await screen.findByText("at /search?q=Frank%20Herbert")).toBeTruthy();
   });
 
   it("shows the review banner and opens Find metadata in the Manage tab", async () => {
@@ -710,6 +748,7 @@ describe("BookDetailPage", () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "New match" }), { target: { value: "Leto" } });
     fireEvent.change(screen.getByRole("textbox", { name: "New say" }), { target: { value: "Lee-toh" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -727,7 +766,7 @@ describe("BookDetailPage", () => {
     rules = [makeRule()];
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Case-sensitive 1" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "case sensitive 1" }));
     await vi.waitFor(() => {
       const call = vi
         .mocked(fetch)
@@ -747,10 +786,31 @@ describe("BookDetailPage", () => {
     expect(await screen.findByText("No rules yet.")).toBeTruthy();
   });
 
-  it("renders the hero meta line with language, length, chapters and narrator on desktop", async () => {
+  it("renders the desktop meta line as Book · language · length · chapters", async () => {
     stubViewport(true);
     book = makeBook({ narrator_voice: "ashley-en" });
     renderDetail();
-    expect(await screen.findByText("English · 10 m · 2 chapters · narrated by ashley-en")).toBeTruthy();
+    expect(await screen.findByText("Book · English · 10 m · 2 chapters")).toBeTruthy();
+    // The narrator is not part of the meta line any more.
+    expect(screen.queryByText(/narrated by/)).toBeNull();
+  });
+
+  it("expands the description inline with More", async () => {
+    stubViewport(true);
+    book = makeBook({ description: `${"A long ledger. ".repeat(20)}` });
+    renderDetail();
+    const more = await screen.findByRole("button", { name: "More" });
+    expect(more).toBeTruthy();
+    fireEvent.click(more);
+    expect(screen.getByRole("button", { name: "Less" })).toBeTruthy();
+  });
+
+  it("renders the phone layout: back + ⋮ header, centered cover, meta with percent", async () => {
+    progress = makeProgress({ percent: 38, chapter_id: "c2", segment_id: "s3" });
+    renderDetail();
+    expect(await screen.findByRole("button", { name: "Back" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "More options for this book" })).toBeTruthy();
+    expect(screen.getByText("10 m · 2 chapters · 38% listened")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Resume Chapter 2" })).toBeTruthy();
   });
 });

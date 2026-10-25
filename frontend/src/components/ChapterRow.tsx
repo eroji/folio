@@ -1,7 +1,7 @@
 /** Chapter row in the Direction D shape (handoff "Book page → Chapters"):
  * 52px row, number / title / length, played rows secondary with a Check,
  * the playing row raised with an accent AudioLines and a percent line.
- * Used by the player's Up next tab; Phase 4 reuses it on the book page. */
+ * Used by the book page and the player's Up next tab. */
 import clsx from "clsx";
 import { formatTime } from "../player/PlayerProvider";
 import type { Chapter } from "../api/types";
@@ -37,9 +37,12 @@ export function ChapterRow({
       )}
     >
       {current ? (
-        <Icon name="AudioLines" size={18} className="shrink-0 text-accent" label="Playing," />
+        <span className="flex w-8 shrink-0 justify-center text-accent">
+          <Icon name="AudioLines" size={20} />
+          <span className="sr-only">Playing,</span>
+        </span>
       ) : (
-        <span className="w-8 shrink-0 text-sm tabular text-fg-2">{number}</span>
+        <span className="w-8 shrink-0 text-center text-md tabular text-fg-2">{number}</span>
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className={clsx("truncate text-md", current ? "font-bold text-fg" : "font-medium")}>{chapter.title}</span>

@@ -1,5 +1,6 @@
 import {
   AlignLeft,
+  ArrowLeft,
   AudioLines,
   BookOpen,
   Check,
@@ -134,6 +135,7 @@ const ICONS = {
   TriangleAlert,
   Search,
   Upload,
+  ArrowLeft,
 } as const satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

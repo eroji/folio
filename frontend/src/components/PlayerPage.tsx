@@ -24,10 +24,17 @@ const TABS: { id: PanelTab; label: string }[] = [
   { id: "about", label: "About" },
 ];
 
-/** Strong cover glow when the book has a cover color, accent glow otherwise. */
-export function coverGlow(book: Book | null): { className: string; style?: CSSProperties } {
+/** Cover glow: strong (player) or normal (book page) tint from the cover
+ * color, falling back to the accent page glow when unknown. */
+export function coverGlow(
+  book: Book | null | undefined,
+  strong = true,
+): { className: string; style?: CSSProperties } {
   return book?.cover_rgb
-    ? { className: "bg-cover-glow-strong", style: { "--cover-rgb": book.cover_rgb } as CSSProperties }
+    ? {
+        className: strong ? "bg-cover-glow-strong" : "bg-cover-glow",
+        style: { "--cover-rgb": book.cover_rgb } as CSSProperties,
+      }
     : { className: "bg-page-glow" };
 }
 

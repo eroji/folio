@@ -6,6 +6,15 @@ import type { BookDetailResponse, BookListResponse, Chapter, UploadResult } from
 
 export type BookSort = "recent" | "title" | "author" | "progress";
 
+/** "English" for "en", "Chinese, Traditional"… for a book's language code. */
+export function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code.split("-")[0]!) ?? code;
+  } catch {
+    return code;
+  }
+}
+
 export interface BookListParams {
   q?: string;
   sort?: BookSort;

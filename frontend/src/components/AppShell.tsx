@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { useAuth } from "../auth/AuthProvider";
+import { useBook } from "../api/books";
 import { useContinueListening, type ContinueItem } from "../api/progress";
 import { useEvents } from "../hooks/useEvents";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -308,6 +309,10 @@ function Shell() {
   const [collapsed, toggleSidebar] = useSidebarCollapsed();
   const phone = !useMediaQuery("(min-width: 768px)");
   const onPlayerPage = location.pathname === "/player";
+  // The book page glows with its own cover colour; the query shares the cache
+  // with the page itself, so this costs no extra request.
+  const bookGlowId = /^\/books\/([^/?]+)/.exec(location.pathname)?.[1];
+  const bookGlowQuery = useBook(bookGlowId ?? "");
 
   // Handoff "When the player shows": load the most recently played book,
   // paused, once per app start, so Resume is one click from any page.
@@ -351,7 +356,11 @@ function Shell() {
 
   if (!user) return null; // RequireAuth guarantees a user before this renders.
 
-  const glow = onPlayerPage ? coverGlow(player.book) : { className: "bg-page-glow" as const };
+  const glow = onPlayerPage
+    ? coverGlow(player.book)
+    : bookGlowId
+      ? coverGlow(bookGlowQuery.data?.book, false)
+      : { className: "bg-page-glow" as const };
   return (
     <div className="flex min-h-dvh">
       <Sidebar collapsed={collapsed} onToggle={toggleSidebar} inProgress={continueData?.items ?? []} />

@@ -31,6 +31,8 @@ export interface Book {
   isbn10: string | null;
   isbn13: string | null;
   tags: string[];
+  /** Direction D genre (fixed suggestion list, free text allowed). */
+  genre?: string | null;
   narrator_voice: string | null;
   cover_url: string | null;
   /** "r g b" dominant cover color for the glow; null until a cover is stored. */
