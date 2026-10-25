@@ -116,8 +116,10 @@ async def test_voices_list_parses_the_real_engine_shape(
     assert response.status_code == 200
     assert seen == ["/v1/audio/voices"]
     items = response.json()["items"]
-    assert [item["id"] for item in items] == list(ENGINE_VOICES["voices"])
+    # The engine's ``tts`` fallback entry is not a real voice: omitted from the list.
+    assert [item["id"] for item in items] == [v for v in ENGINE_VOICES["voices"] if v != "tts"]
     by_id = {item["id"]: item for item in items}
+    assert "tts" not in by_id
     assert by_id["ashley-en"] == {
         "id": "ashley-en",
         "language": "en",
@@ -125,7 +127,6 @@ async def test_voices_list_parses_the_real_engine_shape(
         "available": True,
     }
     assert by_id["ashley-kr"]["language"] == "ko"  # kr -> ko (docs/TTS.md)
-    assert by_id["tts"]["language"] is None  # no suffix -> any language
 
 
 async def test_voices_requires_session() -> None:

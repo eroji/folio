@@ -136,6 +136,32 @@ class Segment(Base):
     char_end: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class PronunciationRule(Base):
+    """Per-book text substitution applied before speech normalization (spec:
+    TTS → Text preparation). Applied in creation order."""
+
+    __tablename__ = "pronunciation_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    book_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    match: Mapped[str] = mapped_column(String(200), nullable=False)
+    say: Mapped[str] = mapped_column(String(200), nullable=False)
+    whole_word: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    after_number: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    case_sensitive: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Job(Base):
     __tablename__ = "jobs"
 

@@ -80,3 +80,46 @@ def test_raises_when_nothing_resolves() -> None:
     book = Book(status="ready", language="en", title="B")
     with pytest.raises(TtsError):
         select_voice(book, {}, _settings(), _voices("someone-else"))
+
+
+def test_first_voice_for_language_when_unmapped() -> None:
+    # No config for ko: the first discovered ko voice wins over the default.
+    settings = _settings(tts_voice_map={"en": "ashley-en"})
+    book = Book(status="ready", language="ko", title="B")
+    voices = [
+        Voice(id="tts"),
+        Voice(id="ashley-en", language="en"),
+        Voice(id="ashley-kr", language="ko"),
+        Voice(id="bruno-kr", language="ko"),
+    ]
+    assert select_voice(book, {}, settings, voices) == "ashley-kr"
+
+
+def test_zh_tw_falls_back_to_first_zh_voice() -> None:
+    settings = _settings(tts_voice_map={})
+    book = Book(status="ready", language="zh-TW", title="B")
+    voices = [Voice(id="ashley-en", language="en"), Voice(id="mina-zh", language="zh")]
+    assert select_voice(book, {}, settings, voices) == "mina-zh"
+
+
+def test_kr_language_code_normalizes_to_ko() -> None:
+    settings = _settings(tts_voice_map={})
+    book = Book(status="ready", language="ko", title="B")
+    assert select_voice(book, {}, settings, [Voice(id="ashley-kr", language="kr")]) == "ashley-kr"
+
+
+def test_tts_fallback_voice_is_never_selected() -> None:
+    # The engine's ``tts`` entry is its internal fallback, not a real voice.
+    settings = _settings(tts_voice_map={}, tts_default_voice="tts")
+    book = Book(status="ready", language="en", title="B")
+    got = select_voice(book, {}, settings, [Voice(id="tts"), Voice(id="ashley-en", language="en")])
+    assert got == "ashley-en"
+    with pytest.raises(TtsError):  # nothing but tts: no voice, not the fallback
+        select_voice(book, {}, settings, [Voice(id="tts")])
+
+
+def test_saved_unavailable_voice_falls_to_first_for_language() -> None:
+    settings = _settings(tts_voice_map={}, tts_default_voice="someone-else")
+    book = Book(status="ready", language="ja", title="B", narrator_voice="gone-ja")
+    voices = [Voice(id="tts"), Voice(id="hana-ja", language="ja")]
+    assert select_voice(book, {}, settings, voices) == "hana-ja"

@@ -52,7 +52,8 @@ def list_voices(
     client: Annotated[TtsClient, Depends(get_tts_client)],
     refresh: bool = False,
 ) -> dict[str, Any]:
-    voices = discover_voices(settings, client, refresh=refresh)
+    # The engine's ``tts`` entry is its internal fallback, not a real voice.
+    voices = [v for v in discover_voices(settings, client, refresh=refresh) if v.id != "tts"]
     return {
         "items": [
             {
