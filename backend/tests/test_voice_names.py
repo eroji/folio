@@ -100,11 +100,11 @@ def test_default_display_name(voice_id: str, expected: str) -> None:
     assert default_display_name(voice_id) == expected
 
 
-def test_collision_appends_language() -> None:
+def test_same_base_name_is_not_disambiguated() -> None:
     voices = [("ashley-en", "en"), ("ashley-ja", "ja"), ("amy", "en")]
     assert resolve_display_names(voices, {}) == {
-        "ashley-en": "Ashley (EN)",
-        "ashley-ja": "Ashley (JA)",
+        "ashley-en": "Ashley",
+        "ashley-ja": "Ashley",
         "amy": "Amy",
     }
 
@@ -125,8 +125,8 @@ async def test_voices_list_carries_display_name(vclient: httpx.AsyncClient) -> N
     response = await vclient.get("/api/v1/voices")
     assert response.status_code == 200
     by_id = {item["id"]: item for item in response.json()["items"]}
-    assert by_id["ashley-en"]["display_name"] == "Ashley (EN)"
-    assert by_id["ashley-kr"]["display_name"] == "Ashley (KO)"
+    assert by_id["ashley-en"]["display_name"] == "Ashley"
+    assert by_id["ashley-kr"]["display_name"] == "Ashley"
 
 
 async def test_voice_names_get_shape(vclient: httpx.AsyncClient) -> None:
@@ -135,10 +135,10 @@ async def test_voice_names_get_shape(vclient: httpx.AsyncClient) -> None:
     body = response.json()
     assert body["names"] == {}
     assert body["items"] == [
-        {"id": "ashley-zh", "display_name": "Ashley (ZH)", "overridden": False},
-        {"id": "ashley-ja", "display_name": "Ashley (JA)", "overridden": False},
-        {"id": "ashley-kr", "display_name": "Ashley (KO)", "overridden": False},
-        {"id": "ashley-en", "display_name": "Ashley (EN)", "overridden": False},
+        {"id": "ashley-zh", "display_name": "Ashley", "overridden": False},
+        {"id": "ashley-ja", "display_name": "Ashley", "overridden": False},
+        {"id": "ashley-kr", "display_name": "Ashley", "overridden": False},
+        {"id": "ashley-en", "display_name": "Ashley", "overridden": False},
     ]
 
 
@@ -155,7 +155,7 @@ async def test_put_saves_override_and_it_wins_everywhere(vclient: httpx.AsyncCli
     assert en == {"id": "ashley-en", "display_name": "Ash", "overridden": True}
     # zh/ja/kr still collide with each other, so ja keeps its language suffix.
     ja = next(item for item in body["items"] if item["id"] == "ashley-ja")
-    assert ja["display_name"] == "Ashley (JA)"
+    assert ja["display_name"] == "Ashley"
 
     items = (await vclient.get("/api/v1/voices?refresh=true")).json()["items"]
     assert next(item for item in items if item["id"] == "ashley-en")["display_name"] == "Ash"

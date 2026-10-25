@@ -12,8 +12,14 @@ test("a changed playback speed persists across a reload", async ({ page }) => {
   const speed = page.getByLabel("Default playback speed");
   await expect(speed).toBeVisible();
 
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/v1/me/settings") &&
+      response.request().method() === "PUT" &&
+      response.ok(),
+  );
   await speed.selectOption("1.5");
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await saved;
 
   await page.reload();
   await expect(page.getByLabel("Default playback speed")).toHaveValue("1.5");

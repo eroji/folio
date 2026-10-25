@@ -126,7 +126,7 @@ async def test_voices_list_parses_the_real_engine_shape(
         "description": "Studio voice",
         "available": True,
         # All four ashley voices derive "Ashley" -> the language disambiguates.
-        "display_name": "Ashley (EN)",
+        "display_name": "Ashley",
     }
     assert by_id["ashley-kr"]["language"] == "ko"  # kr -> ko (docs/TTS.md)
 

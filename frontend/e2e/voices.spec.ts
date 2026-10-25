@@ -23,14 +23,26 @@ test("the narrator voice override persists across a reload", async ({ page }) =>
   // The book page opens the voice picker from the narrator icon button.
   const voiceButton = page.getByRole("button", { name: /Narrator voice/ });
   await voiceButton.click();
-  const picker = page.getByLabel("en voice");
-  await expect(picker).toBeVisible();
-  await picker.selectOption("ashley-en");
-  await expect(picker).toHaveValue("ashley-en");
+  const option = page.getByRole("menuitemradio", { name: /Ashley/ }).first();
+  await expect(option).toBeVisible();
+  const patched = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/v1/books/") &&
+      response.request().method() === "PATCH" &&
+      response.ok(),
+  );
+  await option.click();
+  await patched;
+  await page.getByRole("button", { name: /Narrator voice/ }).click();
+  await expect(
+    page.getByRole("menuitemradio", { name: /Ashley/ }).first(),
+  ).toHaveAttribute("aria-checked", "true");
 
   await page.reload();
   await page.getByRole("button", { name: /Narrator voice/ }).click();
-  await expect(page.getByLabel("en voice")).toHaveValue("ashley-en");
+  await expect(
+    page.getByRole("menuitemradio", { name: /Ashley/ }).first(),
+  ).toHaveAttribute("aria-checked", "true");
 
   // The primary action starts the shared player (the panel on desktop).
   await expect(page.getByRole("button", { name: /Play|Resume/ })).toBeVisible();

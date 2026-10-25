@@ -1,15 +1,14 @@
 """Voice display names: derived from the voice id, admin-overridable.
 
 ``ashley-en`` reads as *Ashley*: strip the language suffix, split on ``-``/``_``
-and capitalise each word. When several voices would render the same name the
-language is appended (``Ashley (EN)`` / ``Ashley (JA)``) so the list stays
-unambiguous. Admin overrides live in ``app_settings`` under ``voice_names``.
+and capitalise each word (``ashley-en`` -> ``Ashley``). Voices are always shown
+inside a language-specific row, so the same base name is not disambiguated.
+Admin overrides live in ``app_settings`` under ``voice_names``.
 """
 
 from __future__ import annotations
 
 import re
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
@@ -34,20 +33,10 @@ def resolve_display_names(
     voices: Sequence[tuple[str, str | None]], overrides: Mapping[str, str]
 ) -> dict[str, str]:
     """id -> name for each ``(id, language)`` voice; overrides win."""
-    derived = Counter(
-        default_display_name(voice_id) for voice_id, _ in voices if voice_id not in overrides
-    )
-    names: dict[str, str] = {}
-    for voice_id, language in voices:
-        if voice_id in overrides:
-            names[voice_id] = overrides[voice_id]
-            continue
-        name = default_display_name(voice_id)
-        if derived[name] > 1:
-            code = (language or "").split("-")[0].upper() or "ANY"
-            name = f"{name} ({code})"
-        names[voice_id] = name
-    return names
+    return {
+        voice_id: overrides.get(voice_id) or default_display_name(voice_id)
+        for voice_id, _language in voices
+    }
 
 
 def load_overrides(db: Session) -> dict[str, str]:
