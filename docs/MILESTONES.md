@@ -190,7 +190,7 @@ Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Imp
 | 5 | Restyle undesigned screens with the new tokens/components (structure unchanged) | **done** — 167 web tests; Library/Search, Upload/Login, Settings/Admin/Edit/Player |
 | 6 | Remove lucide, unused styles; update DESIGN.md and DECISIONS.md | **done** — lucide/Inter/Outfit removed, alias layer deleted, DESIGN.md rewritten |
 
-**Post-acceptance fixes (2026-10-25):** focus mode rebuilt to the reference; Manage shows 15 chapter rows before "Show all"; chapter inclusion updates the Chapters tab, count and numbering immediately; the stray Find metadata search box rendered outside Manage is removed.
+**Post-acceptance fixes (2026-10-25) — done and verified:** focus mode rebuilt to the reference (paper surface, contents, 680px Newsreader page, transport card, F/C/Esc/Space); Manage shows **15** chapter rows before "Show all"; toggling inclusion now optimistically updates the Chapters tab and count and renumbers 1..N; the stray Find metadata search box rendered outside Manage was removed (the review banner switches to Manage). 180 web tests, 9 Playwright, acceptance all-pass.
 
 **Status: complete 2026-10-25.** All six phases shipped. 167 web tests, 9 Playwright, acceptance all-pass, Lighthouse accessibility **100** on login/library/book/player with no failing audits. Reference screenshots: `docs/screenshots/redesign-*.png`.
 
