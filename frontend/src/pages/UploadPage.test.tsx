@@ -96,7 +96,7 @@ function renderUpload() {
 
 function dropFiles(names: string[]) {
   const files = names.map((name) => new File(["data"], name));
-  fireEvent.drop(screen.getByText("Drop files here or tap to browse"), { dataTransfer: { files } });
+  fireEvent.drop(screen.getByText("Drop EPUB, PDF or Kindle files here"), { dataTransfer: { files } });
 }
 
 beforeEach(() => {
@@ -110,7 +110,14 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const detail = /^\/api\/v1\/books\/([^/?]+)/.exec(String(input));
       if (detail?.[1]) {
-        return jsonResponse(200, { book: makeBook(detail[1]), chapters: [], progress: null });
+        return jsonResponse(200, {
+          book: makeBook(detail[1]),
+          chapters: [
+            { id: "c1", idx: 1, title: "One", char_count: 10 },
+            { id: "c2", idx: 2, title: "Two", char_count: 10 },
+          ],
+          progress: null,
+        });
       }
       throw new Error(`unexpected fetch: ${String(input)}`);
     }),
@@ -122,7 +129,17 @@ afterEach(() => {
 });
 
 describe("UploadPage", () => {
-  it("renders one row with a progress bar and badge per dropped file", async () => {
+  it("renders the drop zone with the pinned copy and an empty session list", () => {
+    renderUpload();
+    expect(screen.getByText("Drop EPUB, PDF or Kindle files here")).toBeTruthy();
+    expect(screen.getByText(/Up to 200 MB each · \.epub, \.pdf, \.mobi, \.azw, \.azw3/)).toBeTruthy();
+    expect(screen.getByText(/DRM-protected and KFX files aren.t supported/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "This session" })).toBeTruthy();
+    expect(screen.getByText(/appear here/i)).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("renders one row with a determinate progress bar per dropped file", async () => {
     FakeXHR.results.set("a.epub", { status: 202, body: [{ book_id: BOOK_A, job_id: 1, duplicate_of: null }] });
     FakeXHR.results.set("b.epub", { status: 202, body: [{ book_id: BOOK_B, job_id: 2, duplicate_of: null }] });
     statuses[BOOK_A] = "processing";
@@ -130,43 +147,87 @@ describe("UploadPage", () => {
     renderUpload();
 
     dropFiles(["a.epub", "b.epub"]);
-    expect(screen.getByText("a.epub")).toBeTruthy();
-    expect(screen.getByText("b.epub")).toBeTruthy();
+    expect(screen.getByText(/a\.epub/)).toBeTruthy();
+    expect(screen.getByText(/b\.epub/)).toBeTruthy();
     expect(screen.getAllByRole("progressbar")).toHaveLength(2);
-    expect(screen.getAllByText("Queued")).toHaveLength(2);
+    expect(screen.getAllByText("Uploading · 0%")).toHaveLength(2);
 
     // Once each POST lands, the rows show the live book status.
-    expect(await screen.findAllByText("Processing")).toHaveLength(2);
+    expect(await screen.findAllByText("Processing…")).toHaveLength(2);
+    expect(screen.getByRole("status").textContent).toBe("2 in progress");
   });
 
-  it("flips a Processing badge to Ready on an SSE job frame without reload", async () => {
+  it("shows an indeterminate bar while a Kindle file converts", async () => {
+    statuses[BOOK_A] = "processing";
+    renderUpload();
+    dropFiles(["a.azw3"]);
+    expect(await screen.findByText("Converting Kindle file to EPUB…")).toBeTruthy();
+    const bar = screen.getByRole("progressbar");
+    expect(bar.getAttribute("aria-valuenow")).toBeNull();
+  });
+
+  it("flips a Processing row to Ready · N chapters on an SSE job frame without reload", async () => {
     statuses[BOOK_A] = "processing";
     renderUpload();
     dropFiles(["a.epub"]);
-    expect(await screen.findByText("Processing")).toBeTruthy();
+    expect(await screen.findByText("Processing…")).toBeTruthy();
 
     statuses[BOOK_A] = "ready";
     MockEventSource.instances[0]!.emit("job", { event: "job", job_id: 1, book_id: BOOK_A, status: "ready" });
-    expect(await screen.findByText("Ready")).toBeTruthy();
-    expect(screen.queryByText("Processing")).toBeNull();
+    expect(await screen.findByText("Ready · 2 chapters")).toBeTruthy();
+    expect(screen.queryByText("Processing…")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open book" }).getAttribute("href")).toBe(`/books/${BOOK_A}`);
+    expect(await screen.findByText("1 added")).toBeTruthy();
+  });
+
+  it("flags a scanned PDF as needing OCR with a warning row", async () => {
+    statuses[BOOK_A] = "needs_ocr";
+    renderUpload();
+    dropFiles(["scan.pdf"]);
+    expect(await screen.findByText(/needs OCR before it can be narrated/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open book" }).getAttribute("href")).toBe(`/books/${BOOK_A}`);
   });
 
   it("links a duplicate upload to the existing book", async () => {
     FakeXHR.results.set("dup.epub", { status: 202, body: [{ book_id: BOOK_B, job_id: 2, duplicate_of: BOOK_A }] });
     renderUpload();
     dropFiles(["dup.epub"]);
-    expect(await screen.findByText(/already in your library/i)).toBeTruthy();
+    expect(await screen.findByText("Already in your library")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open book" }).getAttribute("href")).toBe(`/books/${BOOK_A}`);
   });
 
-  it("shows the API error message inline", async () => {
+  it("shows a failed upload with the reason and removes the row", async () => {
     FakeXHR.results.set("drm.epub", {
       status: 422,
-      body: { error: { code: "unsupported_format", message: "This file is DRM-protected or in an unsupported Kindle format" } },
+      body: {
+        error: {
+          code: "unsupported_format",
+          message: "This file is DRM-protected or in an unsupported Kindle format",
+        },
+      },
     });
     renderUpload();
     dropFiles(["drm.epub"]);
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("DRM-protected");
+    const row = (await screen.findByText(/Couldn.t add · .*DRM-protected/)).closest("li");
+    expect(row).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("1 failed");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove drm.epub" }));
+    expect(screen.queryByText(/drm\.epub/)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("summarises mixed outcomes in a polite live region", async () => {
+    FakeXHR.results.set("ok.epub", { status: 202, body: [{ book_id: BOOK_A, job_id: 1, duplicate_of: null }] });
+    FakeXHR.results.set("bad.epub", {
+      status: 422,
+      body: { error: { code: "too_large", message: "The file is larger than 200 MB" } },
+    });
+    statuses[BOOK_A] = "ready";
+    renderUpload();
+    dropFiles(["ok.epub", "bad.epub"]);
+    const status = await screen.findByRole("status");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(await screen.findByText("1 added · 1 failed")).toBeTruthy();
   });
 });

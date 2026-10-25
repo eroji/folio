@@ -1,20 +1,26 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { AlertCircle } from "lucide-react";
+import clsx from "clsx";
 import { useAuth } from "./AuthProvider";
-import { useTheme } from "../hooks/useTheme";
+import { ApiError } from "../api/client";
+import { Icon } from "../components/Icon";
 import type { User } from "../api/types";
 
-/** Screen 1: logo, "Sign in with your directory account", username, password,
- * sign-in button; errors inline. Calls onSuccess(user) after a good login. */
+/** Never reveal which of the two was wrong (handoff "Sign in"). */
+const BAD_CREDENTIALS = "Incorrect username or password. Check them and try again.";
+
+/** Desktop: 440 px card centered on the page background. Phone: the same
+ * content on the surface, starting ~96 px from the top. */
 export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
   const { user, isLoading, login } = useAuth();
   const location = useLocation();
-  const { theme } = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const usernameRef = useRef<HTMLInputElement>(null);
   // Dev-only convenience: when the server runs with FOLIO_TEST_MODE, let a
   // browser session sign in without an LDAP server. Never rendered otherwise.
   const [testMode, setTestMode] = useState(false);
@@ -27,6 +33,11 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
       .then((data: { test_mode?: boolean }) => setTestMode(Boolean(data.test_mode)))
       .catch(() => setTestMode(false));
   }, []);
+
+  // After a failed attempt focus moves to the username field.
+  useEffect(() => {
+    if (attempts > 0) usernameRef.current?.focus();
+  }, [attempts]);
 
   async function testSignIn() {
     setError(null);
@@ -55,96 +66,118 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
       const signedIn = await login(username, password);
       onSuccess?.(signedIn);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid username or password");
+      setError(err instanceof ApiError && err.status === 401 ? BAD_CREDENTIALS : err instanceof Error ? err.message : "Something went wrong.");
+      setPassword("");
+      setAttempts((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
   }
 
+  const field = clsx(
+    "h-11 w-full rounded-md border bg-surface px-3 text-md desktop:h-10",
+    error ? "border-danger" : "border-control-border",
+  );
+
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[390px] flex-col justify-center gap-8 px-6 pt-safe pb-safe">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <img
-          src={theme === "dark" ? "/logo-wordmark-dark.svg" : "/logo-wordmark.svg"}
-          alt="Folio"
-          className="h-10 w-auto"
-        />
-        <h1 className="font-display text-2xl font-semibold">Sign in with your directory account</h1>
+    <main className="flex min-h-dvh flex-col items-center bg-surface px-6 pt-24 pb-8 pt-safe desktop:justify-center desktop:bg-bg desktop:pt-8">
+      <div className="flex w-full max-w-[440px] flex-col gap-7 desktop:rounded-lg desktop:border desktop:border-divider desktop:bg-surface desktop:p-10">
+        <div className="flex flex-col items-center gap-2.5 text-center">
+          <img src="/logo.svg" alt="" className="size-11" />
+          <h1 className="font-display text-[28px] font-bold leading-none tracking-[-0.01em]">Folio</h1>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+          {error && (
+            <div role="alert" className="flex items-start gap-2 rounded-md border border-danger px-3 py-2.5 text-sm leading-snug text-danger">
+              <Icon name="error" size={18} className="mt-px shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="folio-username" className="text-sm font-semibold">
+              Username
+            </label>
+            <input
+              id="folio-username"
+              ref={usernameRef}
+              name="username"
+              type="text"
+              autoComplete="username"
+              autoFocus
+              required
+              disabled={isLoading || submitting}
+              aria-invalid={error ? true : undefined}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className={field}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="folio-password" className="text-sm font-semibold">
+              Password
+            </label>
+            <div className="relative">
+              <input
+                id="folio-password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                required
+                disabled={isLoading || submitting}
+                aria-invalid={error ? true : undefined}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={clsx(field, "pr-11")}
+              />
+              <button
+                type="button"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((v) => !v)}
+                className="tap absolute top-1/2 right-0.5 grid size-9 -translate-y-1/2 place-items-center rounded-md text-fg-2 hover:bg-raised"
+              >
+                <Icon name={showPassword ? "visibility_off" : "visibility"} />
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="tap h-12 rounded-md bg-primary-gradient text-md font-bold disabled:opacity-60 desktop:h-11"
+          >
+            {submitting ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Username</span>
-          <input
-            type="text"
-            name="username"
-            autoComplete="username"
-            autoFocus
-            required
-            disabled={isLoading || submitting}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="h-11 rounded-card border border-line bg-card px-3 text-base outline-none focus-visible:border-brand-blue"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Password</span>
-          <input
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            required
-            disabled={isLoading || submitting}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="h-11 rounded-card border border-line bg-card px-3 text-base outline-none focus-visible:border-brand-blue"
-          />
-        </label>
-
-        {error && (
-          <p role="alert" className="flex items-center gap-2 text-sm text-danger">
-            <AlertCircle size={18} strokeWidth={1.75} aria-hidden />
-            {error}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={submitting}
-          className="mt-2 flex h-12 items-center justify-center rounded-pill bg-brand-gradient font-display text-base font-semibold text-white disabled:opacity-60"
-        >
-          {submitting ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-
       {testMode && (
-        <section className="flex flex-col gap-3 rounded-card border border-dashed border-line p-4">
+        <section className="mt-8 flex w-full max-w-[440px] flex-col gap-3 rounded-lg border border-dashed border-divider p-4 text-fg-2">
           <p className="text-sm font-medium">Test mode: sign in without LDAP</p>
           <div className="flex gap-2">
             <input
               aria-label="Test username"
               value={testUser}
               onChange={(e) => setTestUser(e.target.value)}
-              className="h-11 min-w-0 flex-1 rounded-card border border-line bg-card px-3 text-sm"
+              className="tap h-11 min-w-0 flex-1 rounded-md border border-control-border bg-surface px-3 text-sm desktop:h-9"
             />
             <select
               aria-label="Test role"
               value={testRole}
               onChange={(e) => setTestRole(e.target.value)}
-              className="h-11 rounded-card border border-line bg-card px-3 text-sm"
+              className="tap h-11 rounded-md border border-control-border bg-surface px-3 text-sm desktop:h-9"
             >
               <option value="user">user</option>
               <option value="admin">admin</option>
             </select>
           </div>
-          <button
-            type="button"
-            onClick={testSignIn}
-            className="h-11 rounded-pill border border-line bg-card font-medium"
-          >
+          <button type="button" onClick={testSignIn} className="tap h-11 rounded-md border border-control-border bg-surface text-sm font-medium desktop:h-9">
             Test sign in
           </button>
-          <p className="text-xs text-muted">
+          <p className="text-xs">
             Only available when the server sets FOLIO_TEST_MODE. Never enable it in production.
           </p>
         </section>

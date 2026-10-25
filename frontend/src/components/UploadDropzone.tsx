@@ -1,9 +1,9 @@
 import { useState, type DragEvent } from "react";
 import clsx from "clsx";
-import { Upload } from "lucide-react";
+import { Icon } from "./Icon";
 
 /** Drag-and-drop zone wrapping a hidden file input; the whole label is the
- * touch target and opens the picker on tap. */
+ * drop target and opens the picker on tap (handoff "Upload"). */
 export function UploadDropzone({ onFiles }: { onFiles: (files: File[]) => void }) {
   const [dragging, setDragging] = useState(false);
 
@@ -23,13 +23,19 @@ export function UploadDropzone({ onFiles }: { onFiles: (files: File[]) => void }
       onDragLeave={() => setDragging(false)}
       onDrop={drop}
       className={clsx(
-        "flex min-h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed p-6 text-center",
-        dragging ? "border-brand-blue bg-card" : "border-line bg-card/60",
+        "flex cursor-pointer flex-col items-center gap-2.5 rounded-lg border-2 border-dashed bg-surface px-5 py-8 text-center",
+        "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-progress",
+        dragging ? "border-progress" : "border-control-border",
       )}
     >
-      <Upload size={28} strokeWidth={1.75} aria-hidden className="text-brand-blue" />
-      <span className="font-medium">Drop files here or tap to browse</span>
-      <span className="text-sm text-muted">EPUB, PDF, MOBI, AZW, AZW3 — several files at once</span>
+      <Icon name="upload" size={32} className="text-fg-2" />
+      <span className="text-md font-semibold">Drop EPUB, PDF or Kindle files here</span>
+      <span className="inline-flex h-9 items-center rounded-md bg-primary-gradient px-3.5 text-base font-semibold">
+        Choose files
+      </span>
+      <span className="text-xs text-fg-2">
+        Up to 200 MB each · .epub, .pdf, .mobi, .azw, .azw3 · DRM-protected and KFX files aren’t supported
+      </span>
       <input
         type="file"
         multiple

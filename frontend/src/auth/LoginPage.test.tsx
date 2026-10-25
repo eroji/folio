@@ -21,7 +21,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 /** Boot /auth/me always 401s (guest); login responses come from `login`. */
-function mockFetch(login: () => Response) {
+function mockFetch(login: () => Response | Promise<Response>) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -29,6 +29,7 @@ function mockFetch(login: () => Response) {
       if (url.includes("/auth/me")) {
         return jsonResponse(401, { error: { code: "unauthenticated", message: "Authentication required." } });
       }
+      if (url.includes("/auth/options")) return jsonResponse(200, { test_mode: false });
       if (url.includes("/auth/login")) return login();
       throw new Error(`unexpected fetch: ${url}`);
     }),
@@ -54,30 +55,60 @@ async function submitCredentials() {
 
 beforeEach(() => {
   localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 describe("LoginPage", () => {
-  it("renders the wordmark and the spec copy", () => {
+  it("renders the logo mark, the Folio title and autofill-ready fields", () => {
     mockFetch(() => jsonResponse(200, { user, csrf_token: "t" }));
     renderLogin();
-    expect(screen.getByAltText("Folio")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Sign in with your directory account" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Folio" })).toBeTruthy();
+    expect(document.querySelector('img[src="/logo.svg"]')).toBeTruthy();
+    expect(screen.getByLabelText("Username").getAttribute("autocomplete")).toBe("username");
+    expect(screen.getByLabelText("Password").getAttribute("autocomplete")).toBe("current-password");
+    expect(screen.queryByText(/directory account/)).toBeNull();
   });
 
-  it("shows the server error message inline on bad credentials", async () => {
-    mockFetch(() =>
-      jsonResponse(401, { error: { code: "invalid_credentials", message: "Invalid username or password" } }),
-    );
+  it("toggles password visibility with aria-pressed", () => {
+    mockFetch(() => jsonResponse(200, { user, csrf_token: "t" }));
+    renderLogin();
+    const toggle = screen.getByRole("button", { name: "Show password" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    const password = screen.getByLabelText("Password");
+    expect(password.getAttribute("type")).toBe("password");
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Hide password" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByLabelText("Password").getAttribute("type")).toBe("text");
+  });
+
+  it("on bad credentials alerts, marks both fields invalid, clears the password and focuses username", async () => {
+    mockFetch(() => jsonResponse(401, { error: { code: "invalid_credentials", message: "Invalid username or password" } }));
     renderLogin();
     await submitCredentials();
+
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Invalid username or password");
+    expect(alert.textContent).toContain("Incorrect username or password. Check them and try again.");
+    const username = screen.getByLabelText("Username");
+    const password = screen.getByLabelText("Password");
+    expect(username.getAttribute("aria-invalid")).toBe("true");
+    expect(password.getAttribute("aria-invalid")).toBe("true");
+    expect((password as HTMLInputElement).value).toBe("");
+    expect(document.activeElement).toBe(username);
+    // Never reveal which field was wrong.
+    expect(alert.textContent).not.toMatch(/username was wrong|password was wrong/i);
   });
 
-  it("calls onSuccess with the user on a good login", async () => {
-    mockFetch(() => jsonResponse(200, { user, csrf_token: "t" }));
+  it("shows Signing in… while the request runs and calls onSuccess on a good login", async () => {
+    let resolveLogin: (response: Response) => void = () => {};
+    mockFetch(() => new Promise<Response>((resolve) => (resolveLogin = resolve)));
     const onSuccess = renderLogin();
     await submitCredentials();
+
+    const button = screen.getByRole("button", { name: "Signing in…" });
+    expect(button.getAttribute("disabled")).not.toBeNull();
+
+    resolveLogin(jsonResponse(200, { user, csrf_token: "t" }));
     await vi.waitFor(() => expect(onSuccess).toHaveBeenCalledWith(user));
   });
 });
