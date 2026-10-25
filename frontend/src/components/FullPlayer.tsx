@@ -107,9 +107,11 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
   const cycleSpeed = () => player.setRate(player.rate >= SPEED_MAX ? SPEED_MIN : player.rate + 0.25);
 
   return (
-    <div className="fixed inset-0 z-30 overflow-y-auto bg-page">
-      <div className="mx-auto flex min-h-full w-full max-w-md flex-col px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] md:max-w-2xl lg:max-w-3xl lg:px-10">
-        <div className="sticky top-0 z-10 -mx-6 bg-page/95 px-6 pb-2 pt-safe backdrop-blur">
+    <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-page">
+      <div className="mx-auto flex h-full w-full max-w-md flex-col px-6 pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-2xl lg:max-w-3xl lg:px-10">
+        {/* Header + controls never scroll: only the page panel below does, so
+            the reader can never slide over the chapter select or scrubber. */}
+        <div className="flex-none -mx-6 bg-page px-6 pb-2 pt-safe">
           <button
             type="button"
             aria-label="Close player"
@@ -322,7 +324,7 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
           </div>
         </div>
 
-        {readAlong && <ReadAlong className="mt-4" />}
+        {readAlong && <ReadAlong className="mt-3 min-h-0 flex-1 pb-2" />}
       </div>
     </div>
   );

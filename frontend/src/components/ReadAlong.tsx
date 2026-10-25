@@ -103,13 +103,13 @@ export function ReadAlong({ className }: { className?: string }) {
     });
 
   return (
-    <div className={clsx("mx-auto w-full max-w-[68ch]", className)}>
+    <div className={clsx("mx-auto flex min-h-0 w-full max-w-[68ch] flex-col", className)}>
       <div
         ref={panel}
         onWheel={markManual}
         onTouchMove={markManual}
         onKeyDown={markManual}
-        className="reader-scroll relative max-h-[calc(100dvh-20rem)] overflow-y-auto rounded-card border border-line bg-paper px-8 pb-8 md:px-10 md:pb-10"
+        className="reader-scroll relative min-h-0 flex-1 overflow-y-auto rounded-card border border-line bg-paper px-8 pb-8 md:px-10 md:pb-10"
       >
         <div className="sticky top-0 z-10 -mx-8 mb-2 flex justify-end gap-1 bg-paper/95 px-8 pb-2 pt-8 backdrop-blur md:-mx-10 md:px-10 md:pt-10">
           <button

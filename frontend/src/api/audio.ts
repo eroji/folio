@@ -37,17 +37,30 @@ export interface Segment {
   char_end: number;
 }
 
+const PREPARE_TIMEOUT_MS = 20_000;
+
 export function prepareAudio(
   bookId: string,
   segmentId: string,
   count: number,
   voice?: string,
 ): Promise<PrepareResponse> {
-  return api.post<PrepareResponse>(`/books/${bookId}/audio/prepare`, {
-    segment_id: segmentId,
-    count,
-    ...(voice ? { voice } : {}),
+  // A request that never settles would block every later prepare (the player
+  // keeps one in flight). Fail it, show Retry, and let the poll try again.
+  const timeout = new Promise<never>((_, reject) => {
+    window.setTimeout(
+      () => reject(new Error("Audio preparation timed out. Try again.")),
+      PREPARE_TIMEOUT_MS,
+    );
   });
+  return Promise.race([
+    api.post<PrepareResponse>(`/books/${bookId}/audio/prepare`, {
+      segment_id: segmentId,
+      count,
+      ...(voice ? { voice } : {}),
+    }),
+    timeout,
+  ]);
 }
 
 export function segmentsForChapter(bookId: string, chapterId: string): Promise<{ items: Segment[] }> {

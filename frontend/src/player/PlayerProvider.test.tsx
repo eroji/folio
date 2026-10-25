@@ -93,6 +93,28 @@ describe("PlayerProvider", () => {
     expect(new Set(played).size).toBe(1); // no overlap: one element resumes
   });
 
+  it("resuming while the segment is still generating asks again instead of hanging", async () => {
+    prepareCalls = installPlayerFetch({ statuses: { [`${CH1}-seg0`]: "queued" } }).prepareCalls;
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    act(() => getPlayer().toggle());
+    await waitFor(() => expect(getPlayer().preparing).toBe(true));
+    const before = prepareCalls.filter((call) => call.segment_id === `${CH1}-seg0`).length;
+
+    act(() => getPlayer().pause());
+    act(() => getPlayer().toggle());
+
+    // The bug: resume only called pump() and waited for a poll that could be
+    // lost, leaving "Preparing audio…" forever. Resume must issue a prepare.
+    await waitFor(() =>
+      expect(prepareCalls.filter((call) => call.segment_id === `${CH1}-seg0`).length).toBeGreaterThan(
+        before,
+      ),
+    );
+  });
+
   it("ended moves to the next segment and only then starts the other element", async () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);

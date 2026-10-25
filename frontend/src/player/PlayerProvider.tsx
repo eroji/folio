@@ -413,8 +413,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (!id) return;
       await load(id);
     }
-    if (currentItem()) pump();
-    else await topUp();
+    const item = currentItem();
+    if (item?.status === "ready") {
+      pump();
+    } else {
+      // Resuming onto a segment that is still generating must ask immediately;
+      // waiting for the poll made pause/resume look stuck.
+      s.preparing = true;
+      bump();
+      await topUp();
+    }
     bump();
   }
 
@@ -569,6 +577,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const timer = window.setInterval(() => void fns.current.topUp(), POLL_MS);
     return () => window.clearInterval(timer);
   }, [s.intent, s.preparing]);
+
+  // Background tabs throttle timers; catching up on return avoids a dead
+  // "Preparing audio…" after the user comes back to the tab.
+  useEffect(() => {
+    const wake = () => {
+      if (document.visibilityState === "visible" && s.intent && s.preparing) {
+        void fns.current.topUp();
+      }
+    };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", wake);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- s is a stable ref
+  }, []);
 
   // The 10 s save timer runs only while playing; event saves re-arm it.
   useEffect(() => {

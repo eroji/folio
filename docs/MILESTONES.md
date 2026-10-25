@@ -160,7 +160,9 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | X | `feat/book-settings` | C | cover play/percent overlay, book settings with chapters + pronunciation table, reset confirmation |
 | Y | `feat/voices-cleanup` | D | language-only voice picker, no Default/Show-all, no `tts` |
 
-**Status:** dispatched 2026-10-24 from the second demo (reader-as-page, pronunciation rules, chapter select, Plex mini player, book settings, voice cleanup).
+**Status:** **done 2026-10-24.** Reader is a serif page with its own scrollbar; chapter `<select>` + prev/next arrows; Plex-style mini player (cover percent badge, elapsed/total, prev/back/play/forward/next/stop, speed on desktop); book settings holds chapter inclusion and the pronunciation table; reset asks for confirmation and restarts at chapter 1; voices are language-only with no Default/Show-all and no `tts`. 378 backend / 114 web / 9 Playwright tests; acceptance includes pronunciation CRUD + tts-hidden.
+
+**Fixes found during acceptance:** the player loaded *all* chapters (including excluded ones) and landed on an excluded first chapter → "Chapter not found"; it now filters excluded chapters at load. Chapter numbering differs between surfaces (player shows original `idx+1`, book page numbers the included list) — cosmetic, align in a later pass.
 
 ## Known gaps carried into M3+
 
