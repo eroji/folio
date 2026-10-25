@@ -219,8 +219,8 @@ Handoff: `docs/ui-handoff/HANDOFF.md` (the old `folio-ui-handoff` is superseded)
 |---|---|---|
 | 1 | Tokens, Sora/Figtree, remove theme, lucide, brand | **done** — dark-only, 193 web tests, new brand |
 | 2 | Shell: sidebar, top bar, account menu, phone nav, routes | **done** — 200 web tests, routes `/`, `/library`, `/search` |
-| 3 | Player bar, expanded player, phone player/read-along | in progress |
-| 4 | Book page two-column, ⋮ menu + narrator dialog | planned |
+| 3 | Player bar, expanded player, phone player/read-along | **done** — 197 web tests, panel/focus removed |
+| 4 | Book page two-column, ⋮ menu + narrator dialog | in progress |
 | 5 | Home/Library shelves, Genre data, group API | backend + frontend in progress |
 | 6 | Search, Upload, Settings, Sign in | planned |
 | 7 | Restyle remaining, clean up, rewrite DESIGN.md | planned |
