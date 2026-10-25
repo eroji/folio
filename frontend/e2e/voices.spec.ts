@@ -44,6 +44,6 @@ test("the narrator voice override persists across a reload", async ({ page }) =>
     page.getByRole("menuitemradio", { name: /Ashley/ }).first(),
   ).toHaveAttribute("aria-checked", "true");
 
-  // The primary action starts the shared player (the panel on desktop).
+  // The primary action starts the shared player (the bar at the bottom).
   await expect(page.getByRole("button", { name: /Play|Resume/ })).toBeVisible();
 });

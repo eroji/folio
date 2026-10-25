@@ -1,11 +1,20 @@
+/** Read-along (handoff "Now playing, expanded"): the chapter as lyrics-style
+ * sentences — past at 38% white, the current one full white and larger,
+ * upcoming at 62%. The text scrolls inside its own area (never the window)
+ * and keeps the current sentence about a third from the top while auto-scroll
+ * is on; a manual scroll pauses the follow and shows "Back to current".
+ * Tapping a sentence seeks there. `useReadAlongControls` lifts the text-size
+ * and auto-scroll knobs so the phone sheet can drive them from its strip and
+ * pinned footer. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { usePlayer } from "../player/usePlayer";
+import { Icon } from "./Icon";
 
 const SENTENCES = /[^.!?。！？…]+[.!?。！？…]*/g;
 
-/** Sentence split for the read-along panel; handles punctuation without a
- * trailing space (CJK "。" / "！"). */
+/** Sentence split for the read-along; handles punctuation without a trailing
+ * space (CJK "。" / "！"). */
 export function splitSentences(text: string): string[] {
   return text.match(SENTENCES)?.map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0) ?? [text];
 }
@@ -19,77 +28,73 @@ interface Sentence {
 
 const SCROLL_MS = 250; // auto-scroll target refresh throttle
 const SCROLL_ANIM_MS = 300; // ease-out animation toward the target
-const MANUAL_MS = 5000; // auto-scroll pause after the user scrolls
 const FONT_KEY = "folio-readalong-font";
-/** A− / A+ steps applied to the base clamp(); two steps up from the default. */
+/** Text-size button steps applied to 22/26 px (phone 21/25). */
 const FONT_SCALES = [1, 1.15, 1.3];
 
-function readFontStep(): number {
-  const stored = Number(localStorage.getItem(FONT_KEY));
-  return Number.isInteger(stored) && stored >= 0 && stored < FONT_SCALES.length ? stored : 0;
+export interface ReadAlongControls {
+  autoScroll: boolean;
+  setAutoScroll: (value: boolean) => void;
+  fontStep: number;
+  cycleFont: () => void;
 }
 
-/** A−/A+ reading-size step persisted under FONT_KEY; shared with FocusMode's
- * header buttons so both surfaces drive one preference. */
-export function useReadFontStep(): [number, (delta: number) => void] {
-  const [step, setStep] = useState(readFontStep);
-  const change = useCallback(
-    (delta: number) =>
-      setStep((current) => {
-        const next = Math.min(FONT_SCALES.length - 1, Math.max(0, current + delta));
+export function useReadAlongControls(): ReadAlongControls {
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [fontStep, setFontStep] = useState(() => {
+    const stored = Number(localStorage.getItem(FONT_KEY));
+    return Number.isInteger(stored) && stored >= 0 && stored < FONT_SCALES.length ? stored : 0;
+  });
+  const cycleFont = useCallback(
+    () =>
+      setFontStep((current) => {
+        const next = (current + 1) % FONT_SCALES.length;
         localStorage.setItem(FONT_KEY, String(next));
         return next;
       }),
     [],
   );
-  return [step, change];
+  return { autoScroll, setAutoScroll, fontStep, cycleFont };
 }
 
-/** Read-along: the whole chapter as ebook-styled paragraphs, the spoken
- * sentence highlighted on `--highlight` (position = segment index +
- * time/duration share mapped through char_start/char_end), auto-centered,
- * tap-to-seek, A−/A+ font steps persisted in localStorage. `compact` is the
- * Now Playing panel variant: fixed 17 px / 1.65, no font toolbar. `focus` is
- * the FocusMode variant: transparent on the overlay's paper, 21 px / 1.75,
- * size driven by `fontStep` from the header (no toolbar). */
 export function ReadAlong({
   className,
-  compact = false,
-  focus = false,
-  fontStep,
+  phone = false,
+  toolbar = true,
+  controls,
 }: {
   className?: string;
-  compact?: boolean;
-  focus?: boolean;
-  fontStep?: number;
+  /** Phone sheet sizes: 21 / 25 px and faded edges. */
+  phone?: boolean;
+  /** Render the "Follows the narration" row (the sheet drives it externally). */
+  toolbar?: boolean;
+  controls?: ReadAlongControls;
 }) {
   const player = usePlayer();
+  const own = useReadAlongControls();
+  const c = controls ?? own;
   const panel = useRef<HTMLDivElement>(null);
   const lastScroll = useRef(0);
-  const manualUntil = useRef(0);
   const animation = useRef<number | null>(null);
+  const jumpTo = useRef<(() => void) | null>(null);
 
-  const groups = useMemo(
+  const all = useMemo(
     () =>
-      player.segments.map((segment, segmentIdx) => {
+      player.segments.flatMap((segment, segmentIdx) => {
         let local = 0;
-        const sentences: Sentence[] = splitSentences(segment.text).map((text) => {
+        return splitSentences(segment.text).map((text) => {
           const sentence: Sentence = { text, start: segment.char_start + local, segmentIdx };
           local += text.length; // ponytail: separators are dropped, ±1 char drift is fine for highlighting
           return sentence;
         });
-        return { segment, segmentIdx, sentences };
       }),
     [player.segments],
   );
-  const all = useMemo(() => groups.flatMap((group) => group.sentences), [groups]);
 
   const current = player.segments[player.index];
   const duration = current ? player.status[current.id]?.duration_s ?? 0 : 0;
   const share = duration > 0 ? Math.min(1, player.time / duration) : 0;
-  const spoken = current
-    ? current.char_start + share * Math.max(0, current.char_end - current.char_start)
-    : 0;
+  const spoken = current ? current.char_start + share * Math.max(0, current.char_end - current.char_start) : 0;
   let active = 0;
   for (let i = 0; i < all.length; i += 1) {
     if ((all[i]?.start ?? 0) <= spoken) active = i;
@@ -97,23 +102,15 @@ export function ReadAlong({
   }
   const activeSentence: Sentence | undefined = all[active];
 
-  // Runs on every render (timeupdate bumps it); the throttle refreshes the
-  // target ≤ 4/s and each refresh replaces the in-flight animation, so the
-  // panel glides instead of jumping. Scrolls the panel only — never the window.
-  useEffect(() => {
-    if (!player.playing) return;
-    const now = Date.now();
-    if (now < manualUntil.current || now - lastScroll.current < SCROLL_MS) return;
+  function scrollToCurrent() {
     const box = panel.current;
     const node = box?.querySelector<HTMLElement>('[aria-current="true"]');
     if (!box || !node) return;
-    lastScroll.current = now;
     stopAnimation();
     const reduced =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const from = box.scrollTop;
-    const to = node.offsetTop - box.clientHeight / 2;
+    const to = Math.max(0, node.offsetTop - box.clientHeight / 3); // current ~1/3 from the top
     if (reduced || from === to) {
       box.scrollTop = to;
       return;
@@ -126,6 +123,17 @@ export function ReadAlong({
       animation.current = t < 1 ? requestAnimationFrame(frame) : null;
     };
     animation.current = requestAnimationFrame(frame);
+  }
+  jumpTo.current = scrollToCurrent;
+
+  // Runs on every render (timeupdate bumps it); the throttle refreshes the
+  // target ≤ 4/s. Scrolls the panel only — never the window.
+  useEffect(() => {
+    if (!player.playing || !c.autoScroll || manual) return;
+    const now = Date.now();
+    if (now - lastScroll.current < SCROLL_MS) return;
+    lastScroll.current = now;
+    scrollToCurrent();
   });
 
   useEffect(() => stopAnimation, []);
@@ -137,9 +145,16 @@ export function ReadAlong({
     }
   }
 
+  // A manual scroll pauses the follow until "Back to current" (or the
+  // auto-scroll toggle is clicked off and on again).
+  const [manual, setManual] = useState(false);
+  useEffect(() => {
+    if (c.autoScroll) setManual(false);
+  }, [c.autoScroll]);
   const markManual = () => {
-    manualUntil.current = Date.now() + MANUAL_MS;
-    stopAnimation(); // a manual scroll wins immediately; auto-scroll resumes after the pause
+    if (!c.autoScroll) return;
+    stopAnimation();
+    setManual(true);
   };
 
   const tapSentence = (sentence: Sentence) => {
@@ -150,89 +165,83 @@ export function ReadAlong({
     player.seekSegment(sentence.segmentIdx, ((sentence.start - segment.char_start) / span) * seconds);
   };
 
-  const [innerStep, changeFont] = useReadFontStep();
-  const step = fontStep ?? innerStep;
+  const scale = FONT_SCALES[c.fontStep] ?? 1;
+  const base = (phone ? 21 : 22) * scale;
+  const currentSize = (phone ? 25 : 26) * scale;
 
   return (
-    <div className={clsx("mx-auto flex min-h-0 w-full flex-col", focus ? "max-w-[680px]" : "max-w-[68ch]", className)}>
-      <div
+    <div className={clsx("relative mx-auto flex min-h-0 w-full max-w-[68ch] flex-col", className)}>
+      {toolbar && (
+        <div className="flex shrink-0 items-center justify-between gap-3 pb-3">
+          <span className="text-sm text-fg-2">Follows the narration</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="Text size"
+              title="Text size"
+              onClick={c.cycleFont}
+              className="tap grid size-9 shrink-0 place-items-center rounded-full border border-border text-fg hover:bg-raised"
+            >
+              <Icon name="AlignLeft" size={18} />
+            </button>
+            <button
+              type="button"
+              aria-pressed={c.autoScroll}
+              onClick={() => c.setAutoScroll(!c.autoScroll)}
+              className="tap h-9 rounded-full bg-raised px-3.5 text-sm font-semibold text-fg hover:bg-border"
+            >
+              Auto-scroll {c.autoScroll ? "on" : "off"}
+            </button>
+          </div>
+        </div>
+      )}
+      <article
         ref={panel}
         onWheel={markManual}
         onTouchMove={markManual}
         onKeyDown={markManual}
         lang={player.book?.language}
+        aria-label="Read along"
+        data-font-step={c.fontStep}
         className={clsx(
-          "reader-scroll relative min-h-0 flex-1 overflow-y-auto",
-          focus
-            ? "px-2 pb-16"
-            : clsx(
-                "border bg-paper",
-                compact
-                  ? "rounded-md border-paper-border px-6 py-5"
-                  : "rounded-lg border-paper-border px-8 pb-8 md:px-10 md:pb-10",
-              ),
-          className,
+          "no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain",
+          phone && "fade-edges",
         )}
       >
-        {!compact && !focus && (
-          <div className="sticky top-0 z-10 -mx-8 mb-2 flex justify-end gap-1 bg-paper/95 px-8 pb-2 pt-8 backdrop-blur md:-mx-10 md:px-10 md:pt-10">
-            <button
-              type="button"
-              aria-label="Decrease font size, A−"
-              disabled={step === 0}
-              onClick={() => changeFont(-1)}
-              className="tap grid size-9 place-items-center rounded-md border border-control-border bg-surface text-base font-medium hover:bg-raised disabled:opacity-40"
-            >
-              A−
-            </button>
-            <button
-              type="button"
-              aria-label="Increase font size, A+"
-              disabled={step === FONT_SCALES.length - 1}
-              onClick={() => changeFont(1)}
-              className="tap grid size-9 place-items-center rounded-md border border-control-border bg-surface text-base font-medium hover:bg-raised disabled:opacity-40"
-            >
-              A+
-            </button>
-          </div>
-        )}
         <div
-          data-font-step={step}
           aria-live="off"
-          style={
-            focus
-              ? { fontSize: `calc(1.3125rem * ${FONT_SCALES[step]})`, lineHeight: 1.75 }
-              : compact
-                ? { fontSize: "var(--text-read)", lineHeight: 1.65 }
-                : {
-                    fontSize: `calc(clamp(1.05rem, 0.7rem + 1.2vw, 1.35rem) * ${FONT_SCALES[step]})`,
-                    lineHeight: 1.75,
-                  }
-          }
-          className="font-reading text-reading [text-wrap:pretty]"
+          style={{ fontSize: base, lineHeight: 1.55, fontWeight: 600, letterSpacing: "-0.01em" }}
+          className="flex flex-col gap-[1em] font-ui text-fg [text-wrap:pretty]"
         >
-          {groups.map((group) => (
-            <p key={group.segment.id} className="mb-[0.85em] last:mb-0">
-              {group.sentences.map((sentence) => (
-                <span
-                  key={sentence.start}
-                  aria-current={sentence === activeSentence ? "true" : undefined}
-                  onClick={() => tapSentence(sentence)}
-                  className={clsx(
-                    "cursor-pointer rounded-sm py-px",
-                    sentence === activeSentence && "bg-highlight text-fg",
-                  )}
-                >
-                  {sentence.text}{" "}
-                </span>
-              ))}
+          {all.length === 0 && <p className="text-md font-medium text-fg-2">Nothing to read along yet.</p>}
+          {all.map((sentence, i) => (
+            <p
+              key={`${sentence.start}-${sentence.segmentIdx}`}
+              aria-current={i === active ? "true" : undefined}
+              onClick={() => tapSentence(sentence)}
+              style={i === active ? { fontSize: currentSize } : undefined}
+              className={clsx("m-0 cursor-pointer", i < active ? "ra-past" : i === active ? "ra-current" : "ra-next")}
+            >
+              {sentence.text}
             </p>
           ))}
-          <p className="sr-only" aria-live="polite">
-            {activeSentence?.text}
-          </p>
         </div>
-      </div>
+        {manual && c.autoScroll && (
+          <button
+            type="button"
+            onClick={() => {
+              setManual(false);
+              jumpTo.current?.();
+            }}
+            className="tap sticky bottom-3 left-1/2 z-10 -ml-[64px] h-9 w-32 rounded-full bg-raised text-sm font-semibold text-fg shadow-(--shadow-menu) hover:bg-border"
+          >
+            Back to current
+          </button>
+        )}
+        <p className="sr-only" aria-live="polite">
+          {activeSentence?.text}
+        </p>
+      </article>
     </div>
   );
 }

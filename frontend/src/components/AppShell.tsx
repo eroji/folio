@@ -4,11 +4,14 @@ import clsx from "clsx";
 import { useAuth } from "../auth/AuthProvider";
 import { useContinueListening, type ContinueItem } from "../api/progress";
 import { useEvents } from "../hooks/useEvents";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { AccountMenu } from "./AccountMenu";
-import { FocusMode } from "./FocusMode";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
-import { PlayerSurfaces, usePlayerCollapsed } from "./NowPlaying";
+import { MiniPlayer } from "./MiniPlayer";
+import { PlayerBar } from "./PlayerBar";
+import { coverGlow } from "./PlayerPage";
+import { ResumePrompt } from "./ResumePrompt";
 import { PlayerProvider } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import folioMark from "../assets/folio-mark.svg";
@@ -46,11 +49,6 @@ function useSidebarCollapsed(): [boolean, () => void] {
     [],
   );
   return [collapsed, toggle];
-}
-
-/** Focus mode is desktop-only; on phones the /player route is the full player. */
-function isDesktop(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches;
 }
 
 function Logo({ size, textClass }: { size: number; textClass: string }) {
@@ -300,25 +298,22 @@ function PhoneHeader() {
 }
 
 /** Direction D shell: labelled sidebar (desktop/tablet) or phone header +
- * bottom nav, a glowing main pane, and — until Phase 3 replaces them with
- * the player bar and mini player — the old PlayerSurfaces stay mounted so
- * playback keeps working. */
+ * bottom nav, a glowing main pane, and the player surfaces — the desktop
+ * player bar or the phone mini player — whenever a book is loaded. */
 function Shell() {
   const { user } = useAuth();
   const player = usePlayer();
   useEvents();
   const location = useLocation();
   const [collapsed, toggleSidebar] = useSidebarCollapsed();
-  const [panelCollapsed, toggleCollapse] = usePlayerCollapsed();
-  const [focus, setFocus] = useState(false);
+  const phone = !useMediaQuery("(min-width: 768px)");
+  const onPlayerPage = location.pathname === "/player";
 
   // Handoff "When the player shows": load the most recently played book,
   // paused, once per app start, so Resume is one click from any page.
   const { data: continueData } = useContinueListening(4);
   const p = useRef(player);
   p.current = player;
-  const focusRef = useRef(focus);
-  focusRef.current = focus;
   const started = useRef(false);
   useEffect(() => {
     if (started.current || p.current.book) {
@@ -334,41 +329,39 @@ function Shell() {
     }
   }, [continueData, location]);
 
-  // Shortcuts: P collapses/expands the panel, F opens focus mode, Esc exits.
+  // Space toggles play, arrows seek — whenever a book is loaded.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (!p.current.book) return;
       const target = event.target as HTMLElement;
       if (target.isContentEditable || /^(?:input|textarea|select)$/i.test(target.tagName)) return;
-      if (event.key === "Escape") {
-        if (focusRef.current) setFocus(false);
-        return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.code === "Space") {
+        event.preventDefault(); // Space on a focused button would also click it
+        p.current.toggle();
+      } else if (event.key === "ArrowRight") {
+        p.current.skipForward();
+      } else if (event.key === "ArrowLeft") {
+        p.current.skipBack();
       }
-      if (event.metaKey || event.ctrlKey || event.altKey || focusRef.current || !p.current.book) return;
-      const key = event.key.toLowerCase();
-      if (key === "p") toggleCollapse();
-      else if (key === "f" && isDesktop()) setFocus(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleCollapse]);
+  }, []);
 
   if (!user) return null; // RequireAuth guarantees a user before this renders.
 
+  const glow = onPlayerPage ? coverGlow(player.book) : { className: "bg-page-glow" as const };
   return (
     <div className="flex min-h-dvh">
       <Sidebar collapsed={collapsed} onToggle={toggleSidebar} inProgress={continueData?.items ?? []} />
-      <div
-        className={clsx(
-          "bg-page-glow flex min-w-0 flex-1 flex-col",
-          player.book && !panelCollapsed && "desktop:pr-[calc(50vw-2px)]",
-        )}
-      >
+      <div className={clsx("flex min-w-0 flex-1 flex-col", glow.className)} style={glow.style}>
         <TopBar />
         <PhoneHeader />
         <main
           className={clsx(
             "min-w-0 flex-1 px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] desktop:px-10 desktop:pb-12",
-            player.book && "pb-[calc(9rem+env(safe-area-inset-bottom))] desktop:pb-24",
+            player.book && "pb-[calc(10rem+env(safe-area-inset-bottom))] desktop:pb-[calc(72px+3rem)]",
           )}
         >
           <Outlet />
@@ -377,8 +370,12 @@ function Shell() {
 
       <BottomNav />
 
-      <PlayerSurfaces collapsed={panelCollapsed} onToggleCollapse={toggleCollapse} onFocus={() => setFocus(true)} />
-      {focus && player.book && <FocusMode onExit={() => setFocus(false)} />}
+      {player.book && !onPlayerPage && player.resumePrompt && (
+        <div className="fixed inset-x-0 bottom-[calc(8.5rem+env(safe-area-inset-bottom))] z-40 mx-auto w-full max-w-md px-4 desktop:bottom-[calc(72px+1rem)]">
+          <ResumePrompt {...player.resumePrompt} />
+        </div>
+      )}
+      {player.book && (phone ? !onPlayerPage && <MiniPlayer /> : <PlayerBar />)}
     </div>
   );
 }
