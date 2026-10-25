@@ -628,7 +628,7 @@ export function BookDetailPage() {
                       {book.authors.map((author, index) => (
                         <span key={author}>
                           {index > 0 && ", "}
-                          <Link to={`/?q=${encodeURIComponent(author)}`} className="text-accent-fg hover:text-fg">
+                          <Link to={`/search?q=${encodeURIComponent(author)}`} className="text-accent-fg hover:text-fg">
                             {author}
                           </Link>
                         </span>
@@ -687,7 +687,7 @@ export function BookDetailPage() {
                   {book.tags.map((tag) => (
                     <Link
                       key={tag}
-                      to={`/?q=${encodeURIComponent(tag)}`}
+                      to={`/search?q=${encodeURIComponent(tag)}`}
                       className="inline-flex h-7 items-center rounded-md bg-raised px-2.5 text-sm text-fg hover:bg-divider"
                     >
                       {tag}

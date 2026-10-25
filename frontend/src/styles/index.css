@@ -8,7 +8,7 @@
 /* (HANDOFF phases 2–7).                                               */
 /* ------------------------------------------------------------------ */
 @theme inline {
-  --breakpoint-desktop: 1050px; /* old shell breakpoint, until Phase 2 */
+  --breakpoint-desktop: 1024px; /* Direction D desktop; 768–1023 = tablet rail (Phase 2) */
   --text-read: 1.0625rem;       /* old read-along default, Phase 3 retunes */
   --radius-cover: 10px;         /* D grid-cover radius */
 

@@ -627,8 +627,8 @@ describe("BookDetailPage", () => {
     expect(screen.getByText("9781234567890")).toBeTruthy();
     expect(screen.queryByText("Series")).toBeNull();
     expect(screen.getByText("A ledger.")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Mystery" }).getAttribute("href")).toBe("/?q=Mystery");
-    expect(screen.getByRole("link", { name: "Frank Herbert" }).getAttribute("href")).toBe("/?q=Frank%20Herbert");
+    expect(screen.getByRole("link", { name: "Mystery" }).getAttribute("href")).toBe("/search?q=Mystery");
+    expect(screen.getByRole("link", { name: "Frank Herbert" }).getAttribute("href")).toBe("/search?q=Frank%20Herbert");
   });
 
   it("opens the narrator voice menu and saves the choice with a PATCH", async () => {

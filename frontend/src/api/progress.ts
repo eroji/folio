@@ -5,6 +5,7 @@
  * unload mid-save and sendBeacon cannot set headers (docs/DECISIONS.md).
  * A failed save returns null — saving is silent by design, the next tick
  * retries. */
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { API_BASE, api, csrfToken } from "./client";
 import type { Book, Progress } from "./types";
@@ -85,6 +86,35 @@ export function useFinishedListening(limit = 12) {
     queryKey: [...finishedQueryKey, limit],
     queryFn: () => api.get<{ items: ContinueItem[] }>(`/me/finished?limit=${limit}`),
   });
+}
+
+export interface ProgressMembership {
+  progressById: Map<string, Progress>;
+  inProgress: Set<string>;
+  finished: Set<string>;
+}
+
+/** Which books are in progress / finished, and their progress rows. The API
+ * exposes no per-book progress on /books, so membership comes from
+ * /me/continue and /me/finished (capped at 50 each, docs/DECISIONS.md). */
+export function useProgressMembership(): ProgressMembership {
+  const { data: continueData } = useContinueListening(50);
+  const { data: finishedData } = useFinishedListening(50);
+  return useMemo(() => {
+    const progressById = new Map<string, Progress>();
+    const inProgress = new Set<string>();
+    const finished = new Set<string>();
+    for (const item of continueData?.items ?? []) {
+      progressById.set(item.book.id, item.progress);
+      if (item.progress.finished_at) finished.add(item.book.id);
+      else inProgress.add(item.book.id);
+    }
+    for (const item of finishedData?.items ?? []) {
+      progressById.set(item.book.id, item.progress);
+      finished.add(item.book.id);
+    }
+    return { progressById, inProgress, finished };
+  }, [continueData, finishedData]);
 }
 
 const DEVICE_KEY = "folio-device";

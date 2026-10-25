@@ -1,8 +1,9 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { RequireAuth, useAuth } from "./auth/AuthProvider";
 import { LoginPage } from "./auth/LoginPage";
 import { AppShell } from "./components/AppShell";
 import { LibraryPage } from "./pages/LibraryPage";
+import { SearchPage } from "./pages/SearchPage";
 import { UploadPage } from "./pages/UploadPage";
 import { BookDetailPage } from "./pages/BookDetailPage";
 import { EditBookPage } from "./pages/EditBookPage";
@@ -15,13 +16,24 @@ function AdminRoute() {
   return user?.role === "admin" ? <AdminPage /> : <Navigate to="/" replace />;
 }
 
+/** Search moved to /search; old ?q= links on the library redirect. */
+function LibraryRoute() {
+  const [params] = useSearchParams();
+  const q = params.get("q");
+  if (q) return <Navigate to={`/search?q=${encodeURIComponent(q)}`} replace />;
+  return <LibraryPage />;
+}
+
 export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>
-          <Route path="/" element={<LibraryPage />} />
+          {/* Phase 5 replaces this with the Home shelves. */}
+          <Route path="/" element={<LibraryRoute />} />
+          <Route path="/library" element={<LibraryRoute />} />
+          <Route path="/search" element={<SearchPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/books/:id" element={<BookDetailPage />} />
           <Route path="/books/:id/edit" element={<EditBookPage />} />
