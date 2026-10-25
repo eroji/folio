@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { usePlayer } from "../player/usePlayer";
 
@@ -28,12 +28,40 @@ function readFontStep(): number {
   return Number.isInteger(stored) && stored >= 0 && stored < FONT_SCALES.length ? stored : 0;
 }
 
+/** A−/A+ reading-size step persisted under FONT_KEY; shared with FocusMode's
+ * header buttons so both surfaces drive one preference. */
+export function useReadFontStep(): [number, (delta: number) => void] {
+  const [step, setStep] = useState(readFontStep);
+  const change = useCallback(
+    (delta: number) =>
+      setStep((current) => {
+        const next = Math.min(FONT_SCALES.length - 1, Math.max(0, current + delta));
+        localStorage.setItem(FONT_KEY, String(next));
+        return next;
+      }),
+    [],
+  );
+  return [step, change];
+}
+
 /** Read-along: the whole chapter as ebook-styled paragraphs, the spoken
  * sentence highlighted on `--highlight` (position = segment index +
  * time/duration share mapped through char_start/char_end), auto-centered,
  * tap-to-seek, A−/A+ font steps persisted in localStorage. `compact` is the
- * Now Playing panel variant: fixed 17 px / 1.65, no font toolbar. */
-export function ReadAlong({ className, compact = false }: { className?: string; compact?: boolean }) {
+ * Now Playing panel variant: fixed 17 px / 1.65, no font toolbar. `focus` is
+ * the FocusMode variant: transparent on the overlay's paper, 21 px / 1.75,
+ * size driven by `fontStep` from the header (no toolbar). */
+export function ReadAlong({
+  className,
+  compact = false,
+  focus = false,
+  fontStep,
+}: {
+  className?: string;
+  compact?: boolean;
+  focus?: boolean;
+  fontStep?: number;
+}) {
   const player = usePlayer();
   const panel = useRef<HTMLDivElement>(null);
   const lastScroll = useRef(0);
@@ -95,16 +123,11 @@ export function ReadAlong({ className, compact = false }: { className?: string; 
     player.seekSegment(sentence.segmentIdx, ((sentence.start - segment.char_start) / span) * seconds);
   };
 
-  const [step, setStep] = useState(readFontStep);
-  const changeFont = (delta: number) =>
-    setStep((current) => {
-      const next = Math.min(FONT_SCALES.length - 1, Math.max(0, current + delta));
-      localStorage.setItem(FONT_KEY, String(next));
-      return next;
-    });
+  const [innerStep, changeFont] = useReadFontStep();
+  const step = fontStep ?? innerStep;
 
   return (
-    <div className={clsx("mx-auto flex min-h-0 w-full max-w-[68ch] flex-col", className)}>
+    <div className={clsx("mx-auto flex min-h-0 w-full flex-col", focus ? "max-w-[680px]" : "max-w-[68ch]", className)}>
       <div
         ref={panel}
         onWheel={markManual}
@@ -112,14 +135,19 @@ export function ReadAlong({ className, compact = false }: { className?: string; 
         onKeyDown={markManual}
         lang={player.book?.language}
         className={clsx(
-          "reader-scroll relative min-h-0 flex-1 overflow-y-auto border bg-paper",
-          compact
-            ? "rounded-md border-paper-border px-6 py-5"
-            : "rounded-lg border-paper-border px-8 pb-8 md:px-10 md:pb-10",
+          "reader-scroll relative min-h-0 flex-1 overflow-y-auto",
+          focus
+            ? "px-2 pb-16"
+            : clsx(
+                "border bg-paper",
+                compact
+                  ? "rounded-md border-paper-border px-6 py-5"
+                  : "rounded-lg border-paper-border px-8 pb-8 md:px-10 md:pb-10",
+              ),
           className,
         )}
       >
-        {!compact && (
+        {!compact && !focus && (
           <div className="sticky top-0 z-10 -mx-8 mb-2 flex justify-end gap-1 bg-paper/95 px-8 pb-2 pt-8 backdrop-blur md:-mx-10 md:px-10 md:pt-10">
             <button
               type="button"
@@ -145,12 +173,14 @@ export function ReadAlong({ className, compact = false }: { className?: string; 
           data-font-step={step}
           aria-live="off"
           style={
-            compact
-              ? { fontSize: "var(--text-read)", lineHeight: 1.65 }
-              : {
-                  fontSize: `calc(clamp(1.05rem, 0.7rem + 1.2vw, 1.35rem) * ${FONT_SCALES[step]})`,
-                  lineHeight: 1.75,
-                }
+            focus
+              ? { fontSize: `calc(1.3125rem * ${FONT_SCALES[step]})`, lineHeight: 1.75 }
+              : compact
+                ? { fontSize: "var(--text-read)", lineHeight: 1.65 }
+                : {
+                    fontSize: `calc(clamp(1.05rem, 0.7rem + 1.2vw, 1.35rem) * ${FONT_SCALES[step]})`,
+                    lineHeight: 1.75,
+                  }
           }
           className="font-reading text-reading [text-wrap:pretty]"
         >

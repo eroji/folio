@@ -203,7 +203,14 @@ describe("AppShell", () => {
     expect(screen.queryByRole("complementary", { name: "Now playing" })).toBeNull();
   });
 
-  it('collapses with "p", opens focus mode with "f" and returns on Escape', async () => {
+  it('collapses with "p", opens focus mode with "f" on desktop and returns on Escape', async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: true, // desktop, and contents open by default
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
     renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
     await boot();
     await screen.findByRole("complementary", { name: "Now playing" });
@@ -212,9 +219,25 @@ describe("AppShell", () => {
     fireEvent.keyDown(document.body, { key: "p" });
     await waitFor(() => expect(localStorage.getItem("folio-player-collapsed")).toBe("false"));
     fireEvent.keyDown(document.body, { key: "f" });
-    await screen.findByRole("button", { name: "Close player" });
+    await screen.findByRole("button", { name: "Exit focus mode" });
     fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Close player" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Exit focus mode" })).toBeNull());
+    // The overlay is state, not a route: the page and panel are exactly as left.
     expect(screen.getByRole("complementary", { name: "Now playing" })).toBeTruthy();
+  });
+
+  it("does not open focus mode with f below the desktop breakpoint", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
+    await boot();
+    await screen.findByRole("complementary", { name: "Now playing" });
+    fireEvent.keyDown(document.body, { key: "f" });
+    expect(screen.queryByRole("button", { name: "Exit focus mode" })).toBeNull();
   });
 });
