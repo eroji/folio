@@ -67,6 +67,8 @@ export interface PlayerContextValue {
   progressPercent: number;
   /** Non-null while another device's saved position is >60 s ahead. */
   resumePrompt: ResumePromptProps | null;
+  /** Set while the loaded position came from another device (handoff "Other devices"). */
+  lastDevice: { label: string; at: string } | null;
   /** Seconds played within the current chapter. */
   chapterElapsed: number;
   /** Sum of the current chapter's known segment durations, in seconds. */
@@ -113,6 +115,7 @@ interface Machine {
   finished: boolean;
   finishedMarked: boolean; // the finished PUT fires once per session
   resumePrompt: ResumePromptProps | null;
+  lastDevice: { label: string; at: string } | null;
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
@@ -127,7 +130,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, error: null,
     time: 0, rate: 1, sleep: null, offset: 0, active: 0,
-    resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null,
+    resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
   const els = useMemo(() => [new Audio(), new Audio()] as const, []);
   const sleepTimer = useRef<number | null>(null);
@@ -375,6 +378,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.finishedMarked = s.finished;
       s.resumePrompt = null;
       const saved = detail.progress;
+      s.lastDevice =
+        saved && saved.device_label !== deviceLabel() ? { label: saved.device_label, at: saved.updated_at } : null;
       const ci = saved ? detail.chapters.findIndex((c) => c.id === saved.chapter_id) : -1;
       const idx = ci >= 0 ? ci : chapterId ? Math.max(0, detail.chapters.findIndex((c) => c.id === chapterId)) : 0;
       s.resumeLoading = Boolean(saved);
@@ -408,6 +413,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   async function play() {
     s.intent = true;
     s.resumePrompt = null; // playing from here is a choice of its own
+    s.lastDevice = null; // from now on this device owns the position
     if (!s.book) {
       const id = new URLSearchParams(location.search).get("book");
       if (!id) return;
@@ -453,6 +459,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.time = 0;
     s.error = null;
     s.resumePrompt = null;
+    s.lastDevice = null;
     if (location.search) navigate(location.pathname, { replace: true }); // /player must not reload the book
     bump();
   }
@@ -719,6 +726,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     finished: s.finished,
     progressPercent,
     resumePrompt: s.resumePrompt,
+    lastDevice: s.lastDevice,
     chapterElapsed: elapsed(),
     chapterTotal: chapterTotal(),
     elements: els,

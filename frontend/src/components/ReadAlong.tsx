@@ -29,10 +29,11 @@ function readFontStep(): number {
 }
 
 /** Read-along: the whole chapter as ebook-styled paragraphs, the spoken
- * sentence highlighted with a tint + left rule (position = segment index +
+ * sentence highlighted on `--highlight` (position = segment index +
  * time/duration share mapped through char_start/char_end), auto-centered,
- * tap-to-seek, A−/A+ font steps persisted in localStorage. */
-export function ReadAlong({ className }: { className?: string }) {
+ * tap-to-seek, A−/A+ font steps persisted in localStorage. `compact` is the
+ * Now Playing panel variant: fixed 17 px / 1.65, no font toolbar. */
+export function ReadAlong({ className, compact = false }: { className?: string; compact?: boolean }) {
   const player = usePlayer();
   const panel = useRef<HTMLDivElement>(null);
   const lastScroll = useRef(0);
@@ -109,33 +110,49 @@ export function ReadAlong({ className }: { className?: string }) {
         onWheel={markManual}
         onTouchMove={markManual}
         onKeyDown={markManual}
-        className="reader-scroll relative min-h-0 flex-1 overflow-y-auto rounded-card border border-line bg-paper px-8 pb-8 md:px-10 md:pb-10"
+        lang={player.book?.language}
+        className={clsx(
+          "reader-scroll relative min-h-0 flex-1 overflow-y-auto border bg-paper",
+          compact
+            ? "rounded-md border-paper-border px-6 py-5"
+            : "rounded-card border-line px-8 pb-8 md:px-10 md:pb-10",
+          className,
+        )}
       >
-        <div className="sticky top-0 z-10 -mx-8 mb-2 flex justify-end gap-1 bg-paper/95 px-8 pb-2 pt-8 backdrop-blur md:-mx-10 md:px-10 md:pt-10">
-          <button
-            type="button"
-            aria-label="Decrease font size, A−"
-            disabled={step === 0}
-            onClick={() => changeFont(-1)}
-            className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
-          >
-            A−
-          </button>
-          <button
-            type="button"
-            aria-label="Increase font size, A+"
-            disabled={step === FONT_SCALES.length - 1}
-            onClick={() => changeFont(1)}
-            className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
-          >
-            A+
-          </button>
-        </div>
+        {!compact && (
+          <div className="sticky top-0 z-10 -mx-8 mb-2 flex justify-end gap-1 bg-paper/95 px-8 pb-2 pt-8 backdrop-blur md:-mx-10 md:px-10 md:pt-10">
+            <button
+              type="button"
+              aria-label="Decrease font size, A−"
+              disabled={step === 0}
+              onClick={() => changeFont(-1)}
+              className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
+            >
+              A−
+            </button>
+            <button
+              type="button"
+              aria-label="Increase font size, A+"
+              disabled={step === FONT_SCALES.length - 1}
+              onClick={() => changeFont(1)}
+              className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
+            >
+              A+
+            </button>
+          </div>
+        )}
         <div
           data-font-step={step}
           aria-live="off"
-          style={{ fontSize: `calc(clamp(1.05rem, 0.7rem + 1.2vw, 1.35rem) * ${FONT_SCALES[step]})`, lineHeight: 1.75 }}
-          className="font-reading text-ink [text-wrap:pretty]"
+          style={
+            compact
+              ? { fontSize: "var(--text-read)", lineHeight: 1.65 }
+              : {
+                  fontSize: `calc(clamp(1.05rem, 0.7rem + 1.2vw, 1.35rem) * ${FONT_SCALES[step]})`,
+                  lineHeight: 1.75,
+                }
+          }
+          className="font-reading text-reading [text-wrap:pretty]"
         >
           {groups.map((group) => (
             <p key={group.segment.id} className="mb-[0.85em] last:mb-0">
@@ -145,9 +162,8 @@ export function ReadAlong({ className }: { className?: string }) {
                   aria-current={sentence === activeSentence ? "true" : undefined}
                   onClick={() => tapSentence(sentence)}
                   className={clsx(
-                    "cursor-pointer rounded-r py-px",
-                    sentence === activeSentence &&
-                      "bg-brand-violet/15 shadow-[inset_2px_0_0_var(--color-brand-violet)]",
+                    "cursor-pointer rounded-sm py-px",
+                    sentence === activeSentence && "bg-highlight text-fg",
                   )}
                 >
                   {sentence.text}{" "}

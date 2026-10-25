@@ -6,7 +6,9 @@ import { AppShell } from "./AppShell";
 import { AuthProvider } from "../auth/AuthProvider";
 import { LibraryPage } from "../pages/LibraryPage";
 import { DEFAULT_SETTINGS } from "../api/settings";
+import type { ContinueItem } from "../api/progress";
 import { installMockEventSource } from "../test/eventsource";
+import { installPlayerFetch, makeBook, makeProgress } from "../test/player";
 import type { Role } from "../api/types";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -16,19 +18,24 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function mockFetch(role: Role): void {
+function mockFetch(role: Role, continueItems: ContinueItem[] = []): void {
+  if (continueItems.length > 0) installPlayerFetch();
+  const playerFetch = continueItems.length > 0 ? vi.mocked(fetch) : null;
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/auth/me")) {
         return jsonResponse({
           user: { id: "u1", username: "browser", display_name: "Browser User", email: null, role },
         });
       }
+      if (url.includes("/me/continue")) return jsonResponse({ items: continueItems });
+      if (url.includes("/me/finished")) return jsonResponse({ items: [] });
       if (url.includes("/me/settings")) return jsonResponse({ settings: DEFAULT_SETTINGS });
-      if (url.includes("/me/continue") || url.includes("/me/finished")) {
-        return jsonResponse({ items: [] });
+      // Book detail, segments, prepare and progress go to the player fixture.
+      if (playerFetch && (/\/books\/[^/?]+/.test(url) || url.includes("/audio/"))) {
+        return playerFetch(input, init);
       }
       if (url.includes("/books")) return jsonResponse({ items: [], total: 0, page: 1, page_size: 24 });
       return jsonResponse({});
@@ -41,9 +48,10 @@ function renderShell(
     role = "user",
     entry = "/",
     outlet = <div />,
-  }: { role?: Role; entry?: string; outlet?: React.ReactNode } = {},
+    continueItems = [],
+  }: { role?: Role; entry?: string; outlet?: React.ReactNode; continueItems?: ContinueItem[] } = {},
 ): void {
-  mockFetch(role);
+  mockFetch(role, continueItems);
   installMockEventSource();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -180,5 +188,33 @@ describe("AppShell", () => {
     sort.focus();
     fireEvent.keyDown(sort, { key: "/" });
     expect(document.activeElement).toBe(sort);
+  });
+
+  it("loads the most recent book paused on start so Resume is one click away", async () => {
+    renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
+    await boot();
+    const panel = await screen.findByRole("complementary", { name: "Now playing" });
+    expect(within(panel).getByRole("button", { name: "Play" })).toBeTruthy(); // paused, not playing
+  });
+
+  it("shows no player surfaces without listening history", async () => {
+    renderShell();
+    await boot();
+    expect(screen.queryByRole("complementary", { name: "Now playing" })).toBeNull();
+  });
+
+  it('collapses with "p", opens focus mode with "f" and returns on Escape', async () => {
+    renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
+    await boot();
+    await screen.findByRole("complementary", { name: "Now playing" });
+    fireEvent.keyDown(document.body, { key: "p" });
+    await waitFor(() => expect(localStorage.getItem("folio-player-collapsed")).toBe("true"));
+    fireEvent.keyDown(document.body, { key: "p" });
+    await waitFor(() => expect(localStorage.getItem("folio-player-collapsed")).toBe("false"));
+    fireEvent.keyDown(document.body, { key: "f" });
+    await screen.findByRole("button", { name: "Close player" });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Close player" })).toBeNull());
+    expect(screen.getByRole("complementary", { name: "Now playing" })).toBeTruthy();
   });
 });

@@ -43,7 +43,14 @@ const skipButton =
 
 /** Screen 6: full-screen player; on phones the read-along is the content and
  * the cover/controls collapse into a compact sticky header. */
-export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
+export function FullPlayer({
+  onChangeVoice,
+  onExit,
+}: {
+  onChangeVoice?: () => void;
+  /** Focus mode: return to the page instead of navigating to the book. */
+  onExit?: () => void;
+}) {
   const player = usePlayer();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -115,7 +122,7 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
           <button
             type="button"
             aria-label="Close player"
-            onClick={() => navigate(`/books/${book.id}`)}
+            onClick={onExit ?? (() => navigate(`/books/${book.id}`))}
             className="grid h-11 w-11 place-items-center self-start rounded-pill text-muted hover:text-ink"
           >
             <X size={22} strokeWidth={1.75} aria-hidden />
