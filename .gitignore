@@ -32,3 +32,6 @@ backend/folio/static/
 .worktrees/
 .playwright/
 test-results/
+
+# Accidental Lighthouse/Chrome profile dumps (Windows-style path names)
+C:*
