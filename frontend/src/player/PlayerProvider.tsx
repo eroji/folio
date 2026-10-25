@@ -1,12 +1,25 @@
 /** Player state machine (plan Task C): two <audio> elements with a handoff
  * swap on `ended`, lookahead prepare, chapter auto-advance, sleep timer,
- * Media Session and /player URL sync. Never writes progress (M5). */
+ * Media Session and /player URL sync. Progress (plan Task Q): saves every
+ * 10 s while playing and on pause/segment change/chapter change/hide,
+ * resumes with a 3 s rewind, and prompts when another device is >60 s ahead. */
 import { createContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { fetchBookDetail, fetchSegments, prepareAudio, type PreparedSegment, type Segment } from "../api/audio";
+import {
+  continueQueryKey,
+  deviceLabel,
+  markFinished,
+  progressQueryKey,
+  readPosition,
+  rememberPosition,
+  saveProgress,
+  secondsAhead,
+} from "../api/progress";
 import { useListeningSettings, type ListeningSettings } from "../api/settings";
-import type { Book, Chapter } from "../api/types";
+import type { ResumePromptProps } from "../components/ResumePrompt";
+import type { Book, Chapter, Progress } from "../api/types";
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
 export const TTS_LOOKAHEAD = 6;
@@ -14,6 +27,17 @@ export const SPEED_MIN = 0.75;
 export const SPEED_MAX = 2.5;
 const SPEED_STEP = 0.25;
 const POLL_MS = 1000;
+/** Spec "Progress model": save every 10 s while playing. */
+const SAVE_MS = 10_000;
+/** Rewind on resume so the listener gets context. */
+const REWIND_S = 3;
+/** Prompt only when the other device is more than this far ahead. */
+const AHEAD_PROMPT_S = 60;
+
+function fmtClock(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
 
 export type SleepChoice = "chapter" | number | null;
 
@@ -34,6 +58,12 @@ export interface PlayerContextValue {
   sleep: SleepChoice;
   /** The user's synced listening settings (speed drives `rate`). */
   settings: ListeningSettings;
+  /** The last segment of the last chapter ended (or the saved row is finished). */
+  finished: boolean;
+  /** Whole-book percent from character positions, never audio duration. */
+  progressPercent: number;
+  /** Non-null while another device's saved position is >60 s ahead. */
+  resumePrompt: ResumePromptProps | null;
   chapterElapsed: number;
   chapterDuration: number;
   elements: readonly [HTMLAudioElement, HTMLAudioElement];
@@ -72,6 +102,10 @@ interface Machine {
   sleep: SleepChoice;
   offset: number; // seconds to seek to when the current segment starts
   active: 0 | 1;
+  resumeLoading: boolean; // resume not applied yet: saves stay quiet
+  finished: boolean;
+  finishedMarked: boolean; // the finished PUT fires once per session
+  resumePrompt: ResumePromptProps | null;
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
@@ -86,9 +120,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, error: null,
     time: 0, rate: 1, sleep: null, offset: 0, active: 0,
+    resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null,
   }).current;
   const els = useMemo(() => [new Audio(), new Audio()] as const, []);
   const sleepTimer = useRef<number | null>(null);
+  const saveTimer = useRef<number | null>(null);
 
   const activeEl = () => (s.active === 0 ? els[0] : els[1]);
   const idleEl = () => (s.active === 0 ? els[1] : els[0]);
@@ -96,6 +132,59 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const durationOf = (segment: Segment | undefined) => (segment ? s.status[segment.id]?.duration_s ?? 0 : 0);
   const chapterTotal = () => s.segments.reduce((total, seg) => total + durationOf(seg), 0);
   const elapsed = () => s.segments.slice(0, s.index).reduce((total, seg) => total + durationOf(seg), 0) + s.time;
+
+  /** Characters spoken so far: whole chapters before + segment start + share of the current segment. */
+  const charPosition = () => {
+    let chars = 0;
+    for (let i = 0; i < s.chapterIdx; i += 1) chars += s.chapters[i]?.char_count ?? 0;
+    const segment = s.segments[s.index];
+    if (!segment) return chars;
+    const duration = durationOf(segment);
+    const share = duration > 0 ? Math.min(1, Math.max(0, s.time / duration)) : 0;
+    return chars + segment.char_start + (segment.char_end - segment.char_start) * share;
+  };
+
+  /** Restart the 10 s save timer; every save calls this so saves never bunch up. */
+  function armSaveTimer() {
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    if (s.playing) saveTimer.current = window.setTimeout(() => void saveTick(), SAVE_MS);
+  }
+
+  function saveTick() {
+    saveTimer.current = null;
+    saveNow();
+  }
+
+  /** Upsert the current position. Silent: a failure shows nothing and the
+   * next tick (or the next event) retries. */
+  function saveNow() {
+    const book = s.book;
+    const chapter = s.chapters[s.chapterIdx];
+    const segment = s.segments[s.index];
+    if (!book || !chapter || !segment || s.resumeLoading) return;
+    armSaveTimer();
+    void saveProgress(book.id, {
+      chapter_id: chapter.id,
+      segment_id: segment.id,
+      offset_s: s.time,
+      device_label: deviceLabel(),
+    }).then((res) => {
+      if (res) rememberPosition(book.id, res.progress);
+    });
+  }
+
+  /** Jump to a saved position with the 3 s rewind, opening its chapter first when needed. */
+  async function applyResume(position: Progress) {
+    s.resumePrompt = null;
+    s.resumeLoading = true;
+    const ci = s.chapters.findIndex((c) => c.id === position.chapter_id);
+    if (ci >= 0 && ci !== s.chapterIdx) await openChapter(ci, false);
+    const si = s.segments.findIndex((seg) => seg.id === position.segment_id);
+    seekSegment(si >= 0 ? si : 0, Math.max(0, position.offset_s - REWIND_S));
+    s.resumeLoading = false;
+    bump();
+  }
 
   function fail(message: string) {
     s.preparing = false;
@@ -181,6 +270,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const book = s.book;
     const chapter = s.chapters[idx];
     if (!book || !chapter) return;
+    if (!s.resumeLoading && s.segments.length > 0) saveNow(); // chapter change: save the old position
     s.chapterIdx = idx;
     s.segments = [];
     s.index = 0;
@@ -211,6 +301,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (s.index + 1 < s.segments.length) {
       s.index += 1;
       s.offset = 0;
+      saveNow(); // segment change
       if (currentItem()?.status === "ready") pump();
       else void topUp();
     } else {
@@ -225,10 +316,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.intent = false;
       s.playing = false;
       s.preparing = false;
+      if (s.book && s.chapterIdx + 1 >= s.chapters.length) markBookFinished();
       bump();
       return;
     }
     await openChapter(s.chapterIdx + 1, true);
+  }
+
+  /** The last segment of the last chapter ended: save once, then mark finished. */
+  function markBookFinished() {
+    const bookId = s.book!.id;
+    s.finished = true;
+    saveNow();
+    if (s.finishedMarked) return;
+    s.finishedMarked = true;
+    void markFinished(bookId, true)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+        queryClient.invalidateQueries({ queryKey: progressQueryKey(bookId) });
+        queryClient.invalidateQueries({ queryKey: continueQueryKey });
+      })
+      .catch(() => {
+        s.finishedMarked = false; // silent; retried the next time the book ends
+      });
   }
 
   async function load(bookId: string, chapterId?: string) {
@@ -237,9 +347,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const detail = await queryClient.fetchQuery({ queryKey: ["book", bookId], queryFn: () => fetchBookDetail(bookId) });
       s.book = detail.book;
       s.chapters = detail.chapters;
-      const idx = chapterId ? Math.max(0, detail.chapters.findIndex((c) => c.id === chapterId)) : 0;
-      await openChapter(idx, false);
+      s.finished = Boolean(detail.progress?.finished_at);
+      s.finishedMarked = s.finished;
+      s.resumePrompt = null;
+      const saved = detail.progress;
+      const ci = saved ? detail.chapters.findIndex((c) => c.id === saved.chapter_id) : -1;
+      const idx = ci >= 0 ? ci : chapterId ? Math.max(0, detail.chapters.findIndex((c) => c.id === chapterId)) : 0;
+      s.resumeLoading = Boolean(saved);
+      await openChapter(idx, false); // open the saved chapter first
+      s.resumeLoading = false;
+      if (saved) {
+        const local = readPosition(bookId);
+        if (local && ci >= 0 && saved.device_label !== deviceLabel() && secondsAhead(saved, local, detail.book) > AHEAD_PROMPT_S) {
+          const segment = s.segments.find((seg) => seg.id === saved.segment_id);
+          const secondsPerChar =
+            detail.book.est_duration_s && detail.book.total_chars ? detail.book.est_duration_s / detail.book.total_chars : 1 / 15;
+          s.resumePrompt = {
+            device: saved.device_label,
+            chapter: detail.chapters[ci]!.title,
+            time: fmtClock(saved.offset_s + (segment ? segment.char_start * secondsPerChar : 0)),
+            onContinue: () => void applyResume(saved),
+            onStartHere: () => void applyResume(local),
+          };
+        } else {
+          await applyResume(saved);
+        }
+        bump();
+      }
     } catch (error) {
+      s.resumeLoading = false;
       s.error = error instanceof Error ? error.message : "Could not reach the server.";
       bump();
     }
@@ -247,6 +383,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   async function play() {
     s.intent = true;
+    s.resumePrompt = null; // playing from here is a choice of its own
     if (!s.book) {
       const id = new URLSearchParams(location.search).get("book");
       if (!id) return;
@@ -261,6 +398,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.intent = false;
     s.playing = false;
     activeEl().pause();
+    saveNow(); // spec: save on pause
     bump();
   }
 
@@ -278,6 +416,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Prepare the target first so the UI shows "Preparing audio…" instead of silence.
     if (currentItem()?.status === "ready") pump();
     else void topUp();
+    saveNow(); // segment change from scrubbing/jumping (quiet during resume)
     bump();
   }
 
@@ -343,8 +482,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   // Latest closures for the stable effects below (state lives in `s`, not closures).
-  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded });
-  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded };
+  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow });
+  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow };
 
   // Sync the saved default speed into the player; the speed button can still
   // override it until the next time the setting itself changes.
@@ -386,6 +525,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const timer = window.setInterval(() => void fns.current.topUp(), POLL_MS);
     return () => window.clearInterval(timer);
   }, [s.intent, s.preparing]);
+
+  // The 10 s save timer runs only while playing; event saves re-arm it.
+  useEffect(() => {
+    armSaveTimer();
+    return () => {
+      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- armSaveTimer reads live state through the s ref
+  }, [s.playing]);
+
+  // Spec "Progress model": save when the tab hides or the page goes away.
+  // fetch keepalive (not sendBeacon, which cannot set the CSRF header).
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") fns.current.saveNow();
+    };
+    const onPagehide = () => fns.current.saveNow();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPagehide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPagehide);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof EventSource === "undefined") return;
@@ -465,6 +629,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (location.search !== `?${search}`) navigate(`/player?${search}`, { replace: true });
   }, [location.pathname, location.search, syncBookId, syncChapterId, navigate]);
 
+  const totalChars = s.book?.total_chars ?? 0;
+  const progressPercent = s.finished ? 100 : totalChars > 0 ? Math.min(100, (charPosition() / totalChars) * 100) : 0;
+
   const value: PlayerContextValue = {
     book: s.book,
     chapters: s.chapters,
@@ -480,6 +647,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     rate: s.rate,
     sleep: s.sleep,
     settings,
+    finished: s.finished,
+    progressPercent,
+    resumePrompt: s.resumePrompt,
     chapterElapsed: elapsed(),
     chapterDuration: chapterTotal(),
     elements: els,

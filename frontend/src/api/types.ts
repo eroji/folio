@@ -55,11 +55,23 @@ export interface BookListResponse {
   page_size: number;
 }
 
-/** Body of GET /books/{id}. progress stays null until M5. */
+/** Row of the progress table (plan Task P contract). percent is
+ * character-based, computed server-side; never from audio duration. */
+export interface Progress {
+  chapter_id: string;
+  segment_id: string;
+  offset_s: number;
+  percent: number;
+  device_label: string;
+  updated_at: string;
+  finished_at: string | null;
+}
+
+/** Body of GET /books/{id}; progress is the caller's row (plan Task P). */
 export interface BookDetailResponse {
   book: Book;
   chapters: Chapter[];
-  progress: null;
+  progress: Progress | null;
 }
 
 /** One entry of the POST /books response array. */

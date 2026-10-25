@@ -6,6 +6,7 @@ import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
 import { ChapterSheet } from "./ChapterSheet";
 import { ReadAlong } from "./ReadAlong";
+import { ResumePrompt } from "./ResumePrompt";
 
 const SLEEP_STEPS: SleepChoice[] = [null, 15, 30, 45, 60, "chapter"];
 
@@ -108,6 +109,12 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
 
         <h1 className="text-center font-display text-xl font-semibold">{book.title}</h1>
         <p className="mt-0.5 text-center text-sm text-muted">{player.chapter?.title}</p>
+
+        {player.resumePrompt && (
+          <div className="mt-3">
+            <ResumePrompt {...player.resumePrompt} />
+          </div>
+        )}
 
         <div aria-live="polite" className="min-h-8 pt-2 text-center">
           {player.preparing && (

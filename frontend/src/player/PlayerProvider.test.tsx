@@ -3,13 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayerContextValue } from "./PlayerProvider";
 import { TTS_LOOKAHEAD } from "./PlayerProvider";
 import { installMockEventSource } from "../test/eventsource";
-import { BOOK_ID, CH1, CH2, installPlayerFetch, makeSegments, renderPlayer, stubMedia } from "../test/player";
+import { BOOK_ID, CH1, CH2, installPlayerFetch, makeProgress, makeSegments, renderPlayer, stubMedia } from "../test/player";
+import { deviceLabel } from "../api/progress";
 import type { AudioStatus } from "../api/audio";
 
 let prepareCalls: { segment_id: string; count: number; voice?: string }[] = [];
 let played: HTMLMediaElement[] = [];
 
 beforeEach(() => {
+  localStorage.clear();
   installMockEventSource();
   prepareCalls = installPlayerFetch().prepareCalls;
   played = stubMedia().played;
@@ -172,5 +174,208 @@ describe("PlayerProvider", () => {
     await waitFor(() => expect(getPlayer().settings.voices.en).toBe("danny-en"));
     await loadAndPlay(getPlayer);
     expect(calls.some((call) => call.voice === "danny-en")).toBe(true);
+  });
+});
+
+describe("PlayerProvider progress", () => {
+  it("resumes at the saved segment with a 3 s rewind and does not save during resume", async () => {
+    const { saveCalls } = installPlayerFetch({ progress: makeProgress({ device_label: deviceLabel() }) });
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().index).toBe(1);
+    expect(getPlayer().time).toBe(4); // 7 - 3
+    expect(saveCalls).toHaveLength(0);
+  });
+
+  it("opens the saved chapter before seeking", async () => {
+    installPlayerFetch({ progress: makeProgress({ chapter_id: CH2, segment_id: `${CH2}-seg1`, device_label: deviceLabel() }) });
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().chapter?.id).toBe(CH2);
+    expect(getPlayer().index).toBe(1);
+    expect(getPlayer().time).toBe(4);
+  });
+
+  it("saves every 10 s while playing and restarts the timer on each save", async () => {
+    vi.useFakeTimers();
+    const { saveCalls } = installPlayerFetch();
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+      getPlayer().toggle();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9_999);
+    });
+    expect(saveCalls).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_001);
+    });
+    expect(saveCalls).toHaveLength(1);
+    expect(saveCalls[0]).toMatchObject({ chapter_id: CH1, segment_id: `${CH1}-seg0` });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(saveCalls).toHaveLength(2);
+  });
+
+  it("saves on pause", async () => {
+    const { saveCalls } = installPlayerFetch();
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    expect(saveCalls).toHaveLength(0);
+    act(() => getPlayer().pause());
+    expect(saveCalls).toHaveLength(1);
+    expect(saveCalls[0]).toMatchObject({ segment_id: `${CH1}-seg0`, device_label: deviceLabel() });
+  });
+
+  it("saves on segment change", async () => {
+    const { saveCalls } = installPlayerFetch();
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    act(() => {
+      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().index).toBe(1));
+    expect(saveCalls.some((call) => call.segment_id === `${CH1}-seg1`)).toBe(true);
+  });
+
+  it("saves on chapter change", async () => {
+    const fixture = installPlayerFetch({
+      segmentsByChapter: { [CH1]: makeSegments(CH1, 1), [CH2]: makeSegments(CH2, 1) },
+    });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    act(() => {
+      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
+    expect(fixture.saveCalls.some((call) => call.chapter_id === CH1)).toBe(true);
+  });
+
+  it("saves when the tab hides and on pagehide", async () => {
+    const { saveCalls } = installPlayerFetch();
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(saveCalls).toHaveLength(1);
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(saveCalls).toHaveLength(2);
+    Reflect.deleteProperty(document, "visibilityState");
+  });
+
+  it("stays silent on a failed save and retries on the next tick", async () => {
+    vi.useFakeTimers();
+    const fixture = installPlayerFetch();
+    fixture.saveFails = true;
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+      getPlayer().toggle();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(fixture.saveCalls).toHaveLength(1);
+    expect(getPlayer().error).toBeNull();
+    expect(getPlayer().playing).toBe(true);
+    fixture.saveFails = false;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(fixture.saveCalls).toHaveLength(2);
+  });
+
+  it("marks the book finished once when the last segment of the last chapter ends", async () => {
+    const fixture = installPlayerFetch({
+      segmentsByChapter: { [CH1]: makeSegments(CH1, 1), [CH2]: makeSegments(CH2, 1) },
+    });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    act(() => {
+      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
+    act(() => {
+      getPlayer().elements[1].dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().finished).toBe(true));
+    expect(getPlayer().playing).toBe(false);
+    await waitFor(() => expect(fixture.finishedCalls).toEqual([{ finished: true }]));
+  });
+
+  it("prompts when another device is more than 60 s ahead", async () => {
+    localStorage.setItem(
+      `folio-pos-${BOOK_ID}`,
+      JSON.stringify(makeProgress({ percent: 10, segment_id: `${CH1}-seg0`, offset_s: 0 })),
+    );
+    installPlayerFetch({ progress: makeProgress({ percent: 21, device_label: "Windows PC 9f9f" }) });
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().resumePrompt?.device).toBe("Windows PC 9f9f");
+    expect(getPlayer().resumePrompt?.chapter).toBe("Chapter One");
+    act(() => getPlayer().resumePrompt?.onContinue());
+    expect(getPlayer().time).toBe(4); // the server position, rewound 3 s
+    expect(getPlayer().resumePrompt).toBeNull();
+  });
+
+  it("Start here resumes from this device's remembered position", async () => {
+    localStorage.setItem(
+      `folio-pos-${BOOK_ID}`,
+      JSON.stringify(makeProgress({ percent: 10, segment_id: `${CH1}-seg1`, offset_s: 21 })),
+    );
+    installPlayerFetch({ progress: makeProgress({ percent: 21, device_label: "Windows PC 9f9f" }) });
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    act(() => getPlayer().resumePrompt?.onStartHere());
+    expect(getPlayer().time).toBe(18); // 21 - 3
+  });
+
+  it("resumes silently when the other device is within 60 s ahead", async () => {
+    localStorage.setItem(`folio-pos-${BOOK_ID}`, JSON.stringify(makeProgress({ percent: 10 })));
+    installPlayerFetch({ progress: makeProgress({ percent: 20, device_label: "Windows PC 9f9f" }) }); // 10% of 600 s = 60 s
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().resumePrompt).toBeNull();
+    expect(getPlayer().time).toBe(4);
+  });
+
+  it("resumes silently when this device has no remembered position", async () => {
+    installPlayerFetch({ progress: makeProgress({ percent: 95, device_label: "Windows PC 9f9f" }) });
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().resumePrompt).toBeNull();
+    expect(getPlayer().time).toBe(4);
+  });
+
+  it("exposes character-based progressPercent", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    expect(getPlayer().progressPercent).toBe(0);
+    act(() => {
+      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().index).toBe(1));
+    // Segment one starts at its char_start of the 1200-char book.
+    expect(getPlayer().progressPercent).toBeCloseTo(makeSegments(CH1, 2)[1]!.char_start / 12, 5);
   });
 });

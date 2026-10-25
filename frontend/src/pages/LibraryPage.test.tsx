@@ -32,15 +32,19 @@ function makeBook(overrides: Partial<Book> = {}): Book {
   };
 }
 
-function mockList(items: Book[]) {
+function mockList(items: Book[], continueItems: unknown[] = []) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(JSON.stringify({ items, total: items.length, page: 1, page_size: 24 }), {
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes("/me/continue")
+        ? { items: continueItems }
+        : { items, total: items.length, page: 1, page_size: 24 };
+      return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -85,5 +89,55 @@ describe("LibraryPage", () => {
     expect(await screen.findByRole("heading", { name: "No books yet" })).toBeTruthy();
     expect(screen.getByText("Upload your first EPUB, PDF or Kindle file.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Upload a book" })).toBeTruthy();
+  });
+
+  it("hides the Continue listening row when /me/continue is empty", async () => {
+    mockList([makeBook()]);
+    renderLibrary();
+    await screen.findByRole("link", { name: /Dune/ });
+    expect(screen.queryByRole("region", { name: "Continue listening" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Continue listening" })).toBeNull();
+  });
+
+  it("shows a Continue listening card with a progress bar and time left", async () => {
+    mockList([makeBook()], [
+      {
+        book: makeBook(),
+        progress: {
+          chapter_id: "c1",
+          segment_id: "s1",
+          offset_s: 60,
+          percent: 25,
+          device_label: "Linux a1b2",
+          updated_at: "2026-01-02T00:00:00Z",
+          finished_at: null,
+        },
+      },
+    ]);
+    renderLibrary();
+    const row = await screen.findByRole("region", { name: "Continue listening" });
+    expect(within(row).getByText("8m left")).toBeTruthy(); // 600 s × 75 % ≈ 7.5 min
+    const card = within(row).getByRole("link", { name: /Dune/ });
+    expect(card.getAttribute("href")).toBe(`/books/${makeBook().id}`);
+  });
+
+  it("badges a finished book in the Continue row instead of time left", async () => {
+    mockList([makeBook()], [
+      {
+        book: makeBook(),
+        progress: {
+          chapter_id: "c1",
+          segment_id: "s1",
+          offset_s: 0,
+          percent: 100,
+          device_label: "Linux a1b2",
+          updated_at: "2026-01-02T00:00:00Z",
+          finished_at: "2026-01-03T00:00:00Z",
+        },
+      },
+    ]);
+    renderLibrary();
+    const row = await screen.findByRole("region", { name: "Continue listening" });
+    expect(within(row).getByText("Finished")).toBeTruthy();
   });
 });

@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Library } from "lucide-react";
 import { useBooks, type BookSort } from "../api/books";
-import { BookCard } from "../components/BookCard";
+import { useContinueListening } from "../api/progress";
+import { BookCard, BookCover } from "../components/BookCard";
 import { EmptyState } from "../components/EmptyState";
-import type { BookStatus } from "../api/types";
+import type { Book, BookStatus, Progress } from "../api/types";
 
 const SORTS: { value: BookSort; label: string }[] = [
   { value: "recent", label: "Most recent" },
@@ -22,8 +23,38 @@ const STATUSES: { value: BookStatus; label: string }[] = [
 
 const GRID = "grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6";
 
-/** Screen 2 (home). The "Continue listening" row renders when /me/continue
- * lands in M5 — hidden until then. */
+function timeLeft(book: Book, progress: Progress): string {
+  if (progress.finished_at) return "Finished";
+  if (!book.est_duration_s) return `${Math.round(progress.percent)}% done`;
+  const minutes = Math.max(1, Math.round((book.est_duration_s * (1 - progress.percent / 100)) / 60));
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m left` : `${minutes}m left`;
+}
+
+/** Screen 2 (home): "Continue listening" row above the catalog grid. */
+function ContinueRow() {
+  const { data } = useContinueListening(10);
+  const items = data?.items ?? [];
+  if (items.length === 0) return null; // hidden while /me/continue is empty
+  return (
+    <section aria-label="Continue listening" className="flex flex-col gap-2">
+      <h2 className="font-display text-lg font-semibold">Continue listening</h2>
+      <ul className="flex gap-3 overflow-x-auto pb-1">
+        {items.map(({ book, progress }) => (
+          <li key={book.id} className="w-40 shrink-0">
+            <Link to={`/books/${book.id}`} className="flex flex-col gap-1.5">
+              <BookCover book={book} className="aspect-[2/3] w-full rounded-card" />
+              <span className="truncate text-sm font-medium">{book.title}</span>
+              <span aria-hidden className="h-1 w-full overflow-hidden rounded-pill bg-line">
+                <span className="block h-full rounded-pill bg-brand-gradient" style={{ width: `${Math.min(100, progress.percent)}%` }} />
+              </span>
+              <span className="text-xs tabular-nums text-muted">{timeLeft(book, progress)}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 export function LibraryPage() {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
@@ -51,6 +82,7 @@ export function LibraryPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <ContinueRow />
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="search"

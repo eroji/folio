@@ -11,7 +11,8 @@ export function MiniPlayer() {
   const book = player.book;
   if (!book || location.pathname === "/player") return null;
 
-  const percent = player.chapterDuration > 0 ? Math.min(100, (player.chapterElapsed / player.chapterDuration) * 100) : 0;
+  // Character-based whole-book progress (spec "Progress model"), not chapter audio duration.
+  const percent = player.progressPercent;
 
   return (
     <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-card/95 backdrop-blur md:hidden">

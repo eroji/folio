@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthProvider";
 import { BookDetailPage } from "./BookDetailPage";
-import type { Book, Candidate, Chapter } from "../api/types";
+import { makeProgress } from "../test/player";
+import type { Book, Candidate, Chapter, Progress } from "../api/types";
 
 const ID = "11111111-1111-1111-1111-111111111111";
 
@@ -73,11 +74,14 @@ function jsonResponse(status: number, body: unknown): Response {
 let candidates: Candidate[] = [CANDIDATE];
 let book: Book = makeBook();
 let chapters: Chapter[] = CHAPTERS;
+let progress: Progress | null = null;
 
 beforeEach(() => {
   candidates = [CANDIDATE];
   book = makeBook();
   chapters = CHAPTERS;
+  progress = null;
+  localStorage.clear();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -94,7 +98,19 @@ beforeEach(() => {
       }
       if (url.includes("/metadata/candidates")) return jsonResponse(200, { items: candidates });
       if (url.includes("/voices")) return jsonResponse(200, VOICES);
-      if (url.includes(`/books/${ID}`)) return jsonResponse(200, { book, chapters, progress: null });
+      if (url.includes(`/books/${ID}/progress/finished`) && init?.method === "PUT") {
+        const { finished } = JSON.parse(String(init.body)) as { finished: boolean };
+        progress = makeProgress({ finished_at: finished ? "2026-01-03T00:00:00Z" : null });
+        return jsonResponse(200, { progress });
+      }
+      if (url.includes(`/books/${ID}/progress`)) {
+        if (init?.method === "DELETE") {
+          progress = null;
+          return new Response(null, { status: 204 });
+        }
+        return jsonResponse(200, { progress });
+      }
+      if (url.includes(`/books/${ID}`)) return jsonResponse(200, { book, chapters, progress });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -163,5 +179,46 @@ describe("BookDetailPage", () => {
       expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ narrator_voice: "ashley-en" });
     });
     expect(await screen.findByText(/about 10m/)).toBeTruthy();
+  });
+
+  it("shows Resume with the saved position and offers progress actions", async () => {
+    progress = makeProgress({ percent: 40, chapter_id: "c2" });
+    renderDetail();
+    const resume = await screen.findByRole("link", { name: /Resume/ });
+    expect(resume.getAttribute("href")).toBe(`/player?book=${ID}&chapter=c2`);
+    expect(screen.getByText("40%")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Mark finished" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reset progress" })).toBeTruthy();
+  });
+
+  it("marks finished and back with the finished flag in the body", async () => {
+    progress = makeProgress({ percent: 40 });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Mark finished" }));
+    await screen.findByText("Finished");
+    await vi.waitFor(() => {
+      const call = vi.mocked(fetch).mock.calls.find(([, init]) => String(init?.body ?? "").includes('"finished":true'));
+      expect(call).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mark unfinished" }));
+    await vi.waitFor(() => {
+      const call = vi.mocked(fetch).mock.calls.find(([, init]) => String(init?.body ?? "").includes('"finished":false'));
+      expect(call).toBeTruthy();
+    });
+    expect(screen.queryByText("Finished")).toBeNull();
+  });
+
+  it("resets progress with a DELETE and falls back to Play", async () => {
+    progress = makeProgress({ percent: 40 });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Reset progress" }));
+    await vi.waitFor(() => {
+      const call = vi
+        .mocked(fetch)
+        .mock.calls.find(([url, init]) => String(url).includes(`/books/${ID}/progress`) && init?.method === "DELETE");
+      expect(call).toBeTruthy();
+    });
+    await screen.findByRole("link", { name: "Play" });
+    expect(screen.queryByText("40%")).toBeNull();
   });
 });
