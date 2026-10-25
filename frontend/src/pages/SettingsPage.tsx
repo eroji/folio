@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import clsx from "clsx";
 import { useListeningSettings, useUpdateSettings } from "../api/settings";
 import { useRefreshVoices } from "../api/voices";
+import { Icon } from "../components/Icon";
 import { VoicePicker } from "../components/VoicePicker";
 import { useTheme, type ThemeChoice } from "../hooks/useTheme";
 
@@ -17,8 +18,9 @@ const LANGUAGES = [
 
 const SKIP_MIN = 5;
 const SKIP_MAX = 120;
-const inputClass = "min-h-11 rounded-card border border-line bg-card px-3 text-sm";
-const toggleRow = "flex min-h-11 items-center justify-between gap-3";
+const inputClass = "tap h-9 rounded-md border border-control-border bg-surface px-3 text-base";
+const toggleRow = "tap flex min-h-9 items-center justify-between gap-3";
+const sectionTitle = "font-display text-lg font-semibold";
 
 function skipValid(value: string): boolean {
   const n = Number(value);
@@ -44,7 +46,7 @@ function SkipField({
 
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-medium">
+      <label htmlFor={id} className="text-base font-medium">
         {label}
       </label>
       <div className="flex items-center gap-2">
@@ -62,7 +64,7 @@ function SkipField({
           }}
           className={`${inputClass} w-24`}
         />
-        <span className="text-sm text-muted">seconds ({SKIP_MIN}–{SKIP_MAX})</span>
+        <span className="text-sm text-fg-2">seconds ({SKIP_MIN}–{SKIP_MAX})</span>
       </div>
       {invalid && (
         <p role="alert" className="text-sm text-danger">
@@ -86,13 +88,13 @@ function Toggle({
 }) {
   return (
     <label htmlFor={id} className={toggleRow}>
-      <span className="font-medium">{label}</span>
+      <span className="text-base font-medium">{label}</span>
       <input
         id={id}
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-5 w-5"
+        className="size-5 accent-progress"
       />
     </label>
   );
@@ -126,21 +128,21 @@ export function SettingsPage() {
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-8">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="font-display text-2xl font-semibold">Settings</h1>
+        <h1 className="font-display text-xl font-bold tracking-[-0.01em]">Settings</h1>
         {saveLabel && (
-          <span role="status" className="text-sm text-muted">
+          <span role="status" className="text-sm text-fg-2">
             {saveLabel}
           </span>
         )}
       </div>
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 font-display text-lg font-semibold">Theme</legend>
+        <legend className={clsx(sectionTitle, "mb-2")}>Theme</legend>
         <div className="flex flex-wrap gap-2">
           {THEME_CHOICES.map((option) => (
             <label
               key={option}
-              className="inline-flex min-h-11 items-center gap-2 rounded-pill border border-line bg-card px-4 text-sm font-medium capitalize has-[:checked]:border-brand-blue has-[:checked]:text-brand-blue"
+              className="tap inline-flex h-9 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-base font-medium capitalize has-[:checked]:border-accent-fg has-[:checked]:bg-selected has-[:checked]:text-accent-fg"
             >
               <input
                 type="radio"
@@ -148,7 +150,7 @@ export function SettingsPage() {
                 value={option}
                 checked={choice === option}
                 onChange={() => select(option)}
-                className="h-4 w-4"
+                className="size-4 accent-progress"
               />
               {option}
             </label>
@@ -158,13 +160,13 @@ export function SettingsPage() {
 
       {isPending ? (
         <div className="flex animate-pulse flex-col gap-4" aria-busy="true">
-          <div className="h-11 rounded-card bg-card" />
-          <div className="h-11 w-24 rounded-card bg-card" />
+          <div className="h-9 rounded-md bg-raised" />
+          <div className="h-9 w-24 rounded-md bg-raised" />
         </div>
       ) : (
         <>
           <div className="flex flex-col gap-1">
-            <label htmlFor="default-speed" className="font-display text-lg font-semibold">
+            <label htmlFor="default-speed" className={sectionTitle}>
               Default playback speed
             </label>
             <select
@@ -182,7 +184,7 @@ export function SettingsPage() {
           </div>
 
           <fieldset className="flex flex-col gap-4">
-            <legend className="mb-2 font-display text-lg font-semibold">Skip intervals</legend>
+            <legend className={clsx(sectionTitle, "mb-2")}>Skip intervals</legend>
             <SkipField
               id="skip-back"
               label="Back"
@@ -198,7 +200,7 @@ export function SettingsPage() {
           </fieldset>
 
           <fieldset className="flex flex-col gap-3">
-            <legend className="mb-1 font-display text-lg font-semibold">Playback</legend>
+            <legend className={clsx(sectionTitle, "mb-1")}>Playback</legend>
             <Toggle
               id="auto-next"
               label="Auto-play next chapter"
@@ -217,21 +219,21 @@ export function SettingsPage() {
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-lg font-semibold">Voices</h2>
+          <h2 className={sectionTitle}>Voices</h2>
           <button
             type="button"
             onClick={() => refresh.mutate()}
             disabled={refresh.isPending}
-            className="inline-flex min-h-11 items-center gap-2 rounded-pill border border-line bg-card px-4 text-sm font-medium disabled:opacity-50"
+            className="tap inline-flex h-9 items-center gap-2 rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50"
           >
-            <RefreshCw size={18} strokeWidth={1.75} aria-hidden />
+            <Icon name="restart_alt" size={18} />
             Refresh voices
           </button>
         </div>
         {LANGUAGES.map(({ code, label }) => (
           <div key={code} className="flex flex-col gap-1">
-            <p className="text-sm font-medium">
-              {label} <span className="text-muted">({code})</span>
+            <p className="text-base font-medium">
+              {label} <span className="text-fg-2">({code})</span>
             </p>
             <VoicePicker
               value={settings.voices[code] ?? null}

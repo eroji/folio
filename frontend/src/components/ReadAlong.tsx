@@ -115,7 +115,7 @@ export function ReadAlong({ className, compact = false }: { className?: string; 
           "reader-scroll relative min-h-0 flex-1 overflow-y-auto border bg-paper",
           compact
             ? "rounded-md border-paper-border px-6 py-5"
-            : "rounded-card border-line px-8 pb-8 md:px-10 md:pb-10",
+            : "rounded-lg border-paper-border px-8 pb-8 md:px-10 md:pb-10",
           className,
         )}
       >
@@ -126,7 +126,7 @@ export function ReadAlong({ className, compact = false }: { className?: string; 
               aria-label="Decrease font size, A−"
               disabled={step === 0}
               onClick={() => changeFont(-1)}
-              className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
+              className="tap grid size-9 place-items-center rounded-md border border-control-border bg-surface text-base font-medium hover:bg-raised disabled:opacity-40"
             >
               A−
             </button>
@@ -135,7 +135,7 @@ export function ReadAlong({ className, compact = false }: { className?: string; 
               aria-label="Increase font size, A+"
               disabled={step === FONT_SCALES.length - 1}
               onClick={() => changeFont(1)}
-              className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
+              className="tap grid size-9 place-items-center rounded-md border border-control-border bg-surface text-base font-medium hover:bg-raised disabled:opacity-40"
             >
               A+
             </button>

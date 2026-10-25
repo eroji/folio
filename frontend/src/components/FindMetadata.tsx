@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { AlertTriangle, Search, SearchX } from "lucide-react";
 import { useApplyMetadata, useMetadataSearch } from "../api/metadata";
+import { Icon } from "./Icon";
 import type { Book, Candidate } from "../api/types";
 
 /** Candidate fields offered as apply checkboxes. `cover_url` is deliberately
@@ -25,7 +25,7 @@ function hasValue(value: unknown): boolean {
 
 const SOURCES: Record<string, string> = { openlibrary: "Open Library", googlebooks: "Google Books" };
 
-const inputClass = "min-h-11 w-full rounded-card border border-line bg-page px-3 text-sm";
+const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
 
 function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }) {
   const available = FIELDS.filter((field) => hasValue(candidate[field.key]));
@@ -34,16 +34,16 @@ function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }
   const apply = useApplyMetadata(book.id);
 
   return (
-    <li className="flex gap-3 rounded-card border border-line bg-card p-3">
+    <li className="flex gap-3 rounded-lg border border-divider bg-surface p-4">
       {candidate.cover_url ? (
-        <img src={candidate.cover_url} alt="" loading="lazy" className="aspect-[2/3] w-12 shrink-0 rounded bg-page object-cover" />
+        <img src={candidate.cover_url} alt="" loading="lazy" className="aspect-[2/3] w-12 shrink-0 rounded-cover bg-raised object-cover" />
       ) : (
-        <div className="aspect-[2/3] w-12 shrink-0 rounded bg-brand-gradient" aria-hidden />
+        <div className="aspect-[2/3] w-12 shrink-0 rounded-cover bg-cover-placeholder" aria-hidden />
       )}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{candidate.title}</p>
-          <p className="truncate text-xs text-muted">
+          <p className="truncate text-base font-medium">{candidate.title}</p>
+          <p className="truncate text-xs text-fg-2">
             {[
               candidate.authors.join(", "),
               candidate.published_date?.slice(0, 4),
@@ -57,7 +57,7 @@ function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }
         <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
           <legend className="sr-only">Fields to apply from “{candidate.title}”</legend>
           {available.map((field) => (
-            <label key={field.key} className="flex min-h-8 items-center gap-1.5 text-xs">
+            <label key={field.key} className="tap flex min-h-8 items-center gap-1.5 text-sm">
               <input
                 type="checkbox"
                 checked={selected.includes(field.key)}
@@ -66,7 +66,7 @@ function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }
                     event.target.checked ? [...current, field.key] : current.filter((key) => key !== field.key),
                   )
                 }
-                className="h-4 w-4 accent-brand-blue"
+                className="size-4 accent-progress"
               />
               {field.label}
             </label>
@@ -82,13 +82,13 @@ function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }
                 { onSuccess: (data) => setApplied(data.applied) },
               )
             }
-            className="min-h-11 rounded-pill bg-brand-gradient px-4 text-sm font-semibold text-white disabled:opacity-50"
+            className="tap inline-flex h-9 items-center rounded-md bg-primary-gradient px-4 text-base font-semibold text-on-primary disabled:opacity-50"
           >
             Apply selected
           </button>
         </div>
         {applied && (
-          <p role="status" className="text-xs text-muted">
+          <p role="status" className="text-xs text-fg-2">
             Applied: {applied.join(", ")}
           </p>
         )}
@@ -112,17 +112,17 @@ export function FindMetadata({ book, initialItems }: { book: Book; initialItems?
   const search = useMetadataSearch(book.id);
 
   return (
-    <section aria-label="Find metadata" className="flex flex-col gap-4 rounded-card border border-line bg-card p-4">
+    <section aria-label="Find metadata" className="flex flex-col gap-4 rounded-lg border border-divider bg-surface p-4">
       <div className="grid gap-2 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1 text-base font-medium">
           Title
           <input value={title} onChange={(event) => setTitle(event.target.value)} className={inputClass} />
         </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1 text-base font-medium">
           Author
           <input value={author} onChange={(event) => setAuthor(event.target.value)} className={inputClass} />
         </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1 text-base font-medium">
           ISBN
           <input value={isbn} onChange={(event) => setIsbn(event.target.value)} className={inputClass} />
         </label>
@@ -140,23 +140,23 @@ export function FindMetadata({ book, initialItems }: { book: Book; initialItems?
               { onSuccess: (data) => setItems(data.items) },
             )
           }
-          className="inline-flex min-h-11 items-center gap-2 rounded-pill border border-line bg-page px-4 text-sm font-medium disabled:opacity-50"
+          className="tap inline-flex h-9 items-center gap-1.5 rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50"
         >
-          <Search size={16} strokeWidth={1.75} aria-hidden />
+          <Icon name="search" size={18} />
           Search
         </button>
       </div>
 
       {search.error && (
-        <p role="alert" className="flex items-center gap-2 rounded-card border border-danger/40 bg-page px-3 py-2 text-sm text-danger">
-          <AlertTriangle size={16} strokeWidth={1.75} aria-hidden />
+        <p role="alert" className="flex items-center gap-2 rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger">
+          <Icon name="error" size={16} />
           The metadata providers could not be reached. {search.error.message}
         </p>
       )}
 
       {items && items.length === 0 && (
-        <p className="flex items-center gap-2 text-sm text-muted">
-          <SearchX size={16} strokeWidth={1.75} aria-hidden />
+        <p className="flex items-center gap-2 text-sm text-fg-2">
+          <Icon name="search" size={16} />
           No matches found. Try a different title or ISBN.
         </p>
       )}
