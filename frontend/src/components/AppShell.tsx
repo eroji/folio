@@ -4,7 +4,6 @@ import clsx from "clsx";
 import { useAuth } from "../auth/AuthProvider";
 import { useContinueListening } from "../api/progress";
 import { useEvents } from "../hooks/useEvents";
-import { useTheme } from "../hooks/useTheme";
 import { AccountMenu } from "./AccountMenu";
 import { FocusMode } from "./FocusMode";
 import { Icon } from "./Icon";
@@ -57,7 +56,6 @@ function RailLink({ to, icon, label }: { to: string; icon: IconName; label: stri
 function Shell() {
   const { user } = useAuth();
   const player = usePlayer();
-  const { choice, select } = useTheme();
   useEvents();
   const navigate = useNavigate();
   const location = useLocation();
@@ -126,7 +124,7 @@ function Shell() {
         className="fixed inset-y-0 left-0 z-20 hidden w-[60px] flex-col items-center gap-2 border-r border-divider bg-surface px-2.5 pt-3.5 pb-3.5 desktop:flex"
       >
         <Link to="/" aria-label="Folio home" className="mb-4">
-          <img src={folioMark} alt="Folio" width={28} height={32} />
+          <img src={folioMark} alt="Folio" width={28} height={28} />
         </Link>
         <NavLink to="/" end aria-label="Library" className={railItem}>
           <Icon name="auto_stories" size={20} />
@@ -136,7 +134,7 @@ function Shell() {
           <Icon name="upload" size={20} />
         </NavLink>
         <div className="relative mt-auto">
-          <AccountMenu placement="rail" choice={choice} onSelectTheme={select} />
+          <AccountMenu placement="rail" />
         </div>
       </nav>
 
@@ -158,7 +156,7 @@ function Shell() {
         {/^\/books\/[^/]+$/.test(location.pathname) ? (
           <span className="size-11" aria-hidden />
         ) : (
-          <AccountMenu placement="header" choice={choice} onSelectTheme={select} />
+          <AccountMenu placement="header" />
         )}
       </header>
 
@@ -191,7 +189,7 @@ function Shell() {
           <Icon name="upload" size={22} />
           <span>Upload</span>
         </NavLink>
-        <AccountMenu placement="sheet" choice={choice} onSelectTheme={select} />
+        <AccountMenu placement="sheet" />
       </nav>
 
       <PlayerSurfaces collapsed={collapsed} onToggleCollapse={toggleCollapse} onFocus={() => setFocus(true)} />

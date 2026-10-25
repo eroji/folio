@@ -10,8 +10,6 @@ import {
   type Voice,
 } from "../api/voices";
 import { Icon } from "../components/Icon";
-import { ThemeSwitch } from "../components/ThemeSwitch";
-import { useTheme } from "../hooks/useTheme";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5] as const;
 const LANGUAGES = [
@@ -257,11 +255,10 @@ function VoiceRow({
   );
 }
 
-/** Settings (handoff "Other designed screens"): three cards of setting rows,
+/** Settings (handoff "Other designed screens"): cards of setting rows,
  * every control saving on change through the optimistic useUpdateSettings.
- * Theme stays a device-local setting; the rest sync across devices (M5). */
+ * The app is dark only — there is no Appearance card. */
 export function SettingsPage() {
-  const { choice, select } = useTheme();
   const refresh = useRefreshVoices();
   const { settings, isPending } = useListeningSettings();
   const { update, status } = useUpdateSettings();
@@ -293,14 +290,6 @@ export function SettingsPage() {
           Couldn’t save — the change reverted to the saved settings.
         </p>
       )}
-
-      <Card id="s-appearance" title="Appearance">
-        <div className="divide-y divide-divider">
-          <Row title="Theme" description="System follows your device setting">
-            <ThemeSwitch choice={choice} onSelect={select} />
-          </Row>
-        </div>
-      </Card>
 
       {isPending ? (
         <div className="h-56 animate-pulse rounded-lg border border-divider bg-surface" aria-busy="true" />

@@ -21,8 +21,8 @@ function routeFor(path: string, method = "GET", mode = "cors"): Route {
 describe("service worker", () => {
   it("exists and precaches the shell", () => {
     expect(swSource).toContain('"/offline.html"');
-    expect(swSource).toContain("/manifest.webmanifest");
-    expect(swSource).toContain("/icons/icon-192.png");
+    expect(swSource).toContain("/site.webmanifest");
+    expect(swSource).toContain("/icon-192.png");
   });
 
   it("keeps every /api/ call except covers out of the cache", () => {
@@ -55,6 +55,6 @@ describe("offline page", () => {
     expect(retry?.getAttribute("onclick")).toContain("location.reload()");
     expect(doc.querySelector("script[src]")).toBeNull();
     expect(doc.querySelector("svg")).toBeTruthy();
-    expect(doc.querySelector("style")?.textContent).toContain("#2381f7");
+    expect(doc.querySelector("style")?.textContent).toContain("#ffc233");
   });
 });

@@ -37,7 +37,6 @@ function settingsPutBodies(): Partial<ListeningSettings>[] {
 
 beforeEach(() => {
   localStorage.clear();
-  delete document.documentElement.dataset.theme;
   serverSettings = { ...DEFAULT_SETTINGS };
   settingsGetFails = false;
   putFails = false;
@@ -92,21 +91,11 @@ describe("SettingsPage", () => {
     await vi.waitFor(() => expect(callsTo("/voices?refresh=true")).toBe(2));
   });
 
-  it("the segmented theme control reflects and changes the shared setting", async () => {
+  it("has no theme control — the app is dark only", async () => {
     renderSettings();
-    const dark = await screen.findByRole("radio", { name: "Dark" });
-    expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeTruthy();
-    expect(dark.getAttribute("aria-checked")).toBe("false");
-
-    fireEvent.click(dark);
-    expect(dark.getAttribute("aria-checked")).toBe("true");
-    expect(localStorage.getItem("folio-theme")).toBe("dark");
-    expect(document.documentElement.dataset.theme).toBe("dark");
-
-    fireEvent.click(screen.getByRole("radio", { name: "System" }));
-    expect(localStorage.getItem("folio-theme")).toBeNull();
-    // "system" resolves prefers-color-scheme (light in jsdom); data-theme is never unset.
-    expect(document.documentElement.dataset.theme).toBe("light");
+    await screen.findByRole("heading", { name: "Settings" });
+    expect(screen.queryByRole("radiogroup", { name: "Theme" })).toBeNull();
+    expect(screen.queryByText("Appearance")).toBeNull();
   });
 
   it("hydrates the listening settings from the server", async () => {
