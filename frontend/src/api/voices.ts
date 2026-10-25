@@ -8,21 +8,24 @@ export interface Voice {
   language: string | null;
   description: string | null;
   available: boolean;
-  /** Human-readable name from the engine; absent on payloads predating it. */
+  /** Engine-provided human name, when the server reports one. */
   display_name?: string | null;
-}
-
-/** Menu/picker label: display_name when the API provides it, otherwise the
- * parsed id ("ashley-en" → "Ashley"). */
-export function voiceDisplayName(voice: Voice): string {
-  if (voice.display_name) return voice.display_name;
-  const head = voice.id.split("-")[0] ?? voice.id;
-  return head.charAt(0).toUpperCase() + head.slice(1);
 }
 
 export interface VoicesResponse {
   items: Voice[];
 }
+
+/** Human label for a voice: `display_name` when present, else the id without
+ * its trailing language suffix, capitalised ("ashley-en" → "Ashley"). */
+export function voiceLabel(voice: Voice): string {
+  if (voice.display_name) return voice.display_name;
+  const base = voice.id.replace(/-[a-z]{2}(-[a-z]{2})?$/i, "");
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+/** Alias used by the book-page voice menu. */
+export const voiceDisplayName = voiceLabel;
 
 export const voicesQueryKey = (refresh: boolean): readonly ["voices", boolean] =>
   ["voices", refresh] as const;
