@@ -113,6 +113,7 @@ let prepareCalls: { segment_id: string }[] = [];
 let finishedCalls: { finished: boolean }[] = [];
 let saveCalls: Record<string, unknown>[] = [];
 let chapterPatchBodies: Record<string, unknown>[] = [];
+let chapterPatchFails = false;
 let reprocessCalls = 0;
 
 beforeEach(() => {
@@ -128,6 +129,7 @@ beforeEach(() => {
   finishedCalls = [];
   saveCalls = [];
   chapterPatchBodies = [];
+  chapterPatchFails = false;
   reprocessCalls = 0;
   localStorage.clear();
   installMockEventSource();
@@ -167,6 +169,7 @@ beforeEach(() => {
       }
       const chapterPatch = url.match(new RegExp(`/books/${ID}/chapters/([^/?]+)$`));
       if (chapterPatch && method === "PATCH") {
+        if (chapterPatchFails) return jsonResponse(500, { error: { code: "nope", message: "nope" } });
         chapterPatchBodies.push({ ...body, chapterId: chapterPatch[1] });
         chapters = chapters.map((chapter) => (chapter.id === chapterPatch[1] ? { ...chapter, excluded: body.excluded as boolean } : chapter));
         return jsonResponse(200, { chapter: chapters.find((chapter) => chapter.id === chapterPatch[1]) });
@@ -239,6 +242,9 @@ beforeEach(() => {
       }
       if (url.includes("/me/settings")) return jsonResponse(200, { settings: DEFAULT_SETTINGS });
       if (url.includes("/metadata/candidates")) return jsonResponse(200, { items: candidates });
+      if (url.includes("/metadata/apply") && method === "POST") {
+        return jsonResponse(200, { book, applied: (body.fields as string[]) ?? [] });
+      }
       if (url.includes("/voices")) return jsonResponse(200, VOICES);
       if (url.includes(`/books/${ID}`)) return jsonResponse(200, { book, chapters, progress });
       throw new Error(`unexpected fetch: ${url}`);
@@ -494,9 +500,9 @@ describe("BookDetailPage", () => {
     expect(await screen.findByText("at /")).toBeTruthy();
   });
 
-  it("collapses the chapter list to five with Show all", async () => {
+  it("collapses the chapter list to fifteen with Show all and Show less", async () => {
     book = makeBook({ can_edit: true });
-    chapters = Array.from({ length: 7 }, (_, index) => ({
+    chapters = Array.from({ length: 17 }, (_, index) => ({
       id: `c${index + 1}`,
       idx: index,
       title: `Chapter ${index + 1}`,
@@ -504,10 +510,53 @@ describe("BookDetailPage", () => {
     }));
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    expect(await screen.findByText("7 of 7 included")).toBeTruthy();
-    expect(screen.queryByRole("checkbox", { name: /Chapter 6/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show all 7" }));
-    expect(await screen.findByRole("checkbox", { name: /Chapter 7/ })).toBeTruthy();
+    expect(await screen.findByText("17 of 17 included")).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: /Chapter 16/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 17" }));
+    expect(await screen.findByRole("checkbox", { name: /Chapter 17/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(screen.queryByRole("checkbox", { name: /Chapter 16/ })).toBeNull();
+  });
+
+  it("updates the Chapters tab and the included count when a chapter is excluded", async () => {
+    book = makeBook({ can_edit: true });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /One Way/ }));
+    expect(await screen.findByText("1 of 2 included")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
+    expect(screen.getByTitle("Excluded from narration")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /One Way/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /The Other/ })).toBeTruthy();
+  });
+
+  it("restores the previous value and shows an error when excluding fails", async () => {
+    book = makeBook({ can_edit: true });
+    chapterPatchFails = true;
+    renderDetail();
+    fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
+    const checkbox = screen.getByRole("checkbox", { name: /One Way/ }) as HTMLInputElement;
+    fireEvent.click(checkbox);
+    await vi.waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/nope/));
+    expect(checkbox.checked).toBe(true);
+    expect(screen.getByText("2 of 2 included")).toBeTruthy();
+  });
+
+  it("numbers included chapters sequentially after excluding a middle chapter", async () => {
+    book = makeBook({ can_edit: true });
+    chapters = [
+      { id: "c1", idx: 0, title: "One", char_count: 300 },
+      { id: "c2", idx: 1, title: "Two", char_count: 400 },
+      { id: "c3", idx: 2, title: "Three", char_count: 300 },
+    ];
+    renderDetail();
+    fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Two/ }));
+    await vi.waitFor(() => expect(screen.getByText("2 of 3 included")).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
+    expect(await screen.findByRole("button", { name: /^1\D*One/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^2\D*Three/ })).toBeTruthy();
+    expect(screen.getByTitle("Excluded from narration").textContent).toContain("Two");
   });
 
   it("shows only populated About rows and links authors and tags to searches", async () => {
@@ -536,12 +585,25 @@ describe("BookDetailPage", () => {
     });
   });
 
-  it("shows the review banner when saved candidates exist and opens the panel preloaded", async () => {
+  it("shows the review banner and opens Find metadata in the Manage tab", async () => {
+    book = makeBook({ can_edit: true });
     renderDetail();
     const review = await screen.findByRole("button", { name: "Review metadata matches" });
     fireEvent.click(review);
+    expect(screen.getByRole("tab", { name: "Manage" }).getAttribute("aria-selected")).toBe("true");
     expect(await screen.findByRole("button", { name: "Apply selected" })).toBeTruthy();
     expect(screen.getByText(/72% match/)).toBeTruthy();
+  });
+
+  it("applies metadata and renders no search panel outside the Manage tab", async () => {
+    book = makeBook({ can_edit: true });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Review metadata matches" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Apply selected" }));
+    await screen.findByText(/Applied:/);
+    fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
+    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "ISBN" })).toBeNull();
   });
 
   it("hides the banner when there are no candidates", async () => {

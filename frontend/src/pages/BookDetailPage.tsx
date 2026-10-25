@@ -34,7 +34,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { VoicePicker } from "../components/VoicePicker";
 import { formatTime } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
-import type { BookDetailResponse, Candidate, Chapter } from "../api/types";
+import type { Candidate, Chapter } from "../api/types";
 
 const DESKTOP_QUERY = "(min-width: 1050px)"; // the `desktop:` breakpoint in tokens.css
 
@@ -254,17 +254,12 @@ export function BookDetailPage() {
 
   const reset = useMutation({ mutationFn: () => resetProgress(id) });
 
-  // Optimistic exclude/include; the cache stays authoritative for the session
-  // because the server may omit excluded chapters from GET /books/{id}.
+  // Optimistic exclude/include lives in useSetChapterExcluded; the cache stays
+  // authoritative for the session because the server may omit excluded
+  // chapters from GET /books/{id}.
   const setChapter = useSetChapterExcluded(id);
   function toggleChapter(chapter: Chapter) {
-    const excluded = !chapter.excluded;
-    const write = (value: boolean) =>
-      queryClient.setQueryData<BookDetailResponse>(["book", id], (prev) =>
-        prev ? { ...prev, chapters: prev.chapters.map((c) => (c.id === chapter.id ? { ...c, excluded: value } : c)) } : prev,
-      );
-    write(excluded);
-    setChapter.mutate({ chapterId: chapter.id, excluded }, { onError: () => write(!excluded) });
+    setChapter.mutate({ chapterId: chapter.id, excluded: !chapter.excluded });
   }
 
   if (error instanceof Error) {
@@ -321,12 +316,15 @@ export function BookDetailPage() {
   const currentId = loadedHere ? player.chapter?.id ?? null : progressChapter?.id ?? null;
 
   /** "played" is approximate: chapters before the progress (or live player)
-   * chapter count as played; a finished book is all played (DECISIONS). */
+   * chapter count as played; a finished book is all played (DECISIONS).
+   * Positions come from the included list so excluded chapters neither leave
+   * gaps in the numbering nor shift what counts as played. */
   function chapterState(chapter: Chapter): "played" | "current" | null {
     if (finished) return "played";
     if (chapter.id === currentId) return "current";
-    if (currentIndex >= 0 && player.chapters[currentIndex]) return chapter.idx < player.chapters[currentIndex]!.idx ? "played" : null;
-    if (progressChapter) return chapter.idx < progressChapter.idx ? "played" : null;
+    const position = included.indexOf(chapter); // -1 for excluded chapters
+    if (currentIndex >= 0) return position < currentIndex ? "played" : null;
+    if (progressChapter) return position < included.indexOf(progressChapter) ? "played" : null;
     return null;
   }
 
@@ -382,7 +380,7 @@ export function BookDetailPage() {
       ? `${percent}% · ${formatLength((book.est_duration_s ?? 0) * (1 - (progress?.percent ?? 0) / 100))} left`
       : `Ch. ${(progressChapter?.idx ?? 0) + 1} · ${percent}%`;
 
-  const chapterRowCells = (chapter: Chapter) => {
+  const chapterRowCells = (chapter: Chapter, number: number) => {
     const state = chapterState(chapter);
     const current = state === "current";
     const seconds = chapterSeconds(chapter);
@@ -390,7 +388,9 @@ export function BookDetailPage() {
     const rowPercent = current ? chapterPercent(chapter) : null;
     return (
       <>
-        <span className={clsx("tabular text-sm", current ? "font-semibold text-on-selected" : "text-fg-2")}>{chapter.idx + 1}</span>
+        <span className={clsx("tabular text-sm", current ? "font-semibold text-on-selected" : "text-fg-2")}>
+          {number > 0 ? number : "–"}
+        </span>
         <span className={clsx("min-w-0 truncate", current ? "font-semibold text-fg" : state === "played" ? "text-fg-2" : "text-fg")}>
           {chapter.title}
         </span>
@@ -446,6 +446,7 @@ export function BookDetailPage() {
             onClick={() => {
               setReviewItems(saved);
               setFindOpen(true);
+              setTab("Manage");
             }}
             className={outlineButton}
           >
@@ -453,7 +454,6 @@ export function BookDetailPage() {
           </button>
         </div>
       )}
-      {findOpen && tab !== "Manage" && <FindMetadata book={book} initialItems={reviewItems ?? undefined} />}
 
       {book.status === "failed" && book.error && (
         <p role="alert" className="rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger">
@@ -557,6 +557,10 @@ export function BookDetailPage() {
               <ol className="flex flex-col gap-0.5 pt-2">
                 {data.chapters.map((chapter) => {
                   const state = chapterState(chapter);
+                  // Included chapters are numbered 1..N in playback order; the
+                  // source idx would leave gaps wherever a chapter is excluded.
+                  // Excluded rows show a dash. Manage keeps the source numbering.
+                  const number = included.indexOf(chapter) + 1;
                   const rowClass = clsx(
                     "tap grid w-full items-center gap-2.5 rounded-md px-2.5 text-left text-base",
                     desktop
@@ -567,7 +571,7 @@ export function BookDetailPage() {
                     <li key={chapter.id}>
                       {chapter.excluded ? (
                         <div className={clsx(rowClass, "opacity-60")} aria-disabled="true" title="Excluded from narration">
-                          {chapterRowCells(chapter)}
+                          {chapterRowCells(chapter, number)}
                         </div>
                       ) : (
                         <button
@@ -576,7 +580,7 @@ export function BookDetailPage() {
                           aria-current={state === "current" ? "true" : undefined}
                           className={clsx(rowClass, state === "current" && desktop && "border border-divider bg-surface")}
                         >
-                          {chapterRowCells(chapter)}
+                          {chapterRowCells(chapter, number)}
                         </button>
                       )}
                     </li>
@@ -694,7 +698,9 @@ export function BookDetailPage() {
               <ManageCard title="Chapters to narrate" aside={`${included.length} of ${data.chapters.length} included`}>
                 <p className="text-sm text-fg-2">Skip front and back matter you don’t want read aloud.</p>
                 <div className="flex flex-col">
-                  {(showAllChapters ? data.chapters : data.chapters.slice(0, 5)).map((chapter) => (
+                  {/* Manage lists every chapter, excluded ones included, so it
+                      keeps the original source numbering (chapter.idx + 1). */}
+                  {(showAllChapters ? data.chapters : data.chapters.slice(0, 15)).map((chapter) => (
                     <label key={chapter.id} className="tap flex items-center gap-2.5 text-base">
                       <input
                         type="checkbox"
@@ -714,7 +720,7 @@ export function BookDetailPage() {
                     {setChapter.error.message}
                   </p>
                 )}
-                {data.chapters.length > 5 && (
+                {data.chapters.length > 15 && (
                   <button
                     type="button"
                     onClick={() => setShowAllChapters((value) => !value)}

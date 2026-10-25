@@ -1,6 +1,6 @@
 /** Typed calls + queries for the books endpoints (plan T8 contract). */
 import { useCallback } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, csrfToken } from "./client";
 import type { BookDetailResponse, BookListResponse, Chapter, UploadResult } from "./types";
 
@@ -44,11 +44,34 @@ export function useDeleteBook(id: string) {
   return useMutation({ mutationFn: () => api.del<undefined>(`/books/${id}`) });
 }
 
-/** Admin/uploader: include a chapter in playback or exclude it from it. */
+/** Admin/uploader: include a chapter in playback or exclude it from it.
+ * Optimistically flips `excluded` in the ["book", id] cache so the Chapters
+ * tab and the "N of M included" count update at once; success invalidates so
+ * the server's recomputed totals land, error restores the previous cache. */
 export function useSetChapterExcluded(bookId: string) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ chapterId, excluded }: { chapterId: string; excluded: boolean }) =>
       api.patch<{ chapter: Chapter }>(`/books/${bookId}/chapters/${chapterId}`, { excluded }),
+    onMutate: async ({ chapterId, excluded }) => {
+      await queryClient.cancelQueries({ queryKey: ["book", bookId] });
+      const previous = queryClient.getQueryData<BookDetailResponse>(["book", bookId]);
+      queryClient.setQueryData<BookDetailResponse>(["book", bookId], (prev) =>
+        prev
+          ? {
+              ...prev,
+              chapters: prev.chapters.map((c) => (c.id === chapterId ? { ...c, excluded } : c)),
+            }
+          : prev,
+      );
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(["book", bookId], context.previous);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+    },
   });
 }
 
