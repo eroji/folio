@@ -10,6 +10,7 @@ test("test-mode panel signs in without LDAP", async ({ page }) => {
   await page.getByRole("button", { name: "Test sign in" }).click();
 
   await page.waitForURL("**/");
-  await expect(page.getByRole("link", { name: "Admin" })).toBeVisible();
+  await page.getByRole("button", { name: "You" }).click();
+  await expect(page.getByRole("menuitem", { name: "Admin" })).toBeVisible();
   await expect(page.getByLabel("Search books")).toBeVisible();
 });

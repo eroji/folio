@@ -1,15 +1,15 @@
-import { useState } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
-import { BookOpen, Moon, Settings, Shield, Sun, Upload } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { useEvents } from "../hooks/useEvents";
 import { useTheme } from "../hooks/useTheme";
+import { AccountMenu } from "./AccountMenu";
+import { Icon } from "./Icon";
+import type { IconName } from "./Icon";
 import { MiniPlayer } from "./MiniPlayer";
 import { PlayerProvider } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
-
-const iconProps = { size: 20, strokeWidth: 1.75, "aria-hidden": true } as const;
 
 export function AppShell() {
   return (
@@ -19,142 +19,119 @@ export function AppShell() {
   );
 }
 
-/** Sticky header (logo, nav, theme toggle, avatar menu) + phone bottom nav + mini player. */
+const railItem = ({ isActive }: { isActive: boolean }) =>
+  clsx(
+    "tap grid size-10 place-items-center rounded-md",
+    isActive ? "bg-selected text-fg" : "text-fg-2 hover:bg-raised hover:text-fg",
+  );
+
+const tabItem = ({ isActive }: { isActive: boolean }) =>
+  clsx(
+    "tap flex flex-1 flex-col items-center justify-center gap-0.5 text-2xs",
+    isActive ? "font-semibold text-accent-fg" : "font-medium text-fg-2",
+  );
+
+/** Search is not a route: it lands on the library with the field focused. */
+const SEARCH_HREF = "/?focus=search";
+
+function RailLink({ to, icon, label }: { to: string; icon: IconName; label: string }) {
+  return (
+    <Link to={to} aria-label={label} className={railItem({ isActive: false })}>
+      <Icon name={icon} size={20} />
+    </Link>
+  );
+}
+
+/** Desktop ≥1050px: 60px icon rail, account menu at its bottom. Below:
+ * 48px phone header (back, ⋯) and a 56px tab bar ending in the avatar. */
 function Shell() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const player = usePlayer();
-  const { theme, toggle } = useTheme();
+  const { choice, select } = useTheme();
   useEvents();
   const navigate = useNavigate();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+
+  // "/" focuses the library search from anywhere except a field being typed in.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "/") return;
+      const target = event.target as HTMLElement;
+      if (target.isContentEditable || /^(?:input|textarea|select)$/i.test(target.tagName)) return;
+      event.preventDefault();
+      navigate(SEARCH_HREF);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate]);
+
   if (!user) return null; // RequireAuth guarantees a user before this renders.
-
-  const wordmark = theme === "dark" ? "/logo-wordmark-dark.svg" : "/logo-wordmark.svg";
-
-  async function signOut() {
-    setMenuOpen(false);
-    await logout();
-    navigate("/login", { replace: true });
-  }
-
-  const topLink = ({ isActive }: { isActive: boolean }) =>
-    clsx(
-      "flex min-h-11 items-center gap-2 rounded-pill px-3 text-sm font-medium",
-      isActive ? "text-brand-blue" : "text-muted hover:text-ink",
-    );
-  const bottomLink = ({ isActive }: { isActive: boolean }) =>
-    clsx(
-      "flex min-h-11 flex-col items-center justify-center gap-0.5 py-1.5 text-xs font-medium",
-      isActive ? "text-brand-blue" : "text-muted",
-    );
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-20 border-b border-line bg-page/90 pt-safe backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-1 px-4">
-          <Link to="/" aria-label="Folio home" className="mr-2 flex min-h-11 items-center">
-            <img src={wordmark} alt="Folio" className="h-7 w-auto" />
-          </Link>
-          <nav className="hidden gap-1 md:flex" aria-label="Primary">
-            <NavLink to="/" end className={topLink}>
-              <BookOpen {...iconProps} /> Library
-            </NavLink>
-            <NavLink to="/upload" className={topLink}>
-              <Upload {...iconProps} /> Upload
-            </NavLink>
-          </nav>
-          <div className="ml-auto flex items-center">
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              className="grid h-11 w-11 place-items-center rounded-pill text-muted hover:text-ink"
-            >
-              {theme === "dark" ? <Sun {...iconProps} size={22} /> : <Moon {...iconProps} size={22} />}
-            </button>
-            <div className="relative">
-              <button
-                type="button"
-                aria-label="Account menu"
-                aria-expanded={menuOpen}
-                onClick={() => setMenuOpen((open) => !open)}
-                className="grid h-11 w-11 place-items-center rounded-pill bg-brand-gradient font-display text-sm font-semibold text-white"
-              >
-                {user.display_name.slice(0, 1).toUpperCase()}
-              </button>
-              {menuOpen && (
-                <>
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    aria-hidden
-                    className="fixed inset-0 z-10 cursor-default"
-                    onClick={() => setMenuOpen(false)}
-                  />
-                  <div className="absolute right-0 z-20 mt-1 w-60 rounded-card border border-line bg-card p-1 shadow-lg">
-                    <div className="px-3 py-2">
-                      <p className="font-medium">{user.display_name}</p>
-                      <p className="text-sm text-muted">{user.username}</p>
-                    </div>
-                    <Link
-                      to="/settings"
-                      onClick={() => setMenuOpen(false)}
-                      className="flex min-h-11 items-center gap-2 rounded-card px-3 text-sm hover:bg-page"
-                    >
-                      <Settings {...iconProps} size={18} /> Settings
-                    </Link>
-                    {user.role === "admin" && (
-                      <Link
-                        to="/admin"
-                        onClick={() => setMenuOpen(false)}
-                        className="flex min-h-11 items-center gap-2 rounded-card px-3 text-sm hover:bg-page"
-                      >
-                        <Shield {...iconProps} size={18} /> Admin
-                      </Link>
-                    )}
-                    <button
-                      type="button"
-                      onClick={signOut}
-                      className="flex min-h-11 w-full items-center rounded-card px-3 text-left text-sm hover:bg-page"
-                    >
-                      Log out
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+      <nav
+        aria-label="Main"
+        className="fixed inset-y-0 left-0 z-20 hidden w-[60px] flex-col items-center gap-2 border-r border-divider bg-surface px-2.5 pt-3.5 pb-3.5 desktop:flex"
+      >
+        <Link to="/" aria-label="Folio home" className="mb-4">
+          <img src="/logo.svg" alt="Folio" className="size-8" />
+        </Link>
+        <NavLink to="/" end aria-label="Library" className={railItem}>
+          <Icon name="auto_stories" size={20} />
+        </NavLink>
+        <RailLink to={SEARCH_HREF} icon="search" label="Search" />
+        <NavLink to="/upload" aria-label="Upload" className={railItem}>
+          <Icon name="upload" size={20} />
+        </NavLink>
+        <div className="relative mt-auto">
+          <AccountMenu placement="rail" choice={choice} onSelectTheme={select} />
         </div>
+      </nav>
+
+      <header className="fixed inset-x-0 top-0 z-20 flex h-12 items-center justify-between bg-bg/90 px-2 pt-safe backdrop-blur desktop:hidden">
+        {location.pathname === "/" ? (
+          <span className="size-11" aria-hidden />
+        ) : (
+          <button
+            type="button"
+            aria-label="Back"
+            onClick={() => (location.key === "default" ? navigate("/") : navigate(-1))}
+            className="tap grid size-11 place-items-center rounded-md text-fg"
+          >
+            <Icon name="chevron_left" size={22} />
+          </button>
+        )}
+        <AccountMenu placement="header" choice={choice} onSelectTheme={select} />
       </header>
 
-      <main className={clsx("mx-auto max-w-5xl px-4 pt-4", player.book ? "pb-32 md:pb-20" : "pb-24 md:pb-10")}>
+      <main
+        className={clsx(
+          "min-w-0 px-4 pt-[calc(3rem+env(safe-area-inset-top))] desktop:pt-5 desktop:pl-[88px] desktop:pr-7",
+          player.book
+            ? "pb-[calc(9rem+env(safe-area-inset-bottom))] desktop:pb-28"
+            : "pb-[calc(5rem+env(safe-area-inset-bottom))] desktop:pb-10",
+        )}
+      >
         <Outlet />
       </main>
 
       <nav
-        aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-page/95 pb-safe backdrop-blur md:hidden"
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-20 flex h-14 border-t border-divider bg-surface pb-safe desktop:hidden"
       >
-        <div className="mx-auto grid max-w-md grid-flow-col">
-          <NavLink to="/" end className={bottomLink}>
-            <BookOpen {...iconProps} size={22} />
-            <span>Library</span>
-          </NavLink>
-          <NavLink to="/upload" className={bottomLink}>
-            <Upload {...iconProps} size={22} />
-            <span>Upload</span>
-          </NavLink>
-          <NavLink to="/settings" className={bottomLink}>
-            <Settings {...iconProps} size={22} />
-            <span>Settings</span>
-          </NavLink>
-          {user.role === "admin" && (
-            <NavLink to="/admin" className={bottomLink}>
-              <Shield {...iconProps} size={22} />
-              <span>Admin</span>
-            </NavLink>
-          )}
-        </div>
+        <NavLink to="/" end className={tabItem}>
+          <Icon name="auto_stories" size={22} />
+          <span>Library</span>
+        </NavLink>
+        <Link to={SEARCH_HREF} className={tabItem({ isActive: false })}>
+          <Icon name="search" size={22} />
+          <span>Search</span>
+        </Link>
+        <NavLink to="/upload" className={tabItem}>
+          <Icon name="upload" size={22} />
+          <span>Upload</span>
+        </NavLink>
+        <AccountMenu placement="sheet" choice={choice} onSelectTheme={select} />
       </nav>
 
       <MiniPlayer />
