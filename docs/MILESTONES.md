@@ -175,6 +175,8 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 
 **Acceptance:** installable shell with offline page and cached covers (never audio); Lighthouse accessibility ≥ 90; admin retry works; Finished shelf + progress sort; uploaders see their own book's settings.
 
+**Status: accepted 2026-10-25.** Service worker caches shell + covers and never `/api/v1/audio` (verified in Cache Storage after playback); offline navigation falls back to a branded page. Admin retry/cache stats/TTS latency, Finished shelf, `sort=progress`, and `can_edit` all live. Lighthouse accessibility: **login 100 · library 100 · book 100 · player 100** (after fixing low-contrast `<summary>` text and three icon-button name mismatches). Metrics at `/metrics` expose templated paths only (no IDs).
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
@@ -187,7 +189,10 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 - **Chapter title lead-ins** are not synthesized (optional `lead_in` in the prepare contract); the player speaks segment text only, and the `speak_titles` setting is stored but inert.
 - **Finished books** have a badge and leave Continue listening, but there is no "Finished" shelf because no endpoint lists finished books yet (M6).
 - **Cross-device prompt**: the > 60 s rule is tested at unit level with two device labels; a two-browser manual check is still worthwhile.
-- **`sort=progress`** still falls back to recent; now that the progress table exists it can be implemented in M6.
+- **PWA install prompt** is not customised; installation uses the browser's own affordance. A real phone install + offline test is still manual.
+- **Service-worker version** (`folio-v1`) is bumped by hand when the shell changes; automate with a build hash if it becomes easy to forget.
+- **Per-book cache clear** is API-only (`book_id` supported); the admin UI clears everything.
+- **Docs**: `BACKUP.md` still needs a restore rehearsal against a real dump.
 - **Uploader-only actions in the UI**: the API enforces "admin or uploader", but the book payload deliberately hides `uploaded_by`, so the UI shows Reprocess/Delete to admins only. Revisit in M5 with a `can_edit` flag.
 - **LDAP outage → generic 401**: transport failures are indistinguishable from bad passwords by design (no directory-internals leak). Operators see `reason=ldap_error` in logs.
 - **500-page ingest budget (< 60 s)** is not measured: fixtures are small. Measure with a real book before the performance sign-off in M6.
