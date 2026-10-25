@@ -217,8 +217,8 @@ Handoff: `docs/ui-handoff/HANDOFF.md` (the old `folio-ui-handoff` is superseded)
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Tokens, Sora/Figtree, remove theme, lucide, brand | in progress |
-| 2 | Shell: sidebar, top bar, account menu, phone nav, routes | planned |
+| 1 | Tokens, Sora/Figtree, remove theme, lucide, brand | **done** — dark-only, 193 web tests, new brand |
+| 2 | Shell: sidebar, top bar, account menu, phone nav, routes | in progress |
 | 3 | Player bar, expanded player, phone player/read-along | planned |
 | 4 | Book page two-column, ⋮ menu + narrator dialog | planned |
 | 5 | Home/Library shelves, Genre data, group API | backend + frontend in progress |
