@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+  Folio UI reference (Direction D): Sign in
+  STATIC REFERENCE, NOT PRODUCTION CODE. Exported from the design canvas.
+  - Take every color, radius and font from frontend/src/styles/tokens.css, not from the inline values here.
+  - Icons here are hand-drawn SVGs; build with lucide-react using the mapping in HANDOFF.md.
+  - Book covers are placeholders (colored blocks with the title); the app shows real cover images.
+  - Closed menus are in the DOM with `hidden`.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Folio reference: Sign in</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&amp;family=Figtree:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+.no-sb{scrollbar-width:none}.no-sb::-webkit-scrollbar{display:none}
+</style>
+</head>
+<body style="background: #0B0B0C">
+<div style="background: #0B0B0C"><div style="min-height: 900px; box-sizing: border-box; padding: 40px 24px; display: flex; align-items: center; justify-content: center; color: #F7F7F2; font-family: Figtree, system-ui, sans-serif; background: radial-gradient(90% 420px at 22% 0%, rgba(255, 194, 51, 0.16), rgba(0, 0, 0, 0) 75%), radial-gradient(60% 360px at 85% 0%, rgba(255, 194, 51, 0.06), rgba(0, 0, 0, 0) 80%), linear-gradient(180deg, #111114 0px, #0B0B0C 520px)">
+<main style="width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 32px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 14px"><svg width="64" height="64" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 4h24a2 2 0 0 1 2 2v38l-14-9-14 9V6a2 2 0 0 1 2-2z" fill="#FFC233"></path><path d="M20 14v14l11-7z" fill="#0B0B0C"></path></svg><span style="font-family: Sora, system-ui, sans-serif; font-weight: 700; font-size: 34px; letter-spacing: -0.03em">folio</span></div>
+<form novalidate style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 8px"><label for="u" style="font-size: 14px; font-weight: 600">Username</label><input id="u" type="text" autocomplete="username" style="height: 48px; box-sizing: border-box; padding: 0 18px; border-radius: 999px; border: 1px solid #2E2E33; background: #202023; color: #F7F7F2; font: inherit; font-size: 16px"></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><label for="p" style="font-size: 14px; font-weight: 600">Password</label><div style="position: relative"><input id="p" type="password" autocomplete="current-password" style="width: 100%; height: 48px; box-sizing: border-box; padding: 0 52px 0 18px; border-radius: 999px; border: 1px solid #2E2E33; background: #202023; color: #F7F7F2; font: inherit; font-size: 16px"><button type="button" aria-label="Show password" aria-pressed="false" style="position: absolute; right: 4px; top: 4px; width: 40px; height: 40px; border: 0; border-radius: 999px; background: transparent; color: #A9A9B0; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg></button></div></div>
+<button type="submit" style="height: 52px; margin-top: 8px; border: 0; border-radius: 999px; background: #F7F7F2; color: #0B0B0C; font: inherit; font-size: 16px; font-weight: 700">Sign in</button>
+</form>
+</main>
+</div></div>
+</body>
+</html>
