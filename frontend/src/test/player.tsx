@@ -162,15 +162,19 @@ export function makeProgress(overrides: Partial<Progress>): Progress {
   };
 }
 
-/** Stub play/pause and record which elements played. Call before rendering. */
-export function stubMedia(): { played: HTMLMediaElement[] } {
+/** Stub play/pause and record which elements played/paused. Call before rendering. */
+export function stubMedia(): { played: HTMLMediaElement[]; paused: HTMLMediaElement[] } {
   const played: HTMLMediaElement[] = [];
+  const paused: HTMLMediaElement[] = [];
   vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
     played.push(this);
     return Promise.resolve();
   });
-  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-  return { played };
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) {
+    paused.push(this);
+    return undefined;
+  });
+  return { played, paused };
 }
 
 let current: PlayerContextValue | undefined;

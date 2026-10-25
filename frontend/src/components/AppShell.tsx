@@ -127,7 +127,7 @@ function Shell() {
         </div>
       </header>
 
-      <main className={clsx("mx-auto max-w-5xl px-4 pt-4 md:pb-10", player.book ? "pb-32" : "pb-24")}>
+      <main className={clsx("mx-auto max-w-5xl px-4 pt-4", player.book ? "pb-32 md:pb-20" : "pb-24 md:pb-10")}>
         <Outlet />
       </main>
 

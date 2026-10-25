@@ -2,19 +2,20 @@ import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayerContextValue } from "./PlayerProvider";
 import { TTS_LOOKAHEAD } from "./PlayerProvider";
-import { installMockEventSource } from "../test/eventsource";
+import { installMockEventSource, MockEventSource } from "../test/eventsource";
 import { BOOK_ID, CH1, CH2, installPlayerFetch, makeProgress, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import { deviceLabel } from "../api/progress";
 import type { AudioStatus } from "../api/audio";
 
 let prepareCalls: { segment_id: string; count: number; voice?: string }[] = [];
 let played: HTMLMediaElement[] = [];
+let paused: HTMLMediaElement[] = [];
 
 beforeEach(() => {
   localStorage.clear();
   installMockEventSource();
   prepareCalls = installPlayerFetch().prepareCalls;
-  played = stubMedia().played;
+  ({ played, paused } = stubMedia());
 });
 
 afterEach(() => {
@@ -54,6 +55,50 @@ describe("PlayerProvider", () => {
     await waitFor(() => expect(getPlayer().index).toBe(1));
     expect(played).toContain(b);
     expect(prepareCalls.length).toBe(callsBefore); // next segment was already known ready
+  });
+
+  it("does not start the idle element when an SSE audio frame tops up while playing", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const [, b] = getPlayer().elements;
+    expect(played.filter((el) => el === b)).toHaveLength(0); // preloading must never call play
+    const playsBefore = played.length;
+    await act(async () => {
+      MockEventSource.instances[0]!.emit("audio", { book_id: BOOK_ID, segment_id: `${CH1}-seg1` });
+      await new Promise((resolve) => setTimeout(resolve, 0)); // let topUp's prepare round-trip settle
+    });
+    expect(played).toHaveLength(playsBefore); // statuses merged, nothing started
+    expect(getPlayer().playing).toBe(true);
+    expect(getPlayer().index).toBe(0);
+  });
+
+  it("pauses both elements and a later play starts exactly one", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const [a, b] = getPlayer().elements;
+    act(() => getPlayer().pause());
+    expect(getPlayer().playing).toBe(false);
+    expect(paused).toContain(a);
+    expect(paused).toContain(b);
+    played.length = 0;
+    await act(async () => {
+      getPlayer().toggle();
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(new Set(played).size).toBe(1); // no overlap: one element resumes
+  });
+
+  it("ended moves to the next segment and only then starts the other element", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const [a, b] = getPlayer().elements;
+    expect(played).toEqual([a]); // nothing else started while playing
+    act(() => {
+      a.dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().index).toBe(1));
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(played).toEqual([a, b]); // the handoff starts the other element, once
   });
 
   it("auto-advances to the next chapter when the chapter ends", async () => {

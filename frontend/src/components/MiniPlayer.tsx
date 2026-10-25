@@ -3,7 +3,9 @@ import { Pause, Play } from "lucide-react";
 import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
 
-/** Screen 7: fixed bar above the bottom nav; tapping it opens the full player. */
+/** Screen 7: fixed 64px bottom bar on every viewport (above the phone bottom
+ * nav on small screens, pinned to the viewport bottom on md+); tapping it
+ * opens the full player. Hidden on /player itself. */
 export function MiniPlayer() {
   const player = usePlayer();
   const location = useLocation();
@@ -15,16 +17,13 @@ export function MiniPlayer() {
   const percent = player.progressPercent;
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-card/95 backdrop-blur md:hidden">
-      <div aria-hidden className="h-0.5 w-full bg-line">
-        <div className="h-full bg-brand-gradient" style={{ width: `${percent}%` }} />
-      </div>
-      <div className="flex items-center gap-3 px-3 py-2">
+    <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 border-t border-line bg-card/95 backdrop-blur md:bottom-0 md:pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-4">
         <button
           type="button"
           aria-label="Open player"
           onClick={() => navigate(`/player?book=${book.id}`)}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-card text-left transition-opacity duration-150 hover:opacity-85"
         >
           <BookCover book={book} className="h-10 w-10 shrink-0 rounded-card" />
           <span className="min-w-0 flex-1">
@@ -36,10 +35,13 @@ export function MiniPlayer() {
           type="button"
           aria-label={player.playing ? "Pause" : "Play"}
           onClick={player.toggle}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-pill bg-brand-gradient text-white"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-pill bg-brand-gradient text-white transition-opacity duration-150 hover:opacity-90"
         >
           {player.playing ? <Pause size={20} strokeWidth={1.75} aria-hidden /> : <Play size={20} strokeWidth={1.75} aria-hidden />}
         </button>
+      </div>
+      <div aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-line">
+        <div className="h-full bg-brand-gradient" style={{ width: `${percent}%` }} />
       </div>
     </div>
   );

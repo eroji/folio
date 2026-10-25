@@ -191,10 +191,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.error = message;
   }
 
-  /** Start/continue the current segment in the right element. `playing` means
-   * a handoff: begin in the idle (preloaded) element and swap. */
+  /** Start/continue the current segment in the active element. Returns while audio
+   * is already playing: the only handoff is handleEnded, which stops, swaps and
+   * pumps — so exactly one element ever plays at a time. */
   function pump() {
-    if (!s.intent) return;
+    if (!s.intent || s.playing) return;
     const item = currentItem();
     if (item?.status === "failed") {
       s.intent = false;
@@ -206,7 +207,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.preparing = true;
       return;
     }
-    const target = s.playing ? idleEl() : activeEl();
+    const target = activeEl();
     if (!target.src.includes(item.url)) target.src = item.url;
     if (s.offset > 0) {
       target.currentTime = s.offset;
@@ -216,7 +217,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     void target
       .play()
       .then(() => {
-        s.active = target === els[0] ? 0 : 1;
+        if (!s.intent || activeEl() !== target) {
+          target.pause(); // paused or handed off while the promise was pending
+          return;
+        }
         s.playing = true;
         s.preparing = false;
         s.error = null;
@@ -228,6 +232,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         s.playing = false;
         bump();
       });
+  }
+
+  /** Stop every element and forget the playing flag: the only way back to
+   * audio is pump() starting the active element. */
+  function silence() {
+    s.playing = false;
+    for (const element of els) element.pause();
   }
 
   /** Point the idle element at the next segment so `ended` can hand off without a reload. */
@@ -243,7 +254,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  /** prepare for the current segment + lookahead, merge statuses, retry the pump. */
+  /** prepare for the current segment + lookahead, merge statuses; the trailing
+   * pump can only start audio when nothing is playing, never mid-playback. */
   const toppingUp = useRef(false);
   async function topUp() {
     const segment = s.segments[s.index];
@@ -271,6 +283,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const chapter = s.chapters[idx];
     if (!book || !chapter) return;
     if (!s.resumeLoading && s.segments.length > 0) saveNow(); // chapter change: save the old position
+    silence(); // never let the old chapter's element keep running under the new one
     s.chapterIdx = idx;
     s.segments = [];
     s.index = 0;
@@ -298,6 +311,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   function handleEnded() {
     s.time = 0;
+    s.playing = false;
+    s.active = s.active === 0 ? 1 : 0; // hand off to the preloaded element before pumping
     if (s.index + 1 < s.segments.length) {
       s.index += 1;
       s.offset = 0;
@@ -396,8 +411,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   function pause() {
     s.intent = false;
-    s.playing = false;
-    activeEl().pause();
+    s.preparing = false;
+    silence(); // both elements: the preloaded one may have been left running
     saveNow(); // spec: save on pause
     bump();
   }
@@ -413,6 +428,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.index = index;
     s.offset = Math.max(0, offsetSeconds);
     s.time = s.offset;
+    silence(); // stop the running element (and the preloaded one) before restarting
     // Prepare the target first so the UI shows "Preparing audio…" instead of silence.
     if (currentItem()?.status === "ready") pump();
     else void topUp();
