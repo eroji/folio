@@ -31,7 +31,7 @@ import { FindMetadata } from "../components/FindMetadata";
 import { Icon } from "../components/Icon";
 import { PronunciationRules } from "../components/PronunciationRules";
 import { StatusBadge } from "../components/StatusBadge";
-import { VoicePicker } from "../components/VoicePicker";
+import { VoiceMenu } from "../components/VoiceMenu";
 import { formatTime } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import type { Candidate, Chapter } from "../api/types";
@@ -72,6 +72,10 @@ function languageName(code: string): string {
 
 const TABS = ["Chapters", "About", "Manage"] as const;
 type Tab = (typeof TABS)[number];
+
+/** Safety net for the "Preparing…" state: cleared earlier when playback
+ * starts or the player errors, but never left spinning forever. */
+const PREPARE_TIMEOUT_MS = 30_000;
 
 /** roving-tabindex tablist: arrows / Home / End move selection and focus. */
 function TabList({ tabs, active, onSelect }: { tabs: readonly Tab[]; active: Tab; onSelect: (tab: Tab) => void }) {
@@ -209,7 +213,7 @@ export function BookDetailPage() {
   const [tab, setTab] = useState<Tab>("Chapters");
   const [findOpen, setFindOpen] = useState(false);
   const [reviewItems, setReviewItems] = useState<Candidate[] | null>(null);
-  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [pendingChapterId, setPendingChapterId] = useState<string | null>(null);
   const [showAllChapters, setShowAllChapters] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -220,6 +224,18 @@ export function BookDetailPage() {
     const timer = window.setTimeout(() => setToast(null), 5000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  // Clear the "Preparing…" pending flag once the requested chapter is really
+  // playing, once the player reports an error, or after the safety timeout.
+  useEffect(() => {
+    if (!pendingChapterId) return;
+    if (player.error || (player.playing && player.chapter?.id === pendingChapterId)) {
+      setPendingChapterId(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setPendingChapterId(null), PREPARE_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [pendingChapterId, player.error, player.playing, player.chapter]);
 
   function invalidateProgress() {
     queryClient.invalidateQueries({ queryKey: ["book", id] });
@@ -339,6 +355,14 @@ export function BookDetailPage() {
   }
 
   async function playFrom(chapterId?: string) {
+    // The chapter that is about to start: the clicked one, else the loaded
+    // one, else the saved/first one. Only used for the pending indicator;
+    // navigation below keeps its original semantics.
+    const target =
+      chapterId ??
+      (player.book?.id === id ? player.chapter?.id : progress?.chapter_id ?? firstChapter?.id) ??
+      null;
+    if (target) setPendingChapterId(target);
     if (player.book?.id !== id) await player.load(id, chapterId);
     if (chapterId) await player.goToChapter(chapterId);
     await player.play();
@@ -365,7 +389,16 @@ export function BookDetailPage() {
     document.querySelector<HTMLElement>('section[aria-label="Now playing"] button')?.focus();
   }
 
-  const actionLabel = notPlayable ? "Play" : playingHere ? "Playing now" : progress || loadedHere ? "Resume" : "Play";
+  const preparingHere = !playingHere && (player.preparing || pendingChapterId !== null);
+  const actionLabel = notPlayable
+    ? "Play"
+    : playingHere
+      ? "Playing now"
+      : preparingHere
+        ? "Preparing…"
+        : progress || loadedHere
+          ? "Resume"
+          : "Play";
   const coverLabel = finished
     ? `${book.title}, finished`
     : percent != null
@@ -383,13 +416,14 @@ export function BookDetailPage() {
   const chapterRowCells = (chapter: Chapter, number: number) => {
     const state = chapterState(chapter);
     const current = state === "current";
+    const pending = chapter.id === pendingChapterId;
     const seconds = chapterSeconds(chapter);
     const lengthText = desktop ? formatTime(seconds) : `${Math.max(1, Math.round(seconds / 60))} m`;
     const rowPercent = current ? chapterPercent(chapter) : null;
     return (
       <>
         <span className={clsx("tabular text-sm", current ? "font-semibold text-on-selected" : "text-fg-2")}>
-          {number > 0 ? number : "–"}
+          {number}
         </span>
         <span className={clsx("min-w-0 truncate", current ? "font-semibold text-fg" : state === "played" ? "text-fg-2" : "text-fg")}>
           {chapter.title}
@@ -397,11 +431,18 @@ export function BookDetailPage() {
         <span
           className={clsx(
             "truncate text-right tabular text-xs desktop:text-sm",
-            state ? "hidden desktop:block" : "",
+            pending ? "block" : state ? "hidden desktop:block" : "",
             current ? "text-fg" : "text-fg-2",
           )}
         >
-          {lengthText}
+          {pending ? (
+            <>
+              <Icon name="progress_activity" size={desktop ? 16 : 18} className="animate-spin" />
+              <span className="sr-only">Preparing</span>
+            </>
+          ) : (
+            lengthText
+          )}
         </span>
         <span className={clsx("items-center justify-end", state ? "flex" : "hidden desktop:flex")}>
           {state === "played" && (
@@ -410,7 +451,9 @@ export function BookDetailPage() {
               <span className="sr-only">Played</span>
             </>
           )}
-          {current && desktop && rowPercent != null && <span className="text-sm tabular text-on-selected">{rowPercent}%</span>}
+          {!pending && current && desktop && rowPercent != null && (
+            <span className="text-sm tabular text-on-selected">{rowPercent}%</span>
+          )}
           {current && !desktop && playingHere && <span className="text-xs text-on-selected">Playing</span>}
         </span>
       </>
@@ -499,19 +542,20 @@ export function BookDetailPage() {
                 playingHere ? "bg-selected text-on-selected" : "bg-primary-gradient text-on-primary",
               )}
             >
-              <Icon name={playingHere ? "headphones" : "play_arrow"} size={desktop ? 20 : 22} />
+              {preparingHere ? (
+                <Icon name="progress_activity" size={desktop ? 20 : 22} className="animate-spin" />
+              ) : (
+                <Icon name={playingHere ? "headphones" : "play_arrow"} size={desktop ? 20 : 22} />
+              )}
               {actionLabel}
             </button>
-            <button
-              type="button"
-              aria-label={`Narrator voice: ${voice ?? "default"}`}
-              title="Narrator voice"
-              aria-expanded={voiceOpen}
-              onClick={() => setVoiceOpen((open) => !open)}
-              className="tap grid size-11 shrink-0 place-items-center rounded-md text-fg hover:bg-raised desktop:size-9"
-            >
-              <Icon name="record_voice_over" size={desktop ? 20 : 22} />
-            </button>
+            <VoiceMenu
+              value={voice}
+              language={book.language}
+              error={update.isError ? update.error.message : null}
+              desktop={desktop}
+              onChange={(next) => update.mutate({ narrator_voice: next })}
+            />
             {desktop && (
               <BookMenu
                 finished={finished}
@@ -530,37 +574,25 @@ export function BookDetailPage() {
             </div>
           )}
         </div>
-        {voiceOpen && (
-          <div className="flex flex-col gap-1 border-t border-divider pt-3">
-            <h2 className="text-sm font-semibold">Narrator voice</h2>
-            <VoicePicker
-              value={book.narrator_voice}
-              language={book.language}
-              onChange={(next) => update.mutate({ narrator_voice: next })}
-            />
-            {update.isError && (
-              <p role="alert" className="text-sm text-danger">
-                {update.error.message}
-              </p>
-            )}
-          </div>
-        )}
       </section>
 
       <div className="flex flex-col gap-3">
         <TabList tabs={tabs} active={tab} onSelect={setTab} />
         <div role="tabpanel" id="book-panel" aria-labelledby={`book-tab-${tab}`} tabIndex={-1}>
           {tab === "Chapters" &&
-            (data.chapters.length === 0 ? (
-              <p className="py-4 text-sm text-fg-2">No chapters yet. Processing will build them.</p>
+            (included.length === 0 ? (
+              <p className="py-4 text-sm text-fg-2">
+                {data.chapters.length === 0
+                  ? "No chapters yet. Processing will build them."
+                  : "No chapters are set to narrate. Include chapters under Manage."}
+              </p>
             ) : (
               <ol className="flex flex-col gap-0.5 pt-2">
-                {data.chapters.map((chapter) => {
+                {/* Excluded chapters have no row here at all — they are only
+                    listed under Manage, where they are re-enabled. Included
+                    ones are numbered 1..N in playback order. */}
+                {included.map((chapter, index) => {
                   const state = chapterState(chapter);
-                  // Included chapters are numbered 1..N in playback order; the
-                  // source idx would leave gaps wherever a chapter is excluded.
-                  // Excluded rows show a dash. Manage keeps the source numbering.
-                  const number = included.indexOf(chapter) + 1;
                   const rowClass = clsx(
                     "tap grid w-full items-center gap-2.5 rounded-md px-2.5 text-left text-base",
                     desktop
@@ -569,20 +601,14 @@ export function BookDetailPage() {
                   );
                   return (
                     <li key={chapter.id}>
-                      {chapter.excluded ? (
-                        <div className={clsx(rowClass, "opacity-60")} aria-disabled="true" title="Excluded from narration">
-                          {chapterRowCells(chapter, number)}
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void playFrom(chapter.id)}
-                          aria-current={state === "current" ? "true" : undefined}
-                          className={clsx(rowClass, state === "current" && desktop && "border border-divider bg-surface")}
-                        >
-                          {chapterRowCells(chapter, number)}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => void playFrom(chapter.id)}
+                        aria-current={state === "current" ? "true" : undefined}
+                        className={clsx(rowClass, state === "current" && desktop && "border border-divider bg-surface")}
+                      >
+                        {chapterRowCells(chapter, index + 1)}
+                      </button>
                     </li>
                   );
                 })}

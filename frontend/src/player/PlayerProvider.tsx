@@ -180,7 +180,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       offset_s: s.time,
       device_label: deviceLabel(),
     }).then((res) => {
-      if (res) rememberPosition(book.id, res.progress);
+      if (!res) return;
+      rememberPosition(book.id, res.progress);
+      // Silent saves must still refresh what the pages read: the progress
+      // cache (cover badge, progress line) updates at once, the book detail
+      // and Continue row refetch on invalidation.
+      queryClient.setQueryData(progressQueryKey(book.id), res.progress);
+      void queryClient.invalidateQueries({ queryKey: ["book", book.id] });
+      void queryClient.invalidateQueries({ queryKey: continueQueryKey });
     });
   }
 

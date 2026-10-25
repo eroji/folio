@@ -321,6 +321,22 @@ describe("PlayerProvider progress", () => {
     expect(saveCalls[0]).toMatchObject({ segment_id: `${CH1}-seg0`, device_label: deviceLabel() });
   });
 
+  it("refreshes the progress cache and invalidates book and continue after a save", async () => {
+    const { saveCalls } = installPlayerFetch();
+    const getPlayer = renderPlayer();
+    const invalidate = vi.spyOn(getPlayer.client, "invalidateQueries");
+    await loadAndPlay(getPlayer);
+    act(() => getPlayer().pause());
+    expect(saveCalls).toHaveLength(1);
+    // The silent save must still update what the book page badge, the cover
+    // badges and the Continue row read.
+    await waitFor(() =>
+      expect(getPlayer.client.getQueryData(["progress", BOOK_ID])).toMatchObject({ percent: 50 }),
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["book", BOOK_ID] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["continue"] });
+  });
+
   it("saves on segment change", async () => {
     const { saveCalls } = installPlayerFetch();
     const getPlayer = renderPlayer();

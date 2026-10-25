@@ -183,8 +183,9 @@ function Probe() {
   return null;
 }
 
-/** Mount the provider at /player with a probe; returns a getter for the live context. */
-export function renderPlayer(extra?: ReactNode, entries: string[] = ["/player"]): () => PlayerContextValue {
+/** Mount the provider at /player with a probe; returns a getter for the live
+ * context plus the QueryClient so tests can spy on cache updates. */
+export function renderPlayer(extra?: ReactNode, entries: string[] = ["/player"]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -196,5 +197,5 @@ export function renderPlayer(extra?: ReactNode, entries: string[] = ["/player"])
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return () => current!;
+  return Object.assign(() => current!, { client });
 }

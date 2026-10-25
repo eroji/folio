@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthProvider";
 import { BookDetailPage } from "./BookDetailPage";
 import { PlayerProvider } from "../player/PlayerProvider";
-import { installMockEventSource } from "../test/eventsource";
+import { installMockEventSource, MockEventSource } from "../test/eventsource";
 import { makeProgress, stubMedia } from "../test/player";
 import { DEFAULT_SETTINGS } from "../api/settings";
 import type { Segment } from "../api/audio";
@@ -89,8 +89,12 @@ function makeRule(overrides: Partial<PronunciationRule> = {}): PronunciationRule
 
 const VOICES = {
   items: [
-    { id: "ashley-en", language: "en", description: null, available: true },
+    { id: "ashley-en", language: "en", description: null, available: true, display_name: "Ashley" },
+    // No display_name: the menu must fall back to the parsed name ("Zoe").
+    { id: "zoe-en", language: "en", description: null, available: true },
     { id: "ashley-ja", language: "ja", description: null, available: true },
+    // Tagged on purpose: the menu must hide "tts" even if the API sends it.
+    { id: "tts", language: "en", description: "engine default", available: true },
   ],
 };
 
@@ -115,6 +119,7 @@ let saveCalls: Record<string, unknown>[] = [];
 let chapterPatchBodies: Record<string, unknown>[] = [];
 let chapterPatchFails = false;
 let reprocessCalls = 0;
+let prepareStatuses: Record<string, string> = {};
 
 beforeEach(() => {
   candidates = [CANDIDATE];
@@ -131,9 +136,12 @@ beforeEach(() => {
   chapterPatchBodies = [];
   chapterPatchFails = false;
   reprocessCalls = 0;
+  prepareStatuses = {};
   localStorage.clear();
   installMockEventSource();
   stubMedia();
+  URL.createObjectURL = vi.fn(() => "blob:preview-1");
+  URL.revokeObjectURL = vi.fn();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -219,7 +227,7 @@ beforeEach(() => {
         return jsonResponse(200, {
           items: all.slice(from, from + prepare.count).map((segment) => ({
             segment_id: segment.id,
-            status: "ready",
+            status: prepareStatuses[segment.id] ?? "ready",
             cache_key: segment.id,
             url: `/api/v1/audio/${segment.id}`,
             duration_s: 10,
@@ -244,6 +252,9 @@ beforeEach(() => {
       if (url.includes("/metadata/candidates")) return jsonResponse(200, { items: candidates });
       if (url.includes("/metadata/apply") && method === "POST") {
         return jsonResponse(200, { book, applied: (body.fields as string[]) ?? [] });
+      }
+      if (url.includes("/voices/preview")) {
+        return { ok: true, status: 200, blob: async () => new Blob(["opus-bytes"]) } as Response;
       }
       if (url.includes("/voices")) return jsonResponse(200, VOICES);
       if (url.includes(`/books/${ID}`)) return jsonResponse(200, { book, chapters, progress });
@@ -447,6 +458,37 @@ describe("BookDetailPage", () => {
     await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s1")).toBe(true));
   });
 
+  it("shows a spinner in the clicked row and Preparing on the primary action until audio starts", async () => {
+    prepareStatuses = { s1: "generating" };
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: /One Way/ }));
+    const preparing = await screen.findByRole("button", { name: "Preparing…" });
+    expect(preparing.querySelector("svg")).toBeTruthy(); // the spinner icon
+    const row = screen.getByRole("button", { name: /One Way/ });
+    expect(within(row).getByText("Preparing")).toBeTruthy();
+    expect(within(row).queryByText("5 m")).toBeNull(); // the spinner replaces the length
+    prepareStatuses = {};
+    await act(async () => {
+      MockEventSource.instances[0]!.emit("audio", { book_id: ID, segment_id: "s1" });
+    });
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Playing now" })).toBeTruthy());
+    const played = screen.getByRole("button", { name: /One Way/ });
+    expect(within(played).queryByText("Preparing")).toBeNull();
+    expect(within(played).getByText("5 m")).toBeTruthy();
+  });
+
+  it("clears the preparing state when the player errors", async () => {
+    prepareStatuses = { s1: "failed" };
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: /One Way/ }));
+    await screen.findByRole("button", { name: "Preparing…" });
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Preparing…" })).toBeNull(),
+      { timeout: 3000 },
+    );
+    expect(within(screen.getByRole("button", { name: /One Way/ })).queryByText("Preparing")).toBeNull();
+  });
+
   it("shows the chapter percent on the current row on desktop", async () => {
     stubViewport(true);
     progress = makeProgress({ percent: 75, chapter_id: "c2", segment_id: "s4" });
@@ -525,9 +567,11 @@ describe("BookDetailPage", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /One Way/ }));
     expect(await screen.findByText("1 of 2 included")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
-    expect(screen.getByTitle("Excluded from narration")).toBeTruthy();
+    // Excluded chapters have no row at all; Manage is where they are re-enabled.
+    expect(screen.queryByTitle("Excluded from narration")).toBeNull();
     expect(screen.queryByRole("button", { name: /One Way/ })).toBeNull();
-    expect(screen.getByRole("button", { name: /The Other/ })).toBeTruthy();
+    const remaining = screen.getByRole("button", { name: /The Other/ });
+    expect(within(remaining).getByText("1")).toBeTruthy();
   });
 
   it("restores the previous value and shows an error when excluding fails", async () => {
@@ -556,7 +600,21 @@ describe("BookDetailPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
     expect(await screen.findByRole("button", { name: /^1\D*One/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^2\D*Three/ })).toBeTruthy();
-    expect(screen.getByTitle("Excluded from narration").textContent).toContain("Two");
+    expect(screen.queryByRole("button", { name: /Two/ })).toBeNull();
+    expect(screen.getByRole("tabpanel").textContent).not.toContain("Two");
+  });
+
+  it("shows an empty state when every chapter is excluded", async () => {
+    book = makeBook({ can_edit: true });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /One Way/ }));
+    await vi.waitFor(() => expect(screen.getByText("1 of 2 included")).toBeTruthy());
+    fireEvent.click(screen.getByRole("checkbox", { name: /The Other/ }));
+    await vi.waitFor(() => expect(screen.getByText("0 of 2 included")).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
+    expect(await screen.findByText("No chapters are set to narrate. Include chapters under Manage.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /One Way|The Other/ })).toBeNull();
   });
 
   it("shows only populated About rows and links authors and tags to searches", async () => {
@@ -573,16 +631,51 @@ describe("BookDetailPage", () => {
     expect(screen.getByRole("link", { name: "Frank Herbert" }).getAttribute("href")).toBe("/?q=Frank%20Herbert");
   });
 
-  it("opens the narrator voice picker from the voice button and saves the choice", async () => {
+  it("opens the narrator voice menu and saves the choice with a PATCH", async () => {
     renderDetail();
-    fireEvent.click(await screen.findByRole("button", { name: /Narrator voice/ }));
-    await screen.findByRole("option", { name: "ashley-en" });
-    const select = screen.getByRole("combobox", { name: "en voice" });
-    fireEvent.change(select, { target: { value: "ashley-en" } });
+    const trigger = await screen.findByRole("button", { name: "Narrator voice: default" });
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const menu = await screen.findByRole("menu", { name: "Narrator voice" });
+    // Language voices only, by display name or the parsed fallback.
+    expect(within(menu).getByRole("menuitemradio", { name: /Ashley/ })).toBeTruthy();
+    expect(within(menu).getByRole("menuitemradio", { name: /Zoe/ })).toBeTruthy();
+    expect(within(menu).queryByRole("menuitemradio", { name: /ashley-ja/ })).toBeNull();
+    expect(within(menu).queryByRole("menuitemradio", { name: /tts/ })).toBeNull();
+    fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Zoe/ }));
+    expect(screen.queryByRole("menu")).toBeNull();
     await vi.waitFor(() => {
       const patch = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "PATCH");
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ narrator_voice: "ashley-en" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ narrator_voice: "zoe-en" });
     });
+  });
+
+  it("checks the current voice in the menu and closes on Escape, refocusing the trigger", async () => {
+    book = makeBook({ narrator_voice: "ashley-en" });
+    renderDetail();
+    const trigger = await screen.findByRole("button", { name: "Narrator voice: ashley-en" });
+    fireEvent.click(trigger);
+    const ashley = await screen.findByRole("menuitemradio", { name: /Ashley/ });
+    expect(ashley.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("menuitemradio", { name: /Zoe/ }).getAttribute("aria-checked")).toBe("false");
+    fireEvent.keyDown(ashley, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("previews a voice from the menu without selecting it", async () => {
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: /Narrator voice/ }));
+    await screen.findByRole("menuitemradio", { name: /Ashley/ });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await vi.waitFor(() => {
+      const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes("/voices/preview"));
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ voice: "ashley-en" });
+    });
+    expect(screen.queryByRole("menu")).toBeTruthy();
+    expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
   });
 
   it("shows the review banner and opens Find metadata in the Manage tab", async () => {
