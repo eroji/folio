@@ -12,6 +12,7 @@ from typing import Any, Self
 import httpx
 
 from folio.config import Settings
+from folio.metrics import TTS_REQUEST_SECONDS, TTS_REQUESTS_TOTAL
 from folio.tts import TtsError, Voice
 from folio.tts.voices import parse_voices_payload
 
@@ -52,7 +53,22 @@ class TtsClient:
         return self.settings.tts_base_url.rstrip("/")
 
     def synthesize(self, text: str, voice: str) -> tuple[bytes, str]:
-        """Return ``(audio_bytes, format)`` for ``text`` in ``voice``."""
+        """Return ``(audio_bytes, format)`` for ``text`` in ``voice``.
+
+        One counter increment and one histogram observation per call, retries
+        included (spec: Observability).
+        """
+        start = time.perf_counter()
+        result = "error"
+        try:
+            out = self._synthesize(text, voice)
+            result = "ok"
+            return out
+        finally:
+            TTS_REQUESTS_TOTAL.labels(result).inc()
+            TTS_REQUEST_SECONDS.observe(time.perf_counter() - start)
+
+    def _synthesize(self, text: str, voice: str) -> tuple[bytes, str]:
         fmt = self.settings.tts_format
         try:
             return self._speech(text, voice, fmt), fmt

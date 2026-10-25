@@ -106,7 +106,7 @@ def metadata_apply(
     if locked:
         book.locked_fields = list(dict.fromkeys([*book.locked_fields, *locked]))
         db.commit()
-    return {"book": _public(book), "applied": applied}
+    return {"book": _public(book, user), "applied": applied}
 
 
 @router.get("/{book_id}/metadata/candidates")

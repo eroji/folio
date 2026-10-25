@@ -95,7 +95,30 @@ def continue_listening(
         .limit(limit)
     ).all()
     return {
-        "items": [{"book": _public(book), "progress": progress_dict(row)} for row, book in rows]
+        "items": [
+            {"book": _public(book, user), "progress": progress_dict(row)} for row, book in rows
+        ]
+    }
+
+
+@router.get("/finished")
+def finished_list(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_session)],
+    limit: int = Query(10, ge=1, le=50),
+) -> dict[str, Any]:
+    """Finished shelf: same shape as /me/continue, newest finish first."""
+    rows = db.execute(
+        select(Progress, Book)
+        .join(Book, Book.id == Progress.book_id)
+        .where(Progress.user_id == user.id, Progress.finished_at.is_not(None))
+        .order_by(Progress.finished_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "items": [
+            {"book": _public(book, user), "progress": progress_dict(row)} for row, book in rows
+        ]
     }
 
 

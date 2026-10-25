@@ -1,5 +1,6 @@
 """Admin API: job list, user directory and audio cache tools, admin-only."""
 
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -8,13 +9,14 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session as DbSession
 
-from folio.config import Settings
+from folio.config import Settings, get_settings
 from folio.db import get_session
 from folio.deps import require_admin
 from folio.errors import ApiError
+from folio.jobs import notify
 from folio.models import Audio, Book, Chapter, Job, Segment, SegmentAudio, User
 from folio.routers.auth import UserPublic
 from folio.security import require_csrf
@@ -49,6 +51,40 @@ def list_jobs(db: Annotated[DbSession, Depends(get_session)]) -> dict[str, Any]:
 def list_users(db: Annotated[DbSession, Depends(get_session)]) -> dict[str, Any]:
     users = db.scalars(select(User).order_by(User.username)).all()
     return {"items": [UserPublic.model_validate(u) for u in users]}
+
+
+@router.post("/jobs/{job_id}/retry", status_code=202)
+def retry_job(
+    request: Request,
+    job_id: UUID,
+    db: Annotated[DbSession, Depends(get_session)],
+) -> dict[str, Any]:
+    """Re-queue a finished job (failed or done); a live job is left alone."""
+    require_csrf(request, request.state.session_row)
+    job = db.get(Job, job_id)
+    if job is None:
+        raise ApiError("not_found", "Job not found.", 404)
+    if job.status in ("queued", "running"):
+        raise ApiError("conflict", "Job is already queued or running.", 409)
+    job.status, job.error, job.finished_at = "queued", None, None
+    db.commit()
+    notify(db, {"event": "job", "job_id": str(job.id), "status": "queued"})
+    return {"job": JobPublic.model_validate(job)}
+
+
+@router.get("/cache")
+def cache_stats(
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Audio-cache size plus a live TTS probe, for the admin page."""
+    files, total = db.execute(select(func.count(), func.coalesce(func.sum(Audio.bytes), 0))).one()
+    status, latency_ms = probe_tts_timed(settings)
+    return {
+        "files": files,
+        "bytes": int(total),
+        "tts": {"status": status, "latency_ms": latency_ms},
+    }
 
 
 class CacheClearBody(BaseModel):
@@ -92,11 +128,19 @@ def clear_cache(
 
 def probe_tts(settings: Settings) -> str:
     """Liveness of the TTS backend for admin health: GET {base without /v1}/health."""
+    return probe_tts_timed(settings)[0]
+
+
+def probe_tts_timed(settings: Settings) -> tuple[str, int | None]:
+    """``(status, latency_ms)``; latency is None unless the probe answered 2xx/3xx."""
     if not settings.tts_base_url:
-        return "not_configured"
+        return "not_configured", None
     base = settings.tts_base_url.rstrip("/").removesuffix("/v1")
+    start = time.perf_counter()
     try:
         response = httpx.get(f"{base}/health", timeout=TTS_HEALTH_TIMEOUT_S)
     except httpx.HTTPError:
-        return "unreachable"
-    return "ok" if response.status_code < 400 else "unreachable"
+        return "unreachable", None
+    if response.status_code >= 400:
+        return "unreachable", None
+    return "ok", round((time.perf_counter() - start) * 1000)
