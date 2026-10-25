@@ -21,7 +21,12 @@ function formatSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-/** One "This session" row: file icon, name · size, status line, action. */
+/** Outlined pill action at the right end of a row (reference). */
+const pillAction =
+  "tap inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full border border-border px-4 text-base font-semibold text-fg no-underline hover:bg-raised";
+
+/** One "This session" surface row: status icon, name · size, status text,
+ * action right, optional progress bar under. */
 function RowFrame({
   row,
   icon,
@@ -40,14 +45,14 @@ function RowFrame({
   bar?: ReactNode;
 }) {
   return (
-    <li className="flex flex-col gap-1.5 border-t border-divider py-3">
-      <div className="flex items-center gap-2.5">
-        <Icon name={icon} className={clsx("shrink-0", iconClass)} />
+    <li className="flex flex-col gap-2.5 rounded-xl bg-surface px-4 py-3.5">
+      <div className="flex items-center gap-3.5">
+        <Icon name={icon} size={22} className={clsx("shrink-0", iconClass)} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-base font-medium">
+          <span className="truncate text-md font-semibold">
             {row.name} <span className="font-normal text-fg-2">· {formatSize(row.size)}</span>
           </span>
-          <span className={clsx("text-sm", statusClass)}>{status}</span>
+          <span className={clsx("text-base", statusClass)}>{status}</span>
         </div>
         {action}
       </div>
@@ -58,18 +63,23 @@ function RowFrame({
 
 function OpenBook({ bookId }: { bookId: string }) {
   return (
-    <Link
-      to={`/books/${bookId}`}
-      className="tap inline-flex shrink-0 items-center whitespace-nowrap text-sm font-semibold text-accent-fg"
-    >
+    <Link to={`/books/${bookId}`} className={pillAction}>
       Open book
     </Link>
   );
 }
 
+function RemoveButton({ name, onClick }: { name: string; onClick: () => void }) {
+  return (
+    <button type="button" aria-label={`Remove ${name}`} onClick={onClick} className={pillAction}>
+      Remove
+    </button>
+  );
+}
+
 function IndeterminateBar({ name }: { name: string }) {
   return (
-    <div role="progressbar" aria-label={name} className="h-1 overflow-hidden rounded-xs bg-track">
+    <div role="progressbar" aria-label={name} className="h-1 overflow-hidden rounded-full bg-track">
       <div className="bar-indeterminate" />
     </div>
   );
@@ -108,9 +118,9 @@ function BookRow({
     return (
       <RowFrame
         row={row}
-        icon="error"
+        icon="warning"
         iconClass="text-warning"
-        status="Added · scanned PDF, needs OCR before it can be narrated"
+        status="Added · scanned PDF, needs OCR"
         statusClass="text-warning"
         action={<OpenBook bookId={row.bookId} />}
       />
@@ -124,16 +134,7 @@ function BookRow({
         iconClass="text-danger"
         status={`Couldn’t add · ${book?.error ?? "The file couldn’t be processed."}`}
         statusClass="text-danger"
-        action={
-          <button
-            type="button"
-            aria-label={`Remove ${row.name}`}
-            onClick={() => onRemove(row.key)}
-            className="tap inline-flex shrink-0 items-center rounded-md px-2.5 text-sm text-fg-2 hover:bg-raised"
-          >
-            Remove
-          </button>
-        }
+        action={<RemoveButton name={row.name} onClick={() => onRemove(row.key)} />}
       />
     );
   }
@@ -150,7 +151,8 @@ function BookRow({
   );
 }
 
-/** Screen 3, restyled to the handoff "Upload" reference. */
+/** Upload (Direction D §4): drop zone plus a "This session" live summary
+ * and one surface row per file. */
 export function UploadPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [bookStatuses, setBookStatuses] = useState<Record<string, BookStatus>>({});
@@ -236,14 +238,17 @@ export function UploadPage() {
     .join(" · ");
 
   return (
-    <div className="flex flex-col gap-5">
-      <h1 className="font-display text-xl font-bold tracking-[-0.01em]">Upload books</h1>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-1">
+        <span className="eyebrow">Add to your library</span>
+        <h1 className="font-display text-4xl">Upload</h1>
+      </div>
       <UploadDropzone onFiles={addFiles} />
-      <section aria-label="This session" className="flex flex-col">
-        <div className="flex items-baseline justify-between gap-3 border-b border-divider pb-2">
-          <h2 className="text-md font-semibold">This session</h2>
+      <section aria-label="This session" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="font-display text-xl">This session</h2>
           {rows.length > 0 && (
-            <span role="status" aria-live="polite" className="text-xs text-fg-2">
+            <span role="status" aria-live="polite" className="text-base text-fg-2 tabular">
               {summary}
             </span>
           )}
@@ -251,7 +256,7 @@ export function UploadPage() {
         {rows.length === 0 ? (
           <p className="py-6 text-sm text-fg-2">Nothing uploaded yet — files you add in this session appear here.</p>
         ) : (
-          <ul>
+          <ul className="flex flex-col gap-2">
             {rows.map((row) =>
               row.state === "uploading" ? (
                 <RowFrame
@@ -268,10 +273,10 @@ export function UploadPage() {
                       aria-valuenow={row.progress}
                       aria-valuemin={0}
                       aria-valuemax={100}
-                      className="h-1 overflow-hidden rounded-xs bg-track"
+                      className="h-1 overflow-hidden rounded-full bg-track"
                     >
                       <div
-                        className="h-full rounded-xs bg-progress transition-[width]"
+                        className="h-full rounded-full bg-accent transition-[width]"
                         style={{ width: `${row.progress}%` }}
                       />
                     </div>
@@ -297,16 +302,7 @@ export function UploadPage() {
                   iconClass="text-danger"
                   status={`Couldn’t add · ${row.message}`}
                   statusClass="text-danger"
-                  action={
-                    <button
-                      type="button"
-                      aria-label={`Remove ${row.name}`}
-                      onClick={() => removeRow(row.key)}
-                      className="tap inline-flex shrink-0 items-center rounded-md px-2.5 text-sm text-fg-2 hover:bg-raised"
-                    >
-                      Remove
-                    </button>
-                  }
+                  action={<RemoveButton name={row.name} onClick={() => removeRow(row.key)} />}
                 />
               ),
             )}

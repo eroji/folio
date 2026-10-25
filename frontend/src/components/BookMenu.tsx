@@ -16,6 +16,7 @@ export function BookMenu({
   onNarrator,
   onGoToAuthor,
   variant = "inline",
+  bookTitle,
 }: {
   finished: boolean;
   pending: boolean;
@@ -24,7 +25,11 @@ export function BookMenu({
   onNarrator: () => void;
   onGoToAuthor: () => void;
   variant?: "inline" | "header";
+  /** Row menus name the book in the trigger's label (search reference); the
+   * book page's single menu keeps the context-free "this book". */
+  bookTitle?: string;
 }) {
+  const optionsLabel = `More options for ${bookTitle ?? "this book"}`;
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const itemsRef = useRef<HTMLDivElement>(null);
@@ -69,8 +74,8 @@ export function BookMenu({
       <button
         ref={triggerRef}
         type="button"
-        aria-label="More options for this book"
-        title="More options for this book"
+        aria-label={optionsLabel}
+        title={optionsLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}

@@ -53,6 +53,8 @@ function mockFetch(): void {
         body = { continue: [], next_chapters: [], recent: [makeBook()] };
       } else if (url.pathname.includes("/me/settings")) {
         body = { settings: DEFAULT_SETTINGS };
+      } else if (url.pathname.includes("/search")) {
+        body = { top: null, books: [], authors: [], series: [] };
       } else if (url.pathname.includes("/books")) {
         const q = url.searchParams.get("q");
         const matched = q ? [] : [makeBook()];

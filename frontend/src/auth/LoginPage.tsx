@@ -10,8 +10,8 @@ import type { User } from "../api/types";
 /** Never reveal which of the two was wrong (handoff "Sign in"). */
 const BAD_CREDENTIALS = "Incorrect username or password. Check them and try again.";
 
-/** Desktop: 440 px card centered on the page background. Phone: the same
- * content on the surface, starting ~96 px from the top. */
+/** Direction D "Sign in": the accent glow background, a centered 380 px
+ * column, 48 px pill inputs and a 52 px white pill button. Same on phone. */
 export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
   const { user, isLoading, login } = useAuth();
   const location = useLocation();
@@ -76,27 +76,27 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
   }
 
   const field = clsx(
-    "h-11 w-full rounded-md border bg-surface px-3 text-md desktop:h-10",
-    error ? "border-danger" : "border-control-border",
+    "h-12 w-full rounded-full border bg-raised px-[18px] text-lg text-fg",
+    error ? "border-danger" : "border-border",
   );
 
   return (
-    <main className="flex min-h-dvh flex-col items-center bg-surface px-6 pt-24 pb-8 pt-safe desktop:justify-center desktop:bg-bg desktop:pt-8">
-      <div className="flex w-full max-w-[440px] flex-col gap-7 desktop:rounded-lg desktop:border desktop:border-divider desktop:bg-surface desktop:p-10">
-        <div className="flex flex-col items-center gap-2.5 text-center">
-          <img src={folioMark} alt="" width={52} height={52} />
-          <h1 className="font-display text-[28px] font-bold leading-none tracking-[-0.01em]">Folio</h1>
+    <main className="bg-page-glow flex min-h-dvh flex-col items-center justify-center px-6 py-12 pt-safe pb-safe">
+      <div className="flex w-full max-w-[380px] flex-col gap-8">
+        <div className="flex flex-col items-center gap-3.5 text-center">
+          <img src={folioMark} alt="" width={64} height={64} />
+          <h1 className="font-display text-[34px] leading-none">folio</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
           {error && (
-            <div role="alert" className="flex items-start gap-2 rounded-md border border-danger px-3 py-2.5 text-sm leading-snug text-danger">
+            <div role="alert" className="flex items-start gap-2 rounded-2xl border border-danger px-4 py-3 text-sm leading-snug text-danger">
               <Icon name="error" size={18} className="mt-px shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <label htmlFor="folio-username" className="text-sm font-semibold">
               Username
             </label>
@@ -116,7 +116,7 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <label htmlFor="folio-password" className="text-sm font-semibold">
               Password
             </label>
@@ -131,16 +131,16 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
                 aria-invalid={error ? true : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className={clsx(field, "pr-11")}
+                className={clsx(field, "pr-[52px]")}
               />
               <button
                 type="button"
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 aria-pressed={showPassword}
                 onClick={() => setShowPassword((v) => !v)}
-                className="tap absolute top-1/2 right-0.5 grid size-9 -translate-y-1/2 place-items-center rounded-md text-fg-2 hover:bg-raised"
+                className="tap absolute top-1 right-1 grid size-10 place-items-center rounded-full text-fg-2 hover:bg-raised"
               >
-                <Icon name={showPassword ? "visibility_off" : "visibility"} />
+                <Icon name={showPassword ? "EyeOff" : "Eye"} size={20} />
               </button>
             </div>
           </div>
@@ -148,7 +148,7 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
           <button
             type="submit"
             disabled={submitting}
-            className="tap h-12 rounded-md bg-primary-gradient text-md font-bold disabled:opacity-60 desktop:h-11"
+            className="tap mt-2 h-[52px] rounded-full bg-fg text-lg font-bold text-on-fg disabled:opacity-60"
           >
             {submitting ? "Signing in…" : "Sign in"}
           </button>
@@ -156,26 +156,26 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
       </div>
 
       {testMode && (
-        <section className="mt-8 flex w-full max-w-[440px] flex-col gap-3 rounded-lg border border-dashed border-divider p-4 text-fg-2">
+        <section className="mt-8 flex w-full max-w-[380px] flex-col gap-3 rounded-2xl border border-dashed border-border p-4 text-fg-2">
           <p className="text-sm font-medium">Test mode: sign in without LDAP</p>
           <div className="flex gap-2">
             <input
               aria-label="Test username"
               value={testUser}
               onChange={(e) => setTestUser(e.target.value)}
-              className="tap h-11 min-w-0 flex-1 rounded-md border border-control-border bg-surface px-3 text-sm desktop:h-9"
+              className="tap h-10 min-w-0 flex-1 rounded-full border border-border bg-raised px-4 text-sm text-fg"
             />
             <select
               aria-label="Test role"
               value={testRole}
               onChange={(e) => setTestRole(e.target.value)}
-              className="tap h-11 rounded-md border border-control-border bg-surface px-3 text-sm desktop:h-9"
+              className="select-pill tap h-10 border border-border bg-raised text-sm text-fg"
             >
               <option value="user">user</option>
               <option value="admin">admin</option>
             </select>
           </div>
-          <button type="button" onClick={testSignIn} className="tap h-11 rounded-md border border-control-border bg-surface text-sm font-medium desktop:h-9">
+          <button type="button" onClick={testSignIn} className="tap h-10 rounded-full border border-border text-sm font-semibold text-fg hover:bg-raised">
             Test sign in
           </button>
           <p className="text-xs">

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, type ListeningSettings } from "../api/settings";
@@ -82,20 +82,26 @@ function renderSettings(): void {
 }
 
 describe("SettingsPage", () => {
-  it("promises automatic saving and re-queries the engine when opened and from the button", async () => {
+  it("re-queries the engine when opened and from the button", async () => {
     renderSettings();
-    expect((await screen.findByRole("status")).textContent).toMatch(/Changes save automatically/);
+    await screen.findByRole("heading", { name: "Settings" });
     await vi.waitFor(() => expect(callsTo("/voices?refresh=true")).toBe(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh voices" }));
     await vi.waitFor(() => expect(callsTo("/voices?refresh=true")).toBe(2));
   });
 
-  it("has no theme control — the app is dark only", async () => {
+  it("offers only the Playback and Voices sections — no Theme", async () => {
     renderSettings();
     await screen.findByRole("heading", { name: "Settings" });
+    const nav = screen.getByRole("navigation", { name: "Settings sections" });
+    expect(within(nav).getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Playback",
+      "Voices",
+    ]);
     expect(screen.queryByRole("radiogroup", { name: "Theme" })).toBeNull();
     expect(screen.queryByText("Appearance")).toBeNull();
+    expect(screen.queryByText("Theme")).toBeNull();
   });
 
   it("hydrates the listening settings from the server", async () => {
@@ -154,6 +160,22 @@ describe("SettingsPage", () => {
     expect(settingsPutBodies()).toEqual([]);
   });
 
+  it("steps skip intervals by 5, clamped to 5–120, saving on change", async () => {
+    renderSettings();
+    const back = await screen.findByLabelText("Skip back in seconds");
+    fireEvent.click(screen.getByRole("button", { name: "More Skip back" }));
+    expect(back).toHaveProperty("value", "20");
+    fireEvent.click(screen.getByRole("button", { name: "Less Skip back" }));
+    expect(back).toHaveProperty("value", "15");
+
+    const forward = screen.getByLabelText("Skip forward in seconds");
+    for (let i = 0; i < 30; i += 1) fireEvent.click(screen.getByRole("button", { name: "More Skip forward" }));
+    expect(forward).toHaveProperty("value", "120");
+
+    await waitFor(() => expect(settingsPutBodies()).toHaveLength(1));
+    expect(settingsPutBodies()[0]).toEqual({ skip_back: 15, skip_forward: 120 });
+  });
+
   it("falls back to localStorage when the settings request fails", async () => {
     settingsGetFails = true;
     localStorage.setItem("folio-speed", "1.25");
@@ -180,7 +202,8 @@ describe("SettingsPage", () => {
       "Voice for Chinese, Traditional",
     ]);
     // Same width everywhere so the control column lines up.
-    for (const select of selects) expect(String(select.className)).toContain("w-[168px]");
+    for (const select of selects)
+      expect(String(select.parentElement?.getAttribute("class"))).toContain("w-[180px]");
 
     const en = selects[0]!;
     const labels = Array.from(en.querySelectorAll("option")).map((option) => option.textContent);
@@ -188,7 +211,7 @@ describe("SettingsPage", () => {
     expect(labels).toContain("Alexandra"); // display_name wins
     expect(labels.some((label) => label === "ashley-en")).toBe(false);
 
-    expect(await screen.findByText(/3 voices available from the TTS server/)).toBeTruthy();
+    expect(await screen.findByText(/3 voices from your TTS server/)).toBeTruthy();
   });
 
   it("preselects a voice without saving, then persists an explicit choice", async () => {
@@ -233,14 +256,15 @@ describe("SettingsPage", () => {
     await vi.waitFor(() => expect(window.HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1));
   });
 
-  it("shows an inline error and reverts the control when the save fails", async () => {
+  it("shows an inline error under the row and reverts the control when the save fails", async () => {
     putFails = true;
     renderSettings();
     const speed = await screen.findByRole("combobox", { name: "Default playback speed" });
     fireEvent.change(speed, { target: { value: "1.5" } });
     expect(speed).toHaveProperty("value", "1.5"); // optimistic first
 
-    const alert = await screen.findByRole("alert");
+    const playback = await screen.findByRole("region", { name: "Playback" });
+    const alert = await within(playback).findByRole("alert");
     expect(alert.textContent).toMatch(/Couldn/);
     await waitFor(() => expect(speed).toHaveProperty("value", "1")); // reverted
     expect(serverSettings.speed).toBe(1);

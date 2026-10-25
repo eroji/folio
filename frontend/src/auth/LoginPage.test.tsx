@@ -59,11 +59,13 @@ beforeEach(() => {
 });
 
 describe("LoginPage", () => {
-  it("renders the logo mark, the Folio title and autofill-ready fields", () => {
+  it("renders the mark, the lowercase folio wordmark and autofill-ready fields", () => {
     mockFetch(() => jsonResponse(200, { user, csrf_token: "t" }));
     renderLogin();
-    expect(screen.getByRole("heading", { name: "Folio" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "folio" })).toBeTruthy();
     expect(document.querySelector("main img")).toBeTruthy();
+    // Direction D layout: accent glow background, centered 380 px column.
+    expect(String(document.querySelector("main")?.className)).toContain("bg-page-glow");
     expect(screen.getByLabelText("Username").getAttribute("autocomplete")).toBe("username");
     expect(screen.getByLabelText("Password").getAttribute("autocomplete")).toBe("current-password");
     expect(screen.queryByText(/directory account/)).toBeNull();
