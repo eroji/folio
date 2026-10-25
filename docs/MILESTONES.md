@@ -12,7 +12,7 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | 2 | Upload and ingestion | **accepted** | Each fixture reaches its expected status; duplicates detected | All 7 fixtures verified on the compose stack; duplicate, DRM, search, segments verified |
 | 3 | Metadata and covers | **accepted** | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | 235 backend tests + 23 web tests + 5 Playwright; live Open Library search returns candidates; edit→reprocess verified on the stack |
 | 4 | TTS and player | **done (device checks pending)** | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | 311 backend / 51 web tests + 7 Playwright; live synthesis, Range 206, Media Session, voices, cache clear all verified. Real-device gap + lock-screen still manual. |
-| 5 | Progress and settings | in progress | Phone → desktop resumes within 3 s of the stop point | plan: `superpowers/plans/2026-10-24-m5-progress-settings.md` |
+| 5 | Progress and settings | **accepted** | Phone → desktop resumes within 3 s of the stop point | 344 backend / 84 web / 9 Playwright; live progress round-trip 28.7%, Continue row, settings merge, finished/reset all verified |
 | 6 | PWA and polish | todo | Installs to a phone home screen; Lighthouse accessibility ≥ 90 | — |
 
 ## Phase 1 scope (this session)
@@ -145,6 +145,8 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 
 | 2026-10-24 | **M5 settings merged** (`bad43de`): `/me/settings`-backed listening preferences with optimistic coalesced saves and a localStorage fallback; the player now uses the saved speed, skip intervals, auto-play-next and per-language voice without a reload. 59 web tests. |
 | 2026-10-24 | Progress API (P) and progress UI (Q) in flight: progress table + endpoints, save/resume with 3 s rewind, cross-device prompt, Continue listening, finished/reset. |
+| 2026-10-24 | **M5 accepted.** Progress table + API (`63f2c82`), server-backed settings (`bad43de`), player save/resume with 3 s rewind, Continue listening row, finished/reset (`717ea27`). Playwright 9/9 including resume-after-reload and settings persistence; acceptance: 28.7% round-trip, Continue lists the book, 1.25× + skip 10 + auto-next false merge correctly, finished removes it, reset clears it. |
+| 2026-10-24 | Cross-device resume relies on the shared DB; the ">60 s ahead on another device" prompt is unit-tested with two labels but not yet exercised with two real browsers side by side. |
 
 ## Known gaps carried into M3+
 
@@ -155,7 +157,10 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 - **M4 device checks**: the "< 1 s cached gap" and lock-screen controls on iOS Safari / Android Chrome are not machine-verifiable here. The two-element handoff, chapter auto-advance and Media Session metadata/handlers are covered by tests and a Chromium check; the phone check is manual.
 - **TTS concurrency is 1 per worker process** (the spec's `TTS_CONCURRENCY=2` is a ceiling). Two worker containers would exceed it — add a DB/Redis semaphore before scaling out.
 - **Crash recovery**: a row left `generating` by a killed worker stays claimed; a startup sweep should reset stale `generating` rows (not implemented).
-- **Chapter title lead-ins** are not synthesized (optional `lead_in` in the prepare contract); the player speaks segment text only.
+- **Chapter title lead-ins** are not synthesized (optional `lead_in` in the prepare contract); the player speaks segment text only, and the `speak_titles` setting is stored but inert.
+- **Finished books** have a badge and leave Continue listening, but there is no "Finished" shelf because no endpoint lists finished books yet (M6).
+- **Cross-device prompt**: the > 60 s rule is tested at unit level with two device labels; a two-browser manual check is still worthwhile.
+- **`sort=progress`** still falls back to recent; now that the progress table exists it can be implemented in M6.
 - **Uploader-only actions in the UI**: the API enforces "admin or uploader", but the book payload deliberately hides `uploaded_by`, so the UI shows Reprocess/Delete to admins only. Revisit in M5 with a `can_edit` flag.
 - **LDAP outage → generic 401**: transport failures are indistinguishable from bad passwords by design (no directory-internals leak). Operators see `reason=ldap_error` in logs.
 - **500-page ingest budget (< 60 s)** is not measured: fixtures are small. Measure with a real book before the performance sign-off in M6.
