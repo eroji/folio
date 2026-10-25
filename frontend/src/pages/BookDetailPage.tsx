@@ -213,7 +213,7 @@ export function BookDetailPage() {
 
         {book.description && (
           <details className="text-sm">
-            <summary className="min-h-11 cursor-pointer font-medium text-brand-blue">Description</summary>
+            <summary className="min-h-11 cursor-pointer font-medium text-ink">Description</summary>
             <p className="whitespace-pre-line text-muted">{book.description}</p>
           </details>
         )}

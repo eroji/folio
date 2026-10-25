@@ -250,7 +250,12 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
           </div>
 
           <div className="mt-6 flex items-start justify-between gap-1">
-            <button type="button" aria-label="Change playback speed" onClick={cycleSpeed} className={secondaryButton}>
+            <button
+              type="button"
+              aria-label={`Playback speed ${player.rate}×`}
+              onClick={cycleSpeed}
+              className={secondaryButton}
+            >
               <Gauge size={20} strokeWidth={1.75} aria-hidden />
               <span>{player.rate}×</span>
             </button>

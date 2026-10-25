@@ -13,7 +13,7 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | 3 | Metadata and covers | **accepted** | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | 235 backend tests + 23 web tests + 5 Playwright; live Open Library search returns candidates; edit→reprocess verified on the stack |
 | 4 | TTS and player | **done (device checks pending)** | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | 311 backend / 51 web tests + 7 Playwright; live synthesis, Range 206, Media Session, voices, cache clear all verified. Real-device gap + lock-screen still manual. |
 | 5 | Progress and settings | **accepted** | Phone → desktop resumes within 3 s of the stop point | 344 backend / 84 web / 9 Playwright; live progress round-trip 28.7%, Continue row, settings merge, finished/reset all verified |
-| 6 | PWA and polish | in progress | Installs to a phone home screen; Lighthouse accessibility ≥ 90 | plan: `superpowers/plans/2026-10-25-m6-pwa-polish.md` |
+| 6 | PWA and polish | **accepted** | Installs to a phone home screen; Lighthouse accessibility ≥ 90 | 394 backend / 133 web / 9 Playwright; Lighthouse **100** on login, library, book and player; offline fallback + cache rules verified |
 
 ## Phase 1 scope (this session)
 

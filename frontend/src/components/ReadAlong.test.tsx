@@ -141,8 +141,8 @@ describe("ReadAlong", () => {
     localStorage.clear();
     renderPlayer(<ReadAlong />);
     const box = document.querySelector('[aria-live="off"]') as HTMLElement;
-    const up = screen.getByRole("button", { name: "Increase font size" });
-    const down = screen.getByRole("button", { name: "Decrease font size" });
+    const up = screen.getByRole("button", { name: /Increase font size/ });
+    const down = screen.getByRole("button", { name: /Decrease font size/ });
     expect(box.dataset.fontStep).toBe("0");
     expect((down as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(up);

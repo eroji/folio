@@ -114,7 +114,7 @@ export function ReadAlong({ className }: { className?: string }) {
         <div className="sticky top-0 z-10 -mx-8 mb-2 flex justify-end gap-1 bg-paper/95 px-8 pb-2 pt-8 backdrop-blur md:-mx-10 md:px-10 md:pt-10">
           <button
             type="button"
-            aria-label="Decrease font size"
+            aria-label="Decrease font size, A−"
             disabled={step === 0}
             onClick={() => changeFont(-1)}
             className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
@@ -123,7 +123,7 @@ export function ReadAlong({ className }: { className?: string }) {
           </button>
           <button
             type="button"
-            aria-label="Increase font size"
+            aria-label="Increase font size, A+"
             disabled={step === FONT_SCALES.length - 1}
             onClick={() => changeFont(1)}
             className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
