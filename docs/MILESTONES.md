@@ -148,6 +148,9 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | 2026-10-24 | **M5 accepted.** Progress table + API (`63f2c82`), server-backed settings (`bad43de`), player save/resume with 3 s rewind, Continue listening row, finished/reset (`717ea27`). Playwright 9/9 including resume-after-reload and settings persistence; acceptance: 28.7% round-trip, Continue lists the book, 1.25× + skip 10 + auto-next false merge correctly, finished removes it, reset clears it. |
 | 2026-10-24 | Cross-device resume relies on the shared DB; the ">60 s ahead on another device" prompt is unit-tested with two labels but not yet exercised with two real browsers side by side. |
 
+| 2026-10-24 | **Demo-feedback round (8 findings).** Playback: only one audio element can play; `pause()` stops both; handoff happens only on `ended` — with regression tests. Mini player now exists on desktop (it was `md:hidden`). Metadata: search results are scored against the book (0 % → real %; a matching book showed 100 %), applying a candidate fills the cover when the book has none. Korean/Japanese/Chinese previews use pure-script sample text (the engine returns different audio for `ashley-kr` vs `ashley-en`; human ear still required). Chapters can be excluded from playback by admins/uploaders (`excluded` flag, migration 0006), hidden under an "Excluded chapters" disclosure, skipped by prepare/progress. Reader UX: fixed bottom Play/Resume bar, collapsible chapter list, read-along default-open with 68ch measure / clamp type / A−A+, explicit Sleep-timer menu, desktop player widened to `max-w-3xl`, skip buttons show 15/30. |
+| 2026-10-24 | Test-harness trap documented: `create_all` never adds columns, so a migration leaves `folio_test` stale and 62 tests fail; `make reset-test-db` added. |
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
