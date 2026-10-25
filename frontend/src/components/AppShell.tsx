@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import clsx from "clsx";
-import { BookOpen, Moon, Shield, Sun, Upload } from "lucide-react";
+import { BookOpen, Moon, Settings, Shield, Sun, Upload } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { useEvents } from "../hooks/useEvents";
 import { useTheme } from "../hooks/useTheme";
@@ -96,6 +96,13 @@ function Shell() {
                       <p className="font-medium">{user.display_name}</p>
                       <p className="text-sm text-muted">{user.username}</p>
                     </div>
+                    <Link
+                      to="/settings"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex min-h-11 items-center gap-2 rounded-card px-3 text-sm hover:bg-page"
+                    >
+                      <Settings {...iconProps} size={18} /> Settings
+                    </Link>
                     {user.role === "admin" && (
                       <Link
                         to="/admin"
@@ -136,6 +143,10 @@ function Shell() {
           <NavLink to="/upload" className={bottomLink}>
             <Upload {...iconProps} size={22} />
             <span>Upload</span>
+          </NavLink>
+          <NavLink to="/settings" className={bottomLink}>
+            <Settings {...iconProps} size={22} />
+            <span>Settings</span>
           </NavLink>
           {user.role === "admin" && (
             <NavLink to="/admin" className={bottomLink}>
