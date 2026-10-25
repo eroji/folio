@@ -61,6 +61,32 @@ class Settings(BaseSettings):
     google_books_api_key: str = ""
 
 
+#: Direction D handoff §5: the fixed genre list for subject mapping and grouping.
+#: A suggestion list — the column accepts any short free text.
+GENRES: tuple[str, ...] = (
+    "Classics",
+    "Literary fiction",
+    "Science fiction",
+    "Fantasy",
+    "Mystery & thriller",
+    "Gothic & horror",
+    "Romance",
+    "Historical fiction",
+    "Myth & epic",
+    "Poetry",
+    "Drama",
+    "Biography & memoir",
+    "History",
+    "Science",
+    "Philosophy",
+    "Nonfiction",
+    "Children's",
+    "Japanese literature",
+    "Korean literature",
+    "Chinese literature",
+)
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

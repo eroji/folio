@@ -30,6 +30,7 @@ from folio.routers.me import router as me_router
 from folio.routers.metadata import router as metadata_router
 from folio.routers.progress import router as progress_router
 from folio.routers.pronunciation import router as pronunciation_router
+from folio.routers.search import router as search_router
 from folio.routers.voices import router as voices_router
 
 WORKER_HEARTBEAT_MAX_AGE_S = 60
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(covers_router)
     app.include_router(books_router)
+    app.include_router(search_router)
     app.include_router(pronunciation_router)
     app.include_router(progress_router)
     app.include_router(me_router)

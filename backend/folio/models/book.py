@@ -68,8 +68,12 @@ class Book(Base):
     tags: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, server_default=text("'{}'")
     )
+    # Direction D: free-text genre (the config.GENRES list is a suggestion, not a constraint).
+    genre: Mapped[str | None] = mapped_column(Text)
     narrator_voice: Mapped[str | None] = mapped_column(String(64))
     cover_key: Mapped[str | None] = mapped_column(String(255))
+    # Dominant cover color as "R G B" for the page glow; null until a cover is stored.
+    cover_rgb: Mapped[str | None] = mapped_column(Text)
     # uploading → processing → ready | needs_ocr | failed
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="uploading")
     error: Mapped[str | None] = mapped_column(Text)

@@ -79,7 +79,7 @@ async def upload_cover(
     data = await file.read(MAX_COVER_BYTES + 1)
     if len(data) > MAX_COVER_BYTES:
         raise ApiError("cover_too_large", f"Cover image exceeds the {_MB} MB limit.", 413)
-    book.cover_key = store_cover(get_settings(), book.id, data)
+    book.cover_key, book.cover_rgb = store_cover(get_settings(), book.id, data)
     db.commit()
     return _stored(book)
 
@@ -97,7 +97,9 @@ def set_cover_url(
     book = _get_book(db, book_id)
     _require_edit(user, book)
     # A failed download/store raises before cover_key changes: the old cover stays.
-    book.cover_key = store_cover(get_settings(), book.id, download_cover(body.url, http_client))
+    book.cover_key, book.cover_rgb = store_cover(
+        get_settings(), book.id, download_cover(body.url, http_client)
+    )
     db.commit()
     return _stored(book)
 
