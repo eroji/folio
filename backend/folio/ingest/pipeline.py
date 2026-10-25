@@ -6,7 +6,6 @@ idempotent: chapters/segments are deleted before being rebuilt, so a
 reprocess or a retry never duplicates rows.
 """
 
-import hashlib
 from pathlib import Path
 from uuid import UUID
 
@@ -15,6 +14,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from folio.config import Settings
+from folio.covers import store_cover
+from folio.errors import ApiError
 from folio.ingest import (
     EmbeddedMetadata,
     ExtractedBook,
@@ -29,7 +30,7 @@ from folio.ingest.kindle import extract_kindle
 from folio.ingest.pdf import extract_pdf
 from folio.ingest.segment import segment_chapter
 from folio.models import Book, BookFile, Chapter, Job, Segment
-from folio.storage import book_dir, cover_dir, ensure_dirs
+from folio.storage import book_dir
 
 
 def process_book(session: Session, settings: Settings, target: UUID | Job) -> None:
@@ -119,25 +120,13 @@ def _apply_metadata(book: Book, meta: EmbeddedMetadata) -> None:
             setattr(book, name, value)
 
 
-def _cover_ext(data: bytes) -> str:
-    if data[:8] == b"\x89PNG\r\n\x1a\n":
-        return "png"
-    if data[:3] == b"\xff\xd8\xff":
-        return "jpg"
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "webp"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return "gif"
-    return "img"  # ponytail: unrecognised cover bytes are stored as-is; sniff more if real books hit it
-
-
 def _store_cover(settings: Settings, book: Book, cover: bytes | None) -> None:
     if not cover:
         return
-    path = cover_dir(settings, book.id) / f"original.{_cover_ext(cover)}"
-    ensure_dirs(path.parent)
-    path.write_bytes(cover)
-    book.cover_key = hashlib.sha256(cover).hexdigest()
+    try:
+        book.cover_key = store_cover(settings, book.id, cover)
+    except ApiError:
+        pass  # an unsupported embedded cover leaves the book cover-less, never fails ingest
 
 
 def _persist_chapters(

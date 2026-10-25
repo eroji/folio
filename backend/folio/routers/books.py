@@ -2,7 +2,6 @@
 
 import hashlib
 import math
-import mimetypes
 import os
 import re
 import shutil
@@ -14,7 +13,6 @@ from uuid import UUID
 
 import bleach  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, Query, Request, UploadFile
-from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session as DbSession
@@ -189,11 +187,6 @@ def _get_book(db: DbSession, book_id: UUID) -> Book:
     return book
 
 
-def _cover_file(settings: Settings, book_id: UUID) -> Path | None:
-    files = sorted(cover_dir(settings, book_id).glob("original.*"))
-    return files[0] if files else None
-
-
 def _stream_to_temp(upload: UploadFile, settings: Settings) -> tuple[Path, str, int]:
     """Stream to ``data_dir/tmp`` while hashing; 413 as soon as the limit is passed."""
     limit = settings.max_upload_mb * 1024 * 1024
@@ -364,31 +357,6 @@ def patch_book(
     book.locked_fields = list(dict.fromkeys([*book.locked_fields, *patch.model_fields_set]))
     db.commit()
     return {"book": _public(book)}
-
-
-@router.get("/{book_id}/cover")
-def get_cover(
-    book_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[DbSession, Depends(get_session)],
-    size: int = Query(600),
-) -> Response:
-    if size not in (200, 600):  # Literal[int] rejects the coerced query string in pydantic v2
-        raise ApiError("validation_failed", "Invalid request", 422)
-    # ponytail: size is accepted but ignored; real resizing is M3.
-    book = _get_book(db, book_id)
-    path = _cover_file(get_settings(), book.id) if book.cover_key else None
-    if path is None:
-        raise ApiError("not_found", "Cover not found.", 404)
-    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    return Response(
-        content=path.read_bytes(),
-        media_type=media_type,
-        headers={
-            "Cache-Control": "public, max-age=31536000, immutable",
-            "ETag": f'"{book.cover_key}"',
-        },
-    )
 
 
 @router.delete("/{book_id}", status_code=204)

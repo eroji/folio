@@ -231,7 +231,7 @@ async def test_cover_headers_and_404(
     response = await auth_client.get(f"/api/v1/books/{book_id}/cover")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
-    assert response.headers["etag"].strip('"') == book.cover_key
+    assert response.headers["etag"].strip('"') == f"{book.cover_key}-600"
     assert response.headers["content-type"].startswith("image/")
     assert (
         await auth_client.get(f"/api/v1/books/{book_id}/cover", params={"size": 200})
