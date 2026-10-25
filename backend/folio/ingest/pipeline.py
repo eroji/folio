@@ -6,10 +6,12 @@ idempotent: chapters/segments are deleted before being rebuilt, so a
 reprocess or a retry never duplicates rows.
 """
 
+import logging
 from pathlib import Path
 from uuid import UUID
 
 import bleach  # type: ignore[import-untyped]
+import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -29,8 +31,11 @@ from folio.ingest.epub import extract_epub
 from folio.ingest.kindle import extract_kindle
 from folio.ingest.pdf import extract_pdf
 from folio.ingest.segment import segment_chapter
+from folio.metadata.service import auto_fetch
 from folio.models import Book, BookFile, Chapter, Job, Segment
 from folio.storage import book_dir
+
+logger = logging.getLogger(__name__)
 
 
 def process_book(session: Session, settings: Settings, target: UUID | Job) -> None:
@@ -86,6 +91,18 @@ def _ingest(session: Session, settings: Settings, book: Book) -> None:
     _persist_chapters(session, settings, book, extracted.chapters)
     book.status = "needs_ocr" if scanned else "ready"
     session.commit()
+    if settings.metadata_online:
+        _online_metadata(session, settings, book)
+
+
+def _online_metadata(session: Session, settings: Settings, book: Book) -> None:
+    """Best-effort online metadata; a provider failure logs and never fails ingest."""
+    try:
+        with httpx.Client(timeout=10, follow_redirects=True) as client:
+            auto_fetch(session, settings, book, client)
+    except Exception:
+        session.rollback()
+        logger.warning("online metadata skipped for book %s", book.id, exc_info=True)
 
 
 def _extract(settings: Settings, book: Book, path: Path) -> ExtractedBook:

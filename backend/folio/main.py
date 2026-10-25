@@ -22,6 +22,7 @@ from folio.routers.auth import router as auth_router
 from folio.routers.books import router as books_router
 from folio.routers.covers import router as covers_router
 from folio.routers.events import router as events_router
+from folio.routers.metadata import router as metadata_router
 
 WORKER_HEARTBEAT_MAX_AGE_S = 60
 STATIC_DIR = Path(__file__).parent / "static"
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(covers_router)
     app.include_router(books_router)
+    app.include_router(metadata_router)
     app.include_router(events_router)
 
     if get_settings().folio_test_mode:

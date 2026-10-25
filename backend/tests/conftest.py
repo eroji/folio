@@ -26,6 +26,8 @@ os.environ.setdefault("LDAP_BIND_PASSWORD", "svc-password")
 os.environ.setdefault("LDAP_BASE_DN", "dc=test")
 os.environ.setdefault("FOLIO_LDAP_ADMIN_GROUP", "cn=folio-admin,dc=test")
 os.environ.setdefault("FOLIO_LDAP_USER_GROUP", "cn=folio-user,dc=test")
+# No test hits the metadata providers unless it opts in (monkeypatch metadata_online).
+os.environ.setdefault("METADATA_ONLINE", "false")
 
 import httpx
 import psycopg
