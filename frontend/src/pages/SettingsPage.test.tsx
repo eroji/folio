@@ -89,7 +89,8 @@ describe("SettingsPage", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "system" }));
     expect(localStorage.getItem("folio-theme")).toBeNull();
-    expect(document.documentElement.dataset.theme).toBeUndefined();
+    // "system" resolves prefers-color-scheme (light in jsdom); data-theme is never unset.
+    expect(document.documentElement.dataset.theme).toBe("light");
   });
 
   it("hydrates the listening settings from the server", async () => {

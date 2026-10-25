@@ -1,15 +1,10 @@
-@import "tailwindcss";
 @import "./tokens.css";
 
 body {
-  background: var(--page);
+  background: var(--bg);
   color: var(--fg);
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
-}
-
-.bg-brand-gradient {
-  background: var(--brand-gradient);
 }
 
 /* Safe-area helpers (viewport-fit=cover is set in index.html). */
@@ -20,21 +15,16 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-:focus-visible {
-  outline: 2px solid var(--brand-blue);
-  outline-offset: 2px;
-}
-
 /* Reader panel: thin, always-visible scrollbar. */
 .reader-scroll {
   scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
+  scrollbar-color: var(--divider) transparent;
 }
 .reader-scroll::-webkit-scrollbar {
   width: 10px;
 }
 .reader-scroll::-webkit-scrollbar-thumb {
-  background: var(--line);
+  background: var(--divider);
   border: 3px solid var(--paper);
   border-radius: 999px;
 }
