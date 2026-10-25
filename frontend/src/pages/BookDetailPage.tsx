@@ -3,12 +3,13 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useBook, useDeleteBook, useReprocessBook } from "../api/books";
-import { useMetadataCandidates } from "../api/metadata";
+import { useMetadataCandidates, useUpdateBook } from "../api/metadata";
 import { useAuth } from "../auth/AuthProvider";
 import { BookCover } from "../components/BookCard";
 import { FindMetadata } from "../components/FindMetadata";
 import { StatusBadge } from "../components/StatusBadge";
 import { EmptyState } from "../components/EmptyState";
+import { VoicePicker } from "../components/VoicePicker";
 import { AlertTriangle, BookOpen } from "lucide-react";
 import type { Candidate } from "../api/types";
 
@@ -19,7 +20,7 @@ function formatDuration(seconds: number | null): string | null {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-/** Screen 4. Playback arrives in M4; metadata editing in M3. */
+/** Screen 4. Playback links to the M4 player; voice override via PATCH. */
 export function BookDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -28,6 +29,7 @@ export function BookDetailPage() {
   const { data, isPending, error } = useBook(id);
   const reprocess = useReprocessBook(id);
   const remove = useDeleteBook(id);
+  const update = useUpdateBook(id);
   const [findOpen, setFindOpen] = useState(false);
   const [reviewItems, setReviewItems] = useState<Candidate[] | null>(null);
   const candidates = useMetadataCandidates(id);
@@ -66,6 +68,10 @@ export function BookDetailPage() {
   const saved = candidates.data?.items ?? [];
   const length = formatDuration(book.est_duration_s);
   const series = book.series ? `${book.series}${book.series_index != null ? ` #${book.series_index}` : ""}` : null;
+  const firstChapter = chapters[0];
+  const notPlayable = book.status === "needs_ocr" || book.status === "failed" || !firstChapter;
+  const playHref = firstChapter ? `/player?book=${book.id}&chapter=${firstChapter.id}` : "";
+  // TODO(M5): show "Resume" with the saved position once progress lands.
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
@@ -98,16 +104,37 @@ export function BookDetailPage() {
         )}
 
         <div className="flex flex-col items-start gap-1">
-          <button
-            type="button"
-            disabled
-            title="Playback arrives in M4"
-            className="inline-flex h-12 min-w-40 items-center justify-center gap-2 rounded-pill bg-brand-gradient px-6 font-display font-semibold text-white opacity-50 disabled:cursor-not-allowed"
-          >
-            <Play size={20} strokeWidth={1.75} aria-hidden />
-            Play
-          </button>
-          <p className="text-xs text-muted">Playback arrives in M4</p>
+          {notPlayable ? (
+            <button
+              type="button"
+              disabled
+              className="inline-flex h-12 min-w-40 items-center justify-center gap-2 rounded-pill bg-brand-gradient px-6 font-display font-semibold text-white opacity-50 disabled:cursor-not-allowed"
+            >
+              No playable chapters
+            </button>
+          ) : (
+            <Link
+              to={playHref}
+              className="inline-flex h-12 min-w-40 items-center justify-center gap-2 rounded-pill bg-brand-gradient px-6 font-display font-semibold text-white"
+            >
+              <Play size={20} strokeWidth={1.75} aria-hidden />
+              Play
+            </Link>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <h2 className="font-display text-lg font-semibold">Narrator voice</h2>
+          <VoicePicker
+            value={book.narrator_voice}
+            language={book.language}
+            onChange={(voice) => update.mutate({ narrator_voice: voice })}
+          />
+          {update.isError && (
+            <p role="alert" className="text-sm text-danger">
+              {update.error.message}
+            </p>
+          )}
         </div>
 
         {/* Edit / Find metadata: shown to every signed-in user; the server enforces

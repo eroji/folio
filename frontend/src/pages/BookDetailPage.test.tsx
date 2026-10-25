@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthProvider";
 import { BookDetailPage } from "./BookDetailPage";
-import type { Book, Candidate } from "../api/types";
+import type { Book, Candidate, Chapter } from "../api/types";
 
 const ID = "11111111-1111-1111-1111-111111111111";
 
@@ -51,6 +51,18 @@ const CANDIDATE: Candidate = {
   score: 0.72,
 };
 
+const CHAPTERS: Chapter[] = [
+  { id: "c1", idx: 1, title: "One Way", char_count: 500 },
+  { id: "c2", idx: 2, title: "The Other", char_count: 500 },
+];
+
+const VOICES = {
+  items: [
+    { id: "ashley-en", language: "en", description: null, available: true },
+    { id: "ashley-ja", language: "ja", description: null, available: true },
+  ],
+};
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -59,13 +71,21 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 let candidates: Candidate[] = [CANDIDATE];
+let book: Book = makeBook();
+let chapters: Chapter[] = CHAPTERS;
 
 beforeEach(() => {
   candidates = [CANDIDATE];
+  book = makeBook();
+  chapters = CHAPTERS;
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (init?.method === "PATCH" && url.includes(`/books/${ID}`)) {
+        book = { ...book, ...(JSON.parse(String(init.body)) as Partial<Book>) };
+        return jsonResponse(200, { book });
+      }
       if (url.includes("/auth/me")) {
         return jsonResponse(200, {
           user: { id: "u1", username: "reader", display_name: "Reader", email: null, role: "user" },
@@ -73,7 +93,8 @@ beforeEach(() => {
         });
       }
       if (url.includes("/metadata/candidates")) return jsonResponse(200, { items: candidates });
-      if (url.includes(`/books/${ID}`)) return jsonResponse(200, { book: makeBook(), chapters: [], progress: null });
+      if (url.includes("/voices")) return jsonResponse(200, VOICES);
+      if (url.includes(`/books/${ID}`)) return jsonResponse(200, { book, chapters, progress: null });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -114,5 +135,33 @@ describe("BookDetailPage", () => {
     renderDetail();
     expect(await screen.findByRole("link", { name: "Edit" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Review metadata matches" })).toBeNull();
+  });
+
+  it("links Play to the player with the book and the first chapter", async () => {
+    renderDetail();
+    const play = await screen.findByRole("link", { name: "Play" });
+    expect(play.getAttribute("href")).toBe(`/player?book=${ID}&chapter=c1`);
+  });
+
+  it("disables Play with no playable chapters", async () => {
+    chapters = [];
+    renderDetail();
+    const play = await screen.findByRole("button", { name: "No playable chapters" });
+    expect((play as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("saves the narrator voice override as the only patched field", async () => {
+    renderDetail();
+    await screen.findByRole("option", { name: "ashley-en" });
+    const select = screen.getByRole("combobox", { name: "en voice" });
+    fireEvent.change(select, { target: { value: "ashley-en" } });
+    await vi.waitFor(() => {
+      const patch = vi
+        .mocked(fetch)
+        .mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(patch).toBeTruthy();
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ narrator_voice: "ashley-en" });
+    });
+    expect(await screen.findByText(/about 10m/)).toBeTruthy();
   });
 });
