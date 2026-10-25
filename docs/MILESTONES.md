@@ -211,6 +211,22 @@ Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Imp
 - Player secondary icons (speed, sleep) use the same size as the rest of the transport row.
 - Settings expands to the full page area when the player is closed/collapsed and follows the 50/50 split when the panel is open (deviation from the handoff's fixed 720px, requested in testing).
 
+## UI redesign — Direction D "Ribbon" (replaces Direction C)
+
+Handoff: `docs/ui-handoff/HANDOFF.md` (the old `folio-ui-handoff` is superseded). Dark-only, amber accent, labelled sidebar, bottom player bar + expanded `/player`, Home `/`, Library `/library`, Search `/search`, book two-column layout, Genre field.
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Tokens, Sora/Figtree, remove theme, lucide, brand | in progress |
+| 2 | Shell: sidebar, top bar, account menu, phone nav, routes | planned |
+| 3 | Player bar, expanded player, phone player/read-along | planned |
+| 4 | Book page two-column, ⋮ menu + narrator dialog | planned |
+| 5 | Home/Library shelves, Genre data, group API | backend + frontend in progress |
+| 6 | Search, Upload, Settings, Sign in | planned |
+| 7 | Restyle remaining, clean up, rewrite DESIGN.md | planned |
+
+Backend §5 (Genre, cover_rgb, `/me/home`, `/search`, no theme) is running in parallel with Phase 1.
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
