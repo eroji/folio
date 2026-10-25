@@ -8,7 +8,7 @@ export interface Voice {
   language: string | null;
   description: string | null;
   available: boolean;
-  /** Engine-provided human name, when the server reports one. */
+  /** Admin override or name derived from the id ("ashley-en" -> "Ashley"). */
   display_name?: string | null;
 }
 

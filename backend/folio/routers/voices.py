@@ -18,6 +18,7 @@ from folio.errors import ApiError
 from folio.models import User
 from folio.security import require_csrf
 from folio.tts import TtsClient, TtsError, discover_voices, get_or_synthesize
+from folio.voice_names import load_overrides, resolve_display_names
 
 router = APIRouter(prefix="/api/v1/voices", tags=["voices"])
 
@@ -50,10 +51,12 @@ def list_voices(
     user: Annotated[User, Depends(get_current_user)],
     settings: Annotated[Settings, Depends(get_settings)],
     client: Annotated[TtsClient, Depends(get_tts_client)],
+    db: Annotated[DbSession, Depends(get_session)],
     refresh: bool = False,
 ) -> dict[str, Any]:
     # The engine's ``tts`` entry is its internal fallback, not a real voice.
     voices = [v for v in discover_voices(settings, client, refresh=refresh) if v.id != "tts"]
+    names = resolve_display_names([(v.id, v.language) for v in voices], load_overrides(db))
     return {
         "items": [
             {
@@ -61,6 +64,7 @@ def list_voices(
                 "language": v.language,
                 "description": v.description,
                 "available": v.available,
+                "display_name": names[v.id],
             }
             for v in voices
         ]

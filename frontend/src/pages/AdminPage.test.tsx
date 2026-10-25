@@ -24,6 +24,26 @@ let retryFails = false;
 let clearFails = false;
 let cache = { files: 1234, bytes: 1288490188, tts: { status: "ok", latency_ms: 42 } };
 
+const derivedNames: Record<string, string> = { "ashley-en": "Ashley", "ashley-ja": "Ashley (JA)" };
+let voiceNames: { names: Record<string, string>; items: { id: string; display_name: string; overridden: boolean }[] } = {
+  names: { "ashley-ja": "Yuki" },
+  items: [
+    { id: "ashley-en", display_name: "Ashley", overridden: false },
+    { id: "ashley-ja", display_name: "Yuki", overridden: true },
+  ],
+};
+
+function applyVoiceNames(names: Record<string, string>) {
+  voiceNames = {
+    names,
+    items: Object.keys(derivedNames).map((id) => ({
+      id,
+      display_name: names[id] ?? derivedNames[id]!,
+      overridden: id in names,
+    })),
+  };
+}
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -33,11 +53,18 @@ beforeEach(() => {
   retryFails = false;
   clearFails = false;
   cache = { files: 1234, bytes: 1288490188, tts: { status: "ok", latency_ms: 42 } };
+  applyVoiceNames({ "ashley-ja": "Yuki" });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
+      if (url.includes("/admin/voice-names") && method === "PUT") {
+        const body = JSON.parse(String(init?.body)) as { names: Record<string, string> };
+        applyVoiceNames(body.names);
+        return jsonResponse(200, { names: body.names });
+      }
+      if (url.includes("/admin/voice-names")) return jsonResponse(200, voiceNames);
       const retry = url.match(/\/admin\/jobs\/(\d+)\/retry$/);
       if (retry && method === "POST") {
         if (retryFails) return jsonResponse(500, { error: { code: "nope", message: "nope" } });
@@ -137,5 +164,51 @@ describe("AdminPage", () => {
     expect(await within(section).findByText("Admin User")).toBeTruthy();
     expect(within(section).getAllByText("admin").length).toBe(2); // username + role badge
     expect(within(section).queryByRole("button")).toBeNull();
+  });
+
+  it("prefills voice names with the effective name and flags overrides", async () => {
+    renderAdmin();
+    const section = await screen.findByRole("region", { name: "Voice names" });
+    expect((await within(section).findByLabelText("Display name for ashley-en") as HTMLInputElement).value).toBe(
+      "Ashley",
+    );
+    expect((within(section).getByLabelText("Display name for ashley-ja") as HTMLInputElement).value).toBe("Yuki");
+    expect(within(section).getAllByText("Custom")).toHaveLength(1);
+  });
+
+  it("saves edited and untouched overrides and shows the saved indicator", async () => {
+    renderAdmin();
+    const section = await screen.findByRole("region", { name: "Voice names" });
+    fireEvent.change(await within(section).findByLabelText("Display name for ashley-en"), {
+      target: { value: "Ash" },
+    });
+    fireEvent.click(within(section).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      const call = vi
+        .mocked(fetch)
+        .mock.calls.find(([url, init]) => String(url).includes("/admin/voice-names") && init?.method === "PUT");
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String(call![1]!.body))).toEqual({ names: { "ashley-en": "Ash", "ashley-ja": "Yuki" } });
+    });
+    expect(await within(section).findByText("Saved")).toBeTruthy();
+    expect(within(section).getAllByText("Custom")).toHaveLength(2);
+  });
+
+  it("clearing an override removes it from the saved map", async () => {
+    renderAdmin();
+    const section = await screen.findByRole("region", { name: "Voice names" });
+    fireEvent.change(await within(section).findByLabelText("Display name for ashley-ja"), { target: { value: "" } });
+    fireEvent.click(within(section).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      const call = vi
+        .mocked(fetch)
+        .mock.calls.find(([url, init]) => String(url).includes("/admin/voice-names") && init?.method === "PUT");
+      expect(JSON.parse(String(call![1]!.body))).toEqual({ names: {} });
+    });
+    await vi.waitFor(() => {
+      const ja = within(section).getByLabelText("Display name for ashley-ja") as HTMLInputElement;
+      expect(ja.value).toBe("Ashley (JA)");
+    });
+    expect(within(section).queryByText("Custom")).toBeNull();
   });
 });

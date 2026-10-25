@@ -8,7 +8,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session as DbSession
 
@@ -19,7 +19,10 @@ from folio.errors import ApiError
 from folio.jobs import notify
 from folio.models import Audio, Book, Chapter, Job, Segment, SegmentAudio, User
 from folio.routers.auth import UserPublic
+from folio.routers.voices import get_tts_client
 from folio.security import require_csrf
+from folio.tts import TtsClient, discover_voices
+from folio.voice_names import MAX_NAME_LENGTH, load_overrides, resolve_display_names, save_overrides
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -124,6 +127,61 @@ def clear_cache(
     db.execute(delete(Audio).where(Audio.cache_key.in_([key for key, _p, _b in rows])))
     db.commit()
     return {"removed_files": len(rows), "freed_bytes": sum(size for _k, _p, size in rows)}
+
+
+def _discovered_voices(settings: Settings, client: TtsClient) -> list[tuple[str, str | None]]:
+    """(id, language) of every real voice; the engine's ``tts`` entry is not one."""
+    return [(v.id, v.language) for v in discover_voices(settings, client) if v.id != "tts"]
+
+
+@router.get("/voice-names")
+def get_voice_names(
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    client: Annotated[TtsClient, Depends(get_tts_client)],
+) -> dict[str, Any]:
+    """Override map plus the resolved name for every discovered voice."""
+    voices = _discovered_voices(settings, client)
+    overrides = load_overrides(db)
+    names = resolve_display_names(voices, overrides)
+    return {
+        "names": overrides,
+        "items": [
+            {"id": voice_id, "display_name": names[voice_id], "overridden": voice_id in overrides}
+            for voice_id, _language in voices
+        ],
+    }
+
+
+class VoiceNamesBody(BaseModel):
+    names: dict[str, str] = Field(default_factory=dict)
+
+
+@router.put("/voice-names")
+def put_voice_names(
+    request: Request,
+    body: VoiceNamesBody,
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    client: Annotated[TtsClient, Depends(get_tts_client)],
+) -> dict[str, Any]:
+    """Replace the override map; trimmed-empty values remove an override."""
+    require_csrf(request, request.state.session_row)
+    known = dict(_discovered_voices(settings, client))
+    cleaned: dict[str, str] = {}
+    for voice_id, name in body.names.items():
+        if voice_id not in known:
+            raise ApiError("validation_failed", f"Unknown voice: {voice_id}.", 422)
+        name = name.strip()
+        if len(name) > MAX_NAME_LENGTH:
+            raise ApiError(
+                "validation_failed",
+                f"Voice names must be at most {MAX_NAME_LENGTH} characters.",
+                422,
+            )
+        if name:
+            cleaned[voice_id] = name
+    return {"names": save_overrides(db, cleaned)}
 
 
 def probe_tts(settings: Settings) -> str:
