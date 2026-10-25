@@ -93,5 +93,46 @@ curl -fsS -b "$TMP/user.jar" "$API/books/$dup/chapters/$chapter_id/segments" | g
   || fail "segment list is empty"
 echo "PASS: search and chapter segments"
 
+echo "== M3: manual edit survives reprocess =="
+csrf=$(csrf_of "$TMP/admin.jar")
+curl -fsS -b "$TMP/admin.jar" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  -X PATCH -d '{"title":"Edited By Acceptance"}' "$API/books/$dup" >/dev/null \
+  || fail "PATCH title failed"
+curl -fsS -b "$TMP/admin.jar" -H "X-CSRF-Token: $csrf" -X POST \
+  "$API/books/$dup/reprocess" >/dev/null || fail "reprocess failed"
+wait_status "$TMP/admin.jar" "$dup" ready 180
+title=$(curl -fsS -b "$TMP/admin.jar" "$API/books/$dup" | json 'd["book"]["title"]')
+[[ "$title" == "Edited By Acceptance" ]] || fail "reprocess overwrote the manual edit (title=$title)"
+echo "PASS: edit survived reprocess"
+
+echo "== M3: cover upload, variants and URL rejection =="
+printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' \
+  | base64 -d > "$TMP/cover.png"
+curl -fsS -b "$TMP/admin.jar" -H "X-CSRF-Token: $csrf" \
+  -F "file=@$TMP/cover.png" "$API/books/$dup/cover" >/dev/null || fail "cover upload failed"
+for size in 200 600; do
+  got=$(curl -sS -b "$TMP/admin.jar" -o "$TMP/cover-$size" -w '%{http_code} %{content_type}' \
+    "$API/books/$dup/cover?size=$size")
+  [[ "$got" == "200 image/webp" ]] || fail "cover size=$size returned $got"
+done
+[[ "$(file -b --mime-type "$TMP/cover-200")" == "image/webp" ]] || fail "cover 200 is not WebP"
+before=$(curl -sS -b "$TMP/admin.jar" -o /dev/null -w '%{http_code}' "$API/books/$dup/cover?size=200")
+bad=$(curl -sS -b "$TMP/admin.jar" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  -X PUT -d '{"url":"http://127.0.0.1:1/nope.png"}' -o "$TMP/bad.json" -w '%{http_code}' \
+  "$API/books/$dup/cover-url")
+[[ "$bad" == "422" ]] || fail "bad cover URL returned $bad, expected 422: $(cat "$TMP/bad.json")"
+after=$(curl -sS -b "$TMP/admin.jar" -o /dev/null -w '%{http_code}' "$API/books/$dup/cover?size=200")
+[[ "$before" == "$after" && "$after" == "200" ]] || fail "a rejected URL disturbed the existing cover"
+echo "PASS: cover upload, 200/600 WebP variants, rejected URL leaves the cover intact"
+
+echo "== M3: online metadata search (live Open Library; optional) =="
+items=$(curl -fsS -b "$TMP/admin.jar" "$API/books/$dup/metadata/search?isbn=9780140328721")
+count=$(echo "$items" | json 'len(d.get("items", []))')
+if [[ "$count" -gt 0 ]]; then
+  echo "PASS: metadata search returned $count candidate(s)"
+else
+  echo "SKIP: metadata search returned no candidates (network or provider rate limit)"
+fi
+
 echo
 echo "ALL ACCEPTANCE CHECKS PASSED"

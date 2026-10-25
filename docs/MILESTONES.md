@@ -10,7 +10,7 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | 0 | Repo foundation (plan, AGENTS.md, docs, git) | done | Plan approved, `AGENTS.md` in place, first commit landed | `c21d675` |
 | 1 | Skeleton and auth | **accepted** | AD user in user group logs in; outsider refused; admin sees Admin menu | 144 backend / 9 web tests + 3 Playwright e2e green; `scripts/acceptance.sh` M1 checks pass |
 | 2 | Upload and ingestion | **accepted** | Each fixture reaches its expected status; duplicates detected | All 7 fixtures verified on the compose stack; duplicate, DRM, search, segments verified |
-| 3 | Metadata and covers | in progress | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | plan: `superpowers/plans/2026-10-24-m3-metadata-covers.md` |
+| 3 | Metadata and covers | in progress | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | covers + edit API + edit UI merged; online metadata in flight; edit→reprocess e2e green |
 | 4 | TTS and player | todo | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | — |
 | 5 | Progress and settings | todo | Phone → desktop resumes within 3 s of the stop point | — |
 | 6 | PWA and polish | todo | Installs to a phone home screen; Lighthouse accessibility ≥ 90 | — |
