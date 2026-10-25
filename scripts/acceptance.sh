@@ -158,6 +158,36 @@ clear_code=$(curl -sS -b "$TMP/admin.jar" -H "X-CSRF-Token: $(csrf_of "$TMP/admi
 [[ "$clear_code" == "200" ]] || fail "cache clear returned $clear_code"
 echo "PASS: admin health and cache clear"
 
+echo "== M5: progress, continue listening, settings =="
+chapter_id=$(curl -fsS -b "$TMP/user.jar" "$API/books/$dup" | json 'd["chapters"][1]["id"]')
+seg_id=$(curl -fsS -b "$TMP/user.jar" "$API/books/$dup/chapters/$chapter_id/segments" | json 'd["items"][2]["id"]')
+csrf=$(csrf_of "$TMP/user.jar")
+saved=$(curl -fsS -b "$TMP/user.jar" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  -X PUT -d "{\"chapter_id\":\"$chapter_id\",\"segment_id\":\"$seg_id\",\"offset_s\":5,\"device_label\":\"acceptance\"}" \
+  "$API/books/$dup/progress")
+percent=$(echo "$saved" | json 'round(d["progress"]["percent"], 2)')
+python3 -c "import sys; sys.exit(0 if $percent > 0 else 1)" || fail "progress percent is not > 0 ($percent)"
+[[ "$(curl -fsS -b "$TMP/user.jar" "$API/books/$dup/progress" | json 'd["progress"]["device_label"]')" == "acceptance" ]] \
+  || fail "progress round-trip failed"
+curl -fsS -b "$TMP/user.jar" "$API/me/continue" | grep -q "$dup" || fail "continue listening does not list the book"
+echo "PASS: progress round-trip (${percent}%), continue listening"
+
+settings=$(curl -fsS -b "$TMP/user.jar" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  -X PUT -d '{"speed":1.25,"skip_back":10,"auto_next":false}' "$API/me/settings")
+echo "$settings" | grep -q '"speed": *1.25' || fail "settings did not persist: $settings"
+echo "$settings" | grep -q '"auto_next": *false' || fail "settings merge failed: $settings"
+echo "$settings" | grep -q '"skip_forward": *30' || fail "settings lost the default: $settings"
+echo "PASS: settings merge"
+
+curl -fsS -b "$TMP/user.jar" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  -X PUT -d '{"finished":true}' "$API/books/$dup/progress/finished" >/dev/null || fail "mark finished failed"
+curl -fsS -b "$TMP/user.jar" "$API/me/continue" | grep -q "$dup" && fail "finished book still in continue listening"
+curl -fsS -b "$TMP/user.jar" -H "X-CSRF-Token: $csrf" -X DELETE -o /dev/null "$API/books/$dup/progress" \
+  || fail "progress reset failed"
+[[ "$(curl -fsS -b "$TMP/user.jar" "$API/books/$dup/progress" | json 'd["progress"]')" == "None" ]] \
+  || fail "progress was not cleared"
+echo "PASS: finished removes from continue, reset clears progress"
+
 echo "== M3: online metadata search (live Open Library; optional) =="
 items=$(curl -fsS -b "$TMP/admin.jar" "$API/books/$dup/metadata/search?isbn=9780140328721")
 count=$(echo "$items" | json 'len(d.get("items", []))')
