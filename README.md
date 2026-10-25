@@ -4,7 +4,7 @@ Folio is a self-hosted, mobile-first web app that turns uploaded ebooks — EPUB
 
 Users sign in with their existing LDAP / Active Directory account; Folio stores no passwords and maps roles (`admin` / `user`) from directory group membership. Everything runs as two containers built from one image — an API (which also serves the built React PWA) and a background worker — plus PostgreSQL 16 and a single `/data` volume, deployed with Docker Compose behind nginx. No Redis, no hosted model: the job queue lives in the `jobs` table and Folio is only a client of the TTS API.
 
-This phase delivers milestones M1–M2: the compose stack, schema + migrations, LDAP auth, and the upload → ingest pipeline. Metadata editing and cover tools (M3), the TTS player (M4), progress and settings (M5), and PWA polish + admin tools (M6) are **roadmap**, not yet available. Live status per milestone: [`docs/MILESTONES.md`](docs/MILESTONES.md).
+Delivered so far: **M1** (compose stack, schema + migrations, LDAP auth, roles), **M2** (upload → ingest pipeline, chapters/segments, SSE status), and **M3** (online metadata from Open Library/Google Books, editable fields that survive re-ingest, cover upload/URL/crop with 600 px and 200 px WebP variants). The TTS player (M4), progress and settings (M5), and PWA polish + admin tools (M6) are **roadmap**. Live status per milestone: [`docs/MILESTONES.md`](docs/MILESTONES.md).
 
 ## Architecture
 
@@ -39,6 +39,15 @@ make dev-web            # vite dev server on :5173, proxies /api to :8000
 ```
 
 Open <http://localhost:5173>. Both sides hot-reload. Local dev writes uploads to `./data` (from `.env`); the compose stack overrides `DATA_DIR` to the `/data` volume.
+
+If the server has no LDAP directory to point at, start the test stack and use the **"Test mode: sign in without LDAP"** panel on the login page (pick `user` or `admin`). It exists only when `FOLIO_TEST_MODE=true`, which `compose.test.yaml` — and nothing else — sets:
+
+```bash
+docker compose -f compose.yaml -f compose.test.yaml up -d --build
+# then open http://localhost:8000/login
+```
+
+With a real directory, fill `LDAP_*` in `.env` and use the normal form; `DOMAIN\user`, `user@domain` and `user` all work.
 
 ## Local testing
 

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
 import { useAuth } from "./AuthProvider";
@@ -15,6 +15,32 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Dev-only convenience: when the server runs with FOLIO_TEST_MODE, let a
+  // browser session sign in without an LDAP server. Never rendered otherwise.
+  const [testMode, setTestMode] = useState(false);
+  const [testUser, setTestUser] = useState("dev-user");
+  const [testRole, setTestRole] = useState("admin");
+
+  useEffect(() => {
+    fetch("/api/v1/auth/options")
+      .then((r) => r.json())
+      .then((data: { test_mode?: boolean }) => setTestMode(Boolean(data.test_mode)))
+      .catch(() => setTestMode(false));
+  }, []);
+
+  async function testSignIn() {
+    setError(null);
+    const response = await fetch("/api/v1/test/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: testUser, role: testRole }),
+    });
+    if (!response.ok) {
+      setError("Test sign-in failed.");
+      return;
+    }
+    window.location.assign("/");
+  }
 
   if (user) {
     const from = (location.state as { from?: string } | null)?.from ?? "/";
@@ -90,6 +116,39 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
           {submitting ? "Signing in…" : "Sign in"}
         </button>
       </form>
+
+      {testMode && (
+        <section className="flex flex-col gap-3 rounded-card border border-dashed border-line p-4">
+          <p className="text-sm font-medium">Test mode: sign in without LDAP</p>
+          <div className="flex gap-2">
+            <input
+              aria-label="Test username"
+              value={testUser}
+              onChange={(e) => setTestUser(e.target.value)}
+              className="h-11 min-w-0 flex-1 rounded-card border border-line bg-card px-3 text-sm"
+            />
+            <select
+              aria-label="Test role"
+              value={testRole}
+              onChange={(e) => setTestRole(e.target.value)}
+              className="h-11 rounded-card border border-line bg-card px-3 text-sm"
+            >
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={testSignIn}
+            className="h-11 rounded-pill border border-line bg-card font-medium"
+          >
+            Test sign in
+          </button>
+          <p className="text-xs text-muted">
+            Only available when the server sets FOLIO_TEST_MODE. Never enable it in production.
+          </p>
+        </section>
+      )}
     </main>
   );
 }

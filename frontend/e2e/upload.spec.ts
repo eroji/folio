@@ -10,17 +10,19 @@ test("uploading an EPUB reaches Ready without a reload", async ({ page }) => {
   expect(res.ok()).toBeTruthy();
 
   await page.goto("/upload");
-  await page.setInputFiles('input[type="file"]', "../backend/tests/fixtures/epub3.epub");
+  // epub2 is not used by any other spec, so this upload always ingests
+  // (the fixture set is content-hash deduped across the shared test database).
+  await page.setInputFiles('input[type="file"]', "../backend/tests/fixtures/epub2.epub");
   await expect(page.getByRole("progressbar")).toBeVisible();
 
   // Ingest can finish before the intermediate "Processing" state is painted,
-  // so wait for the terminal, user-visible result instead.
-  const row = page.getByRole("listitem").filter({ hasText: /The Lighthouse at Low Tide/ });
-  await expect(row).toBeVisible({ timeout: 90_000 });
-  await expect(row).toContainText("Ready");
+  // so wait for the terminal, user-visible result instead. Only one file was
+  // chosen, so the last row is this upload.
+  const row = page.getByRole("listitem").last();
+  await expect(row).toContainText("Ready", { timeout: 90_000 });
 
   await page.goto("/");
   await expect(
-    page.getByRole("link", { name: /The Lighthouse at Low Tide/ }),
+    page.getByRole("link").filter({ hasText: "Ready" }).first(),
   ).toBeVisible({ timeout: 15_000 });
 });

@@ -18,7 +18,7 @@ test("bad credentials show the server error inline", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Username").fill("nobody");
   await page.getByLabel("Password").fill("wrong-password");
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
   await expect(page.getByRole("alert")).toContainText("Invalid username or password");
 });

@@ -46,6 +46,12 @@ class UserPublic(BaseModel):
     role: str
 
 
+@router.get("/options")
+def options(settings: Annotated[Settings, Depends(get_settings)]) -> dict[str, bool]:
+    """Unauthenticated capability probe for the login page (no secrets)."""
+    return {"test_mode": settings.folio_test_mode}
+
+
 @router.post("/login")
 def login(
     request: Request,

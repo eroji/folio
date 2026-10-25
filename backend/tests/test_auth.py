@@ -319,3 +319,9 @@ def test_can_edit_book_admin_uploader_other(db: Session) -> None:
     assert can_edit_book(uploader, book) is True  # uploader edits their own
     assert can_edit_book(other, book) is False  # nobody else does
     assert can_edit_book(uploader, foreign) is False
+
+
+async def test_auth_options_reports_test_mode(client: httpx.AsyncClient) -> None:
+    response = await client.get("/api/v1/auth/options")
+    assert response.status_code == 200
+    assert response.json() == {"test_mode": True}

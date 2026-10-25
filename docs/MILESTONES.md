@@ -10,7 +10,7 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | 0 | Repo foundation (plan, AGENTS.md, docs, git) | done | Plan approved, `AGENTS.md` in place, first commit landed | `c21d675` |
 | 1 | Skeleton and auth | **accepted** | AD user in user group logs in; outsider refused; admin sees Admin menu | 144 backend / 9 web tests + 3 Playwright e2e green; `scripts/acceptance.sh` M1 checks pass |
 | 2 | Upload and ingestion | **accepted** | Each fixture reaches its expected status; duplicates detected | All 7 fixtures verified on the compose stack; duplicate, DRM, search, segments verified |
-| 3 | Metadata and covers | in progress | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | covers + edit API + edit UI merged; online metadata in flight; edit→reprocess e2e green |
+| 3 | Metadata and covers | **accepted** | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | 235 backend tests + 23 web tests + 5 Playwright; live Open Library search returns candidates; edit→reprocess verified on the stack |
 | 4 | TTS and player | todo | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | — |
 | 5 | Progress and settings | todo | Phone → desktop resumes within 3 s of the stop point | — |
 | 6 | PWA and polish | todo | Installs to a phone home screen; Lighthouse accessibility ≥ 90 | — |
@@ -107,10 +107,19 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | 2026-10-24 | **M1 + M2 accepted on the compose stack.** `scripts/acceptance.sh`: role gating, DRM rejection, all 7 fixtures (epub3/epub2/pdf_outline/pdf_flat/azw3 → ready, scanned_pdf → needs_ocr), duplicate linking, search, segments. Playwright at 390×844: empty library after login, inline credential error, upload → Ready without reload. 144 backend tests, 9 web tests, ESLint/tsc/ruff/mypy clean. |
 | 2026-10-24 | Lead review fixes during acceptance: LDAP teardown used the nonexistent `Connection.close()` (500 on directory outage, now `unbind()` + `OSError` → generic 401); e2e specs raced on one seeded user (serial workers); `make e2e` now starts from a clean volume; upload e2e asserts the terminal state instead of a sub-second transient. |
 
+| 2026-10-24 | **M3 wave 1 merged:** covers service (`6c8b127`, 34 tests: magic bytes, 2:3 WebP 600/200, ETag/304, URL limits), `PATCH /books/{id}` with `locked_fields` (`c47fcb7`), and the edit UI / Find metadata / canvas 2:3 crop (`9675f2b`, 23 tests). Lead fixes: deleted the dead M2 cover handler so one router owns the route; hardened the edit→reprocess e2e (CSRF header, duplicate-upload rows, unique title). |
+| 2026-10-24 | **LDAP improved from the working `notely` integration**: `DOMAIN\user` / `user@domain` normalization, `{upn}` filters from the base DN, canonical `sAMAccountName`, exactly-one-result, empty-password guard, `get_info=None`, no referral chasing. |
+| 2026-10-24 | **TTS backend verified** (`docs/TTS.md`): Qwen3 Voice Studio at `vllm.dotslash.io:8880`, voices endpoint shape, Opus/Ogg output, `model=tts`. Ready for M4. |
+| 2026-10-24 | Online metadata providers (Task B) dispatched: Open Library + Google Books, similarity/ISBN decision, candidates, pipeline auto-fetch, migration 0003. |
+| 2026-10-24 | **T-B merged** (`d989d18` + lead fix `a6658d9`): Open Library + Google Books (429-safe), ISBN/0.9 matching, candidates + migration 0003, pipeline auto-fetch. Lead fixes: apply-field whitelist (a client could send `fields:["id"]`), explicit applies now lock their fields while staying re-appliable. |
+| 2026-10-24 | **M3 accepted on the compose stack.** `scripts/acceptance.sh`: edit → reprocess preserves the title; cover upload produces 200/600 WebP; a rejected cover URL leaves the cover intact; live Open Library search returns a candidate. Playwright 5/5 at 390×844, including the test-mode sign-in panel added for local use. 235 backend / 23 web tests green. |
+
 ## Known gaps carried into M3+
 
-- **Cover resizing** is M3: `?size=200|600` is accepted and ignored today; covers are served at original resolution with immutable caching.
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
+- **Online metadata is best-effort**: Google Books rate-limits to HTTP 429 without `GOOGLE_BOOKS_API_KEY`, so Open Library is the effective primary source. Provider failures are logged and skipped, never fail ingestion.
+- **ISBN auto-apply** is proven deterministically with mocked providers; the live check exercises search, not an ISBN-bearing fixture. A real ISBN EPUB will auto-apply in normal use.
+- **Applied metadata locks its fields** (by design), so a later "Find metadata" apply of the same field is an explicit override — the UI's apply path honours that; automatic fetches do not.
 - **Uploader-only actions in the UI**: the API enforces "admin or uploader", but the book payload deliberately hides `uploaded_by`, so the UI shows Reprocess/Delete to admins only. Revisit in M5 with a `can_edit` flag.
 - **LDAP outage → generic 401**: transport failures are indistinguishable from bad passwords by design (no directory-internals leak). Operators see `reason=ldap_error` in logs.
 - **500-page ingest budget (< 60 s)** is not measured: fixtures are small. Measure with a real book before the performance sign-off in M6.
