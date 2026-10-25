@@ -16,7 +16,9 @@ import Logout from "@material-symbols/svg-400/rounded/logout.svg?react";
 import MoreHoriz from "@material-symbols/svg-400/rounded/more_horiz.svg?react";
 import OpenInFull from "@material-symbols/svg-400/rounded/open_in_full.svg?react";
 import Pause from "@material-symbols/svg-400/rounded/pause.svg?react";
+import Person from "@material-symbols/svg-400/rounded/person.svg?react";
 import PlayArrow from "@material-symbols/svg-400/rounded/play_arrow.svg?react";
+import ProgressActivity from "@material-symbols/svg-400/rounded/progress_activity.svg?react";
 import RecordVoiceOver from "@material-symbols/svg-400/rounded/record_voice_over.svg?react";
 import Replay from "@material-symbols/svg-400/rounded/replay.svg?react";
 import RestartAlt from "@material-symbols/svg-400/rounded/restart_alt.svg?react";
@@ -30,6 +32,7 @@ import Toc from "@material-symbols/svg-400/rounded/toc.svg?react";
 import Upload from "@material-symbols/svg-400/rounded/upload.svg?react";
 import Visibility from "@material-symbols/svg-400/rounded/visibility.svg?react";
 import VisibilityOff from "@material-symbols/svg-400/rounded/visibility_off.svg?react";
+import Warning from "@material-symbols/svg-400/rounded/warning.svg?react";
 
 type Svg = FC<SVGProps<SVGSVGElement>>;
 
@@ -54,7 +57,9 @@ const ICONS = {
   more_horiz: MoreHoriz,
   open_in_full: OpenInFull,
   pause: Pause,
+  person: Person,
   play_arrow: PlayArrow,
+  progress_activity: ProgressActivity,
   record_voice_over: RecordVoiceOver,
   replay: Replay,
   restart_alt: RestartAlt,
@@ -68,6 +73,7 @@ const ICONS = {
   upload: Upload,
   visibility: Visibility,
   visibility_off: VisibilityOff,
+  warning: Warning,
 } as const satisfies Record<string, Svg>;
 
 export type IconName = keyof typeof ICONS;
@@ -92,7 +98,9 @@ export function Icon({
       height={size}
       className={className}
       fill="currentColor"
-      {...(label ? { role: "img" as const, "aria-label": label } : { "aria-hidden": true })}
+      {...(label
+        ? { role: "img" as const, "aria-label": label }
+        : { "aria-hidden": true })}
     />
   );
 }
