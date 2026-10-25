@@ -196,6 +196,15 @@ Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Imp
 
 **Notes:** the reference HTML uses `data-theme` on `<html>`; the app now resolves System at runtime. Filled icon variants are not shipped in `@material-symbols/svg-400` (rounded/outlined only) — play/pause/skip are visually filled already. Lighthouse runs must be done outside the repo (an earlier run dumped a Chrome profile into it; ignored now).
 
+### Redesign follow-up 2 (2026-10-25)
+
+- Excluded chapters hidden from the Chapters tab; **Preparing…** state + row spinner while audio generates.
+- Cover badge/Continue row refreshed after progress saves.
+- Narrator voice is a popover (language voices, display names); removed from panel/focus mode.
+- Voice display names persisted in `app_settings` and renameable in Admin (`ashley-en` → Ashley).
+- Read-along rAF smoothing; all icons +10 %.
+- Updated handoff package: **brand refresh** (new mark, wordmarks, icons, manifest) and a fully designed **Settings** page.
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
