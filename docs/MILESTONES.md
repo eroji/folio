@@ -12,7 +12,7 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | 2 | Upload and ingestion | **accepted** | Each fixture reaches its expected status; duplicates detected | All 7 fixtures verified on the compose stack; duplicate, DRM, search, segments verified |
 | 3 | Metadata and covers | **accepted** | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | 235 backend tests + 23 web tests + 5 Playwright; live Open Library search returns candidates; edit→reprocess verified on the stack |
 | 4 | TTS and player | **done (device checks pending)** | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | 311 backend / 51 web tests + 7 Playwright; live synthesis, Range 206, Media Session, voices, cache clear all verified. Real-device gap + lock-screen still manual. |
-| 5 | Progress and settings | todo | Phone → desktop resumes within 3 s of the stop point | — |
+| 5 | Progress and settings | in progress | Phone → desktop resumes within 3 s of the stop point | plan: `superpowers/plans/2026-10-24-m5-progress-settings.md` |
 | 6 | PWA and polish | todo | Installs to a phone home screen; Lighthouse accessibility ≥ 90 | — |
 
 ## Phase 1 scope (this session)
