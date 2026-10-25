@@ -12,6 +12,7 @@ import type { IconName } from "./Icon";
 import { PlayerSurfaces, usePlayerCollapsed } from "./NowPlaying";
 import { PlayerProvider } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
+import folioMark from "../assets/folio-mark.svg";
 
 export function AppShell() {
   return (
@@ -125,7 +126,7 @@ function Shell() {
         className="fixed inset-y-0 left-0 z-20 hidden w-[60px] flex-col items-center gap-2 border-r border-divider bg-surface px-2.5 pt-3.5 pb-3.5 desktop:flex"
       >
         <Link to="/" aria-label="Folio home" className="mb-4">
-          <img src="/logo.svg" alt="Folio" className="size-8" />
+          <img src={folioMark} alt="Folio" width={28} height={32} />
         </Link>
         <NavLink to="/" end aria-label="Library" className={railItem}>
           <Icon name="auto_stories" size={20} />
