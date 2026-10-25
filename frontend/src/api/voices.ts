@@ -8,6 +8,8 @@ export interface Voice {
   language: string | null;
   description: string | null;
   available: boolean;
+  /** Admin override or name derived from the id ("ashley-en" -> "Ashley"). */
+  display_name?: string;
 }
 
 export interface VoicesResponse {

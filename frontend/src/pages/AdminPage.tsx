@@ -12,6 +12,12 @@ interface CacheStats {
   tts: { status: string; latency_ms: number | null };
 }
 
+/** Body of GET /admin/voice-names (voice display names). */
+interface VoiceNamesResponse {
+  names: Record<string, string>;
+  items: { id: string; display_name: string; overridden: boolean }[];
+}
+
 function formatBytes(bytes: number): string {
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
   let value = bytes;
@@ -24,6 +30,7 @@ function formatBytes(bytes: number): string {
 }
 
 const cellButton = "tap grid size-9 place-items-center rounded-md text-fg hover:bg-raised disabled:opacity-40";
+const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
 const sectionTitle = "font-display text-lg font-semibold";
 const pill = "rounded-sm bg-raised px-1.5 py-0.5 text-xs text-fg-2";
 
@@ -31,6 +38,8 @@ const pill = "rounded-sm bg-raised px-1.5 py-0.5 text-xs text-fg-2";
 export function AdminPage() {
   const queryClient = useQueryClient();
   const [clearError, setClearError] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState<Record<string, string>>({});
+  const [namesSaved, setNamesSaved] = useState(false);
 
   const jobsQuery = useQuery({
     queryKey: ["admin", "jobs"],
@@ -47,6 +56,10 @@ export function AdminPage() {
     queryKey: ["admin", "users"],
     queryFn: () => api.get<{ items: User[] }>("/admin/users"),
   });
+  const voiceNamesQuery = useQuery({
+    queryKey: ["admin", "voice-names"],
+    queryFn: () => api.get<VoiceNamesResponse>("/admin/voice-names"),
+  });
 
   const retry = useMutation({
     mutationFn: (id: Job["id"]) => api.post<{ job: Job }>(`/admin/jobs/${id}/retry`),
@@ -59,6 +72,25 @@ export function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["admin", "cache"] });
     },
     onError: (error: Error) => setClearError(error.message),
+  });
+
+  // PUT replaces the whole override map: send untouched overrides, drop cleared ones.
+  const saveNames = useMutation({
+    mutationFn: () => {
+      const data = voiceNamesQuery.data;
+      const names: Record<string, string> = {};
+      for (const item of data?.items ?? []) {
+        const value = (nameDraft[item.id] ?? data?.names[item.id] ?? "").trim();
+        if (value) names[item.id] = value;
+      }
+      return api.put<{ names: Record<string, string> }>("/admin/voice-names", { names });
+    },
+    onSuccess: () => {
+      setNameDraft({});
+      setNamesSaved(true);
+      queryClient.invalidateQueries({ queryKey: ["admin", "voice-names"] });
+      queryClient.invalidateQueries({ queryKey: ["voices"] });
+    },
   });
 
   const stats = cacheQuery.data;
@@ -187,6 +219,67 @@ export function AdminPage() {
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      <section aria-label="Voice names" className="flex flex-col gap-2">
+        <h2 className={sectionTitle}>Voice names</h2>
+        {voiceNamesQuery.isPending && (
+          <div className="animate-pulse space-y-2" aria-busy="true">
+            {[0, 1].map((i) => (
+              <div key={i} className="h-12 rounded-md bg-raised" />
+            ))}
+          </div>
+        )}
+        {voiceNamesQuery.error instanceof Error && (
+          <p role="alert" className="text-sm text-danger">{voiceNamesQuery.error.message}</p>
+        )}
+        {voiceNamesQuery.data && voiceNamesQuery.data.items.length === 0 && (
+          <EmptyState
+            icon={<Icon name="record_voice_over" size={24} />}
+            title="No voices found"
+            description="Discovered voices appear here once the TTS backend answers."
+          />
+        )}
+        {saveNames.isError && (
+          <p role="alert" className="text-sm text-danger">Couldn’t save the names — {saveNames.error.message}</p>
+        )}
+        {voiceNamesQuery.data && voiceNamesQuery.data.items.length > 0 && (
+          <>
+            <ul className="divide-y divide-divider rounded-lg border border-divider bg-surface">
+              {voiceNamesQuery.data.items.map((item) => (
+                <li key={item.id} className="flex min-h-9 items-center gap-3 px-4 py-2">
+                  <label className="min-w-0 flex-1">
+                    <span className="block truncate font-mono text-xs text-fg-2">{item.id}</span>
+                    <input
+                      type="text"
+                      maxLength={40}
+                      aria-label={`Display name for ${item.id}`}
+                      value={nameDraft[item.id] ?? voiceNamesQuery.data?.names[item.id] ?? item.display_name}
+                      onChange={(event) => {
+                        setNamesSaved(false);
+                        const value = event.target.value;
+                        setNameDraft((draft) => ({ ...draft, [item.id]: value }));
+                      }}
+                      className={inputClass}
+                    />
+                  </label>
+                  {item.overridden && <span className={pill}>Custom</span>}
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={saveNames.isPending}
+                onClick={() => saveNames.mutate()}
+                className="tap inline-flex h-9 items-center rounded-md bg-primary-gradient px-3 text-base font-semibold text-on-primary disabled:opacity-50"
+              >
+                Save
+              </button>
+              {namesSaved && <span className="text-sm text-fg-2">Saved</span>}
+            </div>
+          </>
         )}
       </section>
     </div>
