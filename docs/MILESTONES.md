@@ -151,6 +151,16 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | 2026-10-24 | **Demo-feedback round (8 findings).** Playback: only one audio element can play; `pause()` stops both; handoff happens only on `ended` — with regression tests. Mini player now exists on desktop (it was `md:hidden`). Metadata: search results are scored against the book (0 % → real %; a matching book showed 100 %), applying a candidate fills the cover when the book has none. Korean/Japanese/Chinese previews use pure-script sample text (the engine returns different audio for `ashley-kr` vs `ashley-en`; human ear still required). Chapters can be excluded from playback by admins/uploaders (`excluded` flag, migration 0006), hidden under an "Excluded chapters" disclosure, skipped by prepare/progress. Reader UX: fixed bottom Play/Resume bar, collapsible chapter list, read-along default-open with 68ch measure / clamp type / A−A+, explicit Sleep-timer menu, desktop player widened to `max-w-3xl`, skip buttons show 15/30. |
 | 2026-10-24 | Test-harness trap documented: `create_all` never adds columns, so a migration leaves `folio_test` stale and 62 tests fail; `make reset-test-db` added. |
 
+### UX iteration 2 (demo follow-up)
+
+| WS | Branch | Task | Deliverable |
+|---|---|---|---|
+| V | `feat/pronunciation` | A | per-book pronunciation rules (migration 0007), applied to TTS text/cache; tts voice hidden; first-for-language fallback |
+| W | `feat/reader-book` | B | page-like reader with internal scrollbar + serif, chapter select + arrows, Plex-style mini player, `stop()` |
+| X | `feat/book-settings` | C | cover play/percent overlay, book settings with chapters + pronunciation table, reset confirmation |
+| Y | `feat/voices-cleanup` | D | language-only voice picker, no Default/Show-all, no `tts` |
+| 2026-10-24 | UX iteration 2 dispatched from the second demo: reader-as-page, pronunciation rules, chapter select, Plex mini player, book settings, voice cleanup. |
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.

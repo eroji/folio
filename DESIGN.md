@@ -20,7 +20,7 @@
 | `--surface-light` / `--surface-dark` | `#F6F7FB` / `#12141F` | page backgrounds |
 | `--muted` | `#5B6275` / `#A3A9BA` | secondary text, ≥4.5:1 |
 
-Type: **Outfit** 600–700 for display/headings, **Inter** 400–600 for UI and body. Reading text may use Inter at a larger size (no new serif dependency).
+Type: **Outfit** 600–700 for display/headings, **Inter** 400–600 for UI and body. Reading text uses a **serif** stack (`--font-reading: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif`) to read like a book; no font package is added.
 
 ## Scale and rhythm
 
@@ -35,8 +35,12 @@ Type: **Outfit** 600–700 for display/headings, **Inter** 400–600 for UI and 
 - **Secondary**: card surface, 1 px `--line` border.
 - **Book card**: 2:3 cover, title 2 lines max, author 1 line, status badge.
 - **Sticky action bar** (book page): full-width, safe-area padded, above the mini player, never overlapping content padding.
-- **Mini player**: 64 px, cover 40 px, one-line titles, play/pause 44 px, 2 px gradient progress; above bottom nav on phones, viewport-bottom on desktop.
-- **Player**: chapter title is the heading; transport row dominates; secondary controls (speed, sleep, chapters, read-along, voice) in one quiet row.
+- **Reader**: a page-like panel (`rounded-card`, border, paper surface) with its **own scrollbar** and serif 68 ch text; the window must not scroll when the spoken line advances.
+- **Mini player (Plex-like)**: 64–72 px; 56 px cover with the **percent badge overlaid bottom-left**; title, chapter, `elapsed / total`; previous chapter, −skip, play, +skip, next chapter, stop (desktop adds speed, phones keep prev/play/next). No banner above it.
+- **Player**: full-width native chapter `<select>` flanked by previous/next arrows; chapter title is the heading; transport row dominates; secondary controls in one quiet row.
+- **Book settings** (admin/uploader): a disclosure holding chapter inclusion switches and the pronunciation-rules table, never inline clutter on the book page.
+- **Voice picker**: language voices only, first available preselected, no "Default", no "Show all", never the engine's `tts` fallback.
+- **Destructive actions**: reset progress opens a confirmation dialog and restarts from the beginning.
 - **Sleep timer**: menu with `Off / 15 / 30 / 45 / 60 minutes / End of chapter`, checkmark on active, trigger shows the active choice.
 - **Chapter manager**: disclosure with an "Include in playback" switch per chapter; excluded chapters live in a secondary disclosure, never deleted.
 
