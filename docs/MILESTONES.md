@@ -166,6 +166,15 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 
 **Follow-up from the third demo:** the player is now a fixed-height column — header/controls never scroll and only the reader panel scrolls internally, so it can no longer slide over the chapter select or scrubber. Pause→resume could hang on "Preparing audio…" because `play()` only pumped and waited for a poll when the current segment was not ready; resume now issues a prepare immediately, `prepareAudio` has a 20 s timeout (a hung request can no longer block the single in-flight slot), and the tab becoming visible again wakes the poll. Regression test added.
 
+## Milestone 6 — PWA and polish
+
+| WS | Branch | Task | Deliverable |
+|---|---|---|---|
+| Z | `feat/m6-backend` | A | Prometheus `/metrics`, admin job retry + cache stats, finished shelf, `sort=progress`, `can_edit` |
+| AA | `feat/m6-web` | B | Service worker + offline page, admin tools, Finished shelf, uploader permissions, numbering |
+
+**Acceptance:** installable shell with offline page and cached covers (never audio); Lighthouse accessibility ≥ 90; admin retry works; Finished shelf + progress sort; uploaders see their own book's settings.
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
