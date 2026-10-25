@@ -221,8 +221,8 @@ Handoff: `docs/ui-handoff/HANDOFF.md` (the old `folio-ui-handoff` is superseded)
 | 2 | Shell: sidebar, top bar, account menu, phone nav, routes | **done** — 200 web tests, routes `/`, `/library`, `/search` |
 | 3 | Player bar, expanded player, phone player/read-along | **done** — 197 web tests, panel/focus removed |
 | 4 | Book page two-column, ⋮ menu + narrator dialog | **done** — 202 web tests |
-| 5 | Home/Library shelves, Genre data, group API | backend done; frontend in progress |
-| 6 | Search, Upload, Settings, Sign in | planned |
+| 5 | Home/Library shelves, Genre data, group API | **done** — 211 web tests, 455 backend |
+| 6 | Search, Upload, Settings, Sign in | in progress |
 | 7 | Restyle remaining, clean up, rewrite DESIGN.md | planned |
 
 Backend §5 merged: genre + cover colour (migration 0009), grouped books, `/me/home`, `/search`; 455 backend tests.
