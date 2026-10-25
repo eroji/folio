@@ -17,12 +17,15 @@ from folio.db import get_session
 from folio.deps import get_current_user
 from folio.errors import ApiError, register_error_handlers
 from folio.models import User
+from folio.routers.admin import probe_tts
 from folio.routers.admin import router as admin_router
+from folio.routers.audio import router as audio_router
 from folio.routers.auth import router as auth_router
 from folio.routers.books import router as books_router
 from folio.routers.covers import router as covers_router
 from folio.routers.events import router as events_router
 from folio.routers.metadata import router as metadata_router
+from folio.routers.voices import router as voices_router
 
 WORKER_HEARTBEAT_MAX_AGE_S = 60
 STATIC_DIR = Path(__file__).parent / "static"
@@ -45,7 +48,7 @@ def admin_health(
         worker = "ok" if age < WORKER_HEARTBEAT_MAX_AGE_S else "stale"
     except OSError:
         worker = "missing"
-    body: dict[str, Any] = {"db": db, "worker": worker, "tts": "not_configured"}
+    body: dict[str, Any] = {"db": db, "worker": worker, "tts": probe_tts(settings)}
     return JSONResponse(status_code=200 if db == "ok" else 503, content=body)
 
 
@@ -64,6 +67,8 @@ def create_app() -> FastAPI:
     app.include_router(books_router)
     app.include_router(metadata_router)
     app.include_router(events_router)
+    app.include_router(audio_router)
+    app.include_router(voices_router)
 
     if get_settings().folio_test_mode:
         from folio.routers.test_auth import router as test_auth_router
