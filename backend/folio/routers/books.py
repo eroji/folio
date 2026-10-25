@@ -65,6 +65,7 @@ class BookPublic(BaseModel):
     est_duration_s: float
     created_at: datetime
     updated_at: datetime
+    can_edit: bool = False  # computed per caller in _public; uploaded_by stays hidden
 
 
 class ChapterPublic(BaseModel):
@@ -77,8 +78,9 @@ class ChapterPublic(BaseModel):
     excluded: bool
 
 
-def _public(book: Book) -> BookPublic:
+def _public(book: Book, user: User) -> BookPublic:
     public = BookPublic.model_validate(book)
+    public.can_edit = can_edit_book(user, book)
     public.cover_url = (
         f"/api/v1/books/{book.id}/cover?v={book.cover_key[:8]}" if book.cover_key else None
     )
@@ -307,20 +309,24 @@ def list_books(
         )
     if status:
         stmt = stmt.where(Book.status == status)
+    if sort == "progress":
+        # One progress row per (user, book), so the outer join cannot duplicate
+        # rows; books this user never opened sort last.
+        stmt = stmt.outerjoin(
+            Progress, (Progress.book_id == Book.id) & (Progress.user_id == user.id)
+        )
     count_stmt = select(func.count()).select_from(stmt.subquery())
     order = {
         "title": func.lower(Book.title),
         # First author; empty arrays sort last (Postgres ASC default).
         "author": Book.authors[1],
+        "progress": Progress.updated_at.desc().nulls_last(),
     }.get(sort, Book.created_at.desc())
-    if sort == "progress":
-        # TODO(M5): order by the caller's last progress update.
-        order = Book.created_at.desc()
     books = db.scalars(
         stmt.order_by(order, Book.id).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
     )
     return {
-        "items": [_public(b) for b in books],
+        "items": [_public(b, user) for b in books],
         "total": db.scalar(count_stmt) or 0,
         "page": page,
         "page_size": PAGE_SIZE,
@@ -341,7 +347,7 @@ def get_book(
     ).all()
     row = db.get(Progress, (user.id, book.id))
     return {
-        "book": _public(book),
+        "book": _public(book, user),
         "chapters": [ChapterPublic.model_validate(c) for c in chapters],
         "progress": progress_dict(row) if row else None,
     }
@@ -366,7 +372,7 @@ def patch_book(
         setattr(book, name, value)
     book.locked_fields = list(dict.fromkeys([*book.locked_fields, *patch.model_fields_set]))
     db.commit()
-    return {"book": _public(book)}
+    return {"book": _public(book, user)}
 
 
 @router.delete("/{book_id}", status_code=204)

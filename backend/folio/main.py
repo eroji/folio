@@ -16,6 +16,8 @@ from folio.config import get_settings
 from folio.db import get_session
 from folio.deps import get_current_user
 from folio.errors import ApiError, register_error_handlers
+from folio.metrics import HttpMetricsMiddleware
+from folio.metrics import router as metrics_router
 from folio.models import User
 from folio.routers.admin import probe_tts
 from folio.routers.admin import router as admin_router
@@ -58,11 +60,13 @@ def admin_health(
 def create_app() -> FastAPI:
     app = FastAPI(title="Folio", version="0.1.0")
     register_error_handlers(app)
+    app.add_middleware(HttpMetricsMiddleware)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
+    app.include_router(metrics_router)
     app.add_api_route("/api/v1/admin/health", admin_health, methods=["GET"])
     app.include_router(auth_router)
     app.include_router(admin_router)

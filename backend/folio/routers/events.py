@@ -15,6 +15,7 @@ from folio.config import get_settings
 from folio.db import get_session
 from folio.deps import get_current_user
 from folio.events import KEEPALIVE_S, format_frame, listen_payloads, snapshot_frames
+from folio.metrics import SSE_LISTENERS
 from folio.models import User
 
 router = APIRouter(prefix="/api/v1", tags=["events"])
@@ -46,6 +47,7 @@ async def events(
     async def stream() -> AsyncIterator[str]:
         thread = threading.Thread(target=pump, daemon=True)
         thread.start()
+        SSE_LISTENERS.inc()
         try:
             for frame in snapshot:
                 yield frame
@@ -59,6 +61,7 @@ async def events(
                     break
                 yield format_frame(json.loads(payload))
         finally:
+            SSE_LISTENERS.dec()
             stop.set()
             thread.join(timeout=2)
             conn.close()

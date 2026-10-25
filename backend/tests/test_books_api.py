@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from factories import make_book, make_user
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -17,7 +19,8 @@ from folio import worker
 from folio.config import Settings
 from folio.db import SessionLocal
 from folio.ingest import DRM_MESSAGE
-from folio.models import Book, BookFile, Chapter, Job, Segment
+from folio.main import create_app
+from folio.models import Book, BookFile, Chapter, Job, Progress, Segment, User
 from folio.routers import books as books_module
 from folio.storage import book_dir, cover_dir
 
@@ -342,3 +345,81 @@ async def test_upload_multiple_files_in_one_request(
     results: list[dict[str, Any]] = response.json()
     assert len(results) == 2 and {r["book_id"] for r in results}
     assert db.scalar(select(func.count()).select_from(Book)) == 2
+
+
+def _progress_book(db: Session, user_id: Any, updated_at: Any) -> Book:
+    """Ready book with one chapter/segment and a progress row for ``user_id``."""
+    book = Book(title=f"Progress {uuid4().hex[:8]}", language="en", status="ready")
+    db.add(book)
+    db.flush()
+    chapter = Chapter(book_id=book.id, idx=0, title="Ch 0", char_count=100)
+    db.add(chapter)
+    db.flush()
+    segment = Segment(chapter_id=chapter.id, idx=0, text="s", char_start=0, char_end=100)
+    db.add(segment)
+    db.flush()
+    db.add(
+        Progress(
+            user_id=user_id,
+            book_id=book.id,
+            chapter_id=chapter.id,
+            segment_id=segment.id,
+            offset_s=5.0,
+            percent=10.0,
+            updated_at=updated_at,
+        )
+    )
+    db.commit()
+    return book
+
+
+async def test_sort_progress_orders_by_caller_not_others(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    user = db.scalar(select(User).where(User.username == "testuser"))
+    assert user is not None
+    now = datetime.now(UTC)
+    stale = _progress_book(db, user.id, now - timedelta(hours=3))
+    fresh = _progress_book(db, user.id, now - timedelta(hours=1))
+    other_recent = _progress_book(db, make_user(db, username="other").id, now)
+    plain = make_book(db, title="Never opened", status="ready")
+    db.commit()
+
+    body = (await auth_client.get("/api/v1/books", params={"sort": "progress"})).json()
+    ids = [i["id"] for i in body["items"]]
+    assert ids[:2] == [str(fresh.id), str(stale.id)]  # caller's recents first
+    assert set(ids[2:]) == {str(other_recent.id), str(plain.id)}  # nulls last
+    assert body["total"] == 4
+    filtered = (
+        await auth_client.get("/api/v1/books", params={"sort": "progress", "q": "never"})
+    ).json()
+    assert [i["id"] for i in filtered["items"]] == [str(plain.id)] and filtered["total"] == 1
+
+
+async def test_can_edit_for_admin_uploader_and_other(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    user = db.scalar(select(User).where(User.username == "testuser"))
+    assert user is not None
+    mine = make_book(db, title="Mine", status="ready", uploaded_by=user.id)
+    theirs = make_book(db, title="Theirs", status="ready", uploaded_by=make_user(db).id)
+    db.commit()
+
+    async def flags(client: httpx.AsyncClient) -> dict[str, bool]:
+        items = (await client.get("/api/v1/books")).json()["items"]
+        return {i["title"]: i["can_edit"] for i in items}
+
+    assert await flags(auth_client) == {"Mine": True, "Theirs": False}
+    detail = (await auth_client.get(f"/api/v1/books/{theirs.id}")).json()["book"]
+    assert detail["can_edit"] is False and "uploaded_by" not in detail
+    mine_detail = (await auth_client.get(f"/api/v1/books/{mine.id}")).json()["book"]
+    assert mine_detail["can_edit"] is True and "uploaded_by" not in mine_detail
+
+    # A second client: auth_client/admin_client share one cookie jar in conftest.
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app()), base_url="https://testserver"
+    ) as admin:
+        await admin.post("/api/v1/test/login", json={"username": "testadmin", "role": "admin"})
+        assert await flags(admin) == {"Mine": True, "Theirs": True}
+        admin_detail = (await admin.get(f"/api/v1/books/{theirs.id}")).json()["book"]
+        assert admin_detail["can_edit"] is True

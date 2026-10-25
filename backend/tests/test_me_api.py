@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from folio.models import Book, Chapter, Segment, User
+from folio.models import Book, Chapter, Progress, Segment, User
 from folio.routers.me import DEFAULT_SETTINGS
 
 DEFAULTS = {
@@ -132,3 +134,62 @@ async def test_continue_empty_and_shape(auth_client: httpx.AsyncClient, db: Sess
     assert items[0]["book"]["id"] == str(book.id)
     assert items[0]["progress"]["segment_id"] == str(segment.id)
     assert items[0]["progress"]["finished_at"] is None
+
+
+def _shelf_book(db: Session, user: User, title: str, *, finished_at: datetime | None) -> Book:
+    """Book with one chapter/segment and a progress row stamped at ``finished_at``."""
+    book = Book(
+        title=title,
+        language="en",
+        status="ready",
+        total_chars=100,
+        uploaded_by=user.id,
+    )
+    db.add(book)
+    db.flush()
+    chapter = Chapter(book_id=book.id, idx=0, title="Ch 0", char_count=100)
+    db.add(chapter)
+    db.flush()
+    segment = Segment(chapter_id=chapter.id, idx=0, text="s", char_start=0, char_end=100)
+    db.add(segment)
+    db.flush()
+    stamp = finished_at or datetime.now(UTC)
+    db.add(
+        Progress(
+            user_id=user.id,
+            book_id=book.id,
+            chapter_id=chapter.id,
+            segment_id=segment.id,
+            offset_s=0.0,
+            percent=100.0 if finished_at else 10.0,
+            updated_at=stamp,
+            finished_at=finished_at,
+        )
+    )
+    db.commit()
+    return book
+
+
+async def test_finished_orders_newest_first_and_excludes_unfinished(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    user = db.scalar(select(User).where(User.username == "testuser"))
+    assert user is not None
+    now = datetime.now(UTC)
+    older = _shelf_book(db, user, "Finished Older", finished_at=now - timedelta(days=2))
+    newer = _shelf_book(db, user, "Finished Newer", finished_at=now - timedelta(hours=1))
+    ongoing = _shelf_book(db, user, "Still Going", finished_at=None)
+
+    items = (await auth_client.get("/api/v1/me/finished")).json()["items"]
+    assert [i["book"]["title"] for i in items] == ["Finished Newer", "Finished Older"]
+    assert items[0]["progress"]["finished_at"] is not None
+    assert items[0]["book"]["can_edit"] is True  # same shape as /me/continue
+
+    limited = (await auth_client.get("/api/v1/me/finished", params={"limit": 1})).json()["items"]
+    assert [i["book"]["id"] for i in limited] == [str(newer.id)]
+
+    continue_ids = [
+        i["book"]["id"] for i in (await auth_client.get("/api/v1/me/continue")).json()["items"]
+    ]
+    assert continue_ids == [str(ongoing.id)]
+    assert str(older.id) not in continue_ids
