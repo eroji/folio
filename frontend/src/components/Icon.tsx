@@ -1,90 +1,158 @@
-import type { FC, SVGProps } from "react";
-import AdminPanelSettings from "@material-symbols/svg-400/rounded/admin_panel_settings.svg?react";
-import AutoStories from "@material-symbols/svg-400/rounded/auto_stories.svg?react";
-import Bedtime from "@material-symbols/svg-400/rounded/bedtime.svg?react";
-import Check from "@material-symbols/svg-400/rounded/check.svg?react";
-import ChevronLeft from "@material-symbols/svg-400/rounded/chevron_left.svg?react";
-import Close from "@material-symbols/svg-400/rounded/close.svg?react";
-import CloseFullscreen from "@material-symbols/svg-400/rounded/close_fullscreen.svg?react";
-import Contrast from "@material-symbols/svg-400/rounded/contrast.svg?react";
-import Devices from "@material-symbols/svg-400/rounded/devices.svg?react";
-import ErrorIcon from "@material-symbols/svg-400/rounded/error.svg?react";
-import Headphones from "@material-symbols/svg-400/rounded/headphones.svg?react";
-import KeyboardDoubleArrowLeft from "@material-symbols/svg-400/rounded/keyboard_double_arrow_left.svg?react";
-import KeyboardDoubleArrowRight from "@material-symbols/svg-400/rounded/keyboard_double_arrow_right.svg?react";
-import Logout from "@material-symbols/svg-400/rounded/logout.svg?react";
-import MoreHoriz from "@material-symbols/svg-400/rounded/more_horiz.svg?react";
-import OpenInFull from "@material-symbols/svg-400/rounded/open_in_full.svg?react";
-import Pause from "@material-symbols/svg-400/rounded/pause.svg?react";
-import Person from "@material-symbols/svg-400/rounded/person.svg?react";
-import PlayArrow from "@material-symbols/svg-400/rounded/play_arrow.svg?react";
-import ProgressActivity from "@material-symbols/svg-400/rounded/progress_activity.svg?react";
-import RecordVoiceOver from "@material-symbols/svg-400/rounded/record_voice_over.svg?react";
-import Refresh from "@material-symbols/svg-400/rounded/refresh.svg?react";
-import Replay from "@material-symbols/svg-400/rounded/replay.svg?react";
-import RestartAlt from "@material-symbols/svg-400/rounded/restart_alt.svg?react";
-import Search from "@material-symbols/svg-400/rounded/search.svg?react";
-import Settings from "@material-symbols/svg-400/rounded/settings.svg?react";
-import SkipNext from "@material-symbols/svg-400/rounded/skip_next.svg?react";
-import SkipPrevious from "@material-symbols/svg-400/rounded/skip_previous.svg?react";
-import Speed from "@material-symbols/svg-400/rounded/speed.svg?react";
-import Stop from "@material-symbols/svg-400/rounded/stop.svg?react";
-import TaskAlt from "@material-symbols/svg-400/rounded/task_alt.svg?react";
-import Toc from "@material-symbols/svg-400/rounded/toc.svg?react";
-import Upload from "@material-symbols/svg-400/rounded/upload.svg?react";
-import Visibility from "@material-symbols/svg-400/rounded/visibility.svg?react";
-import VisibilityOff from "@material-symbols/svg-400/rounded/visibility_off.svg?react";
-import Warning from "@material-symbols/svg-400/rounded/warning.svg?react";
+import {
+  AlignLeft,
+  AudioLines,
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronsDown,
+  ChevronsLeft,
+  ChevronsRight,
+  CircleAlert,
+  CircleCheck,
+  Ellipsis,
+  EllipsisVertical,
+  Eye,
+  EyeOff,
+  Gauge,
+  Globe,
+  Headphones,
+  House,
+  Image,
+  LayoutGrid,
+  LibraryBig,
+  List,
+  LoaderCircle,
+  LogOut,
+  Maximize2,
+  Menu,
+  Minimize2,
+  MonitorSmartphone,
+  Moon,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  RotateCw,
+  Search,
+  Settings,
+  Shield,
+  SkipBack,
+  SkipForward,
+  Speech,
+  Square,
+  Trash2,
+  TriangleAlert,
+  Upload,
+  User,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
-type Svg = FC<SVGProps<SVGSVGElement>>;
-
-/** Every symbol in the handoff's icon table, keyed by Material symbol name.
- * The rounded set is outlined; its play_arrow, pause and skip_* are already
- * visually filled, so one file covers both variants. */
+/** Every icon the app renders, keyed by name: the Direction C material names
+ * still used by current call sites (rewritten in phases 2–7) plus the
+ * Direction D names from the HANDOFF icon table. */
 const ICONS = {
-  admin_panel_settings: AdminPanelSettings,
-  auto_stories: AutoStories,
-  bedtime: Bedtime,
+  // current call sites (material names → lucide equivalents)
+  admin_panel_settings: Shield,
+  auto_stories: BookOpen,
+  bedtime: Moon,
   check: Check,
   chevron_left: ChevronLeft,
-  close: Close,
-  close_fullscreen: CloseFullscreen,
-  contrast: Contrast,
-  devices: Devices,
-  error: ErrorIcon,
+  close: X,
+  close_fullscreen: Minimize2,
+  devices: MonitorSmartphone,
+  error: CircleAlert,
   headphones: Headphones,
-  keyboard_double_arrow_left: KeyboardDoubleArrowLeft,
-  keyboard_double_arrow_right: KeyboardDoubleArrowRight,
-  logout: Logout,
-  more_horiz: MoreHoriz,
-  open_in_full: OpenInFull,
+  keyboard_double_arrow_left: ChevronsLeft,
+  keyboard_double_arrow_right: ChevronsRight,
+  logout: LogOut,
+  more_horiz: Ellipsis,
+  open_in_full: Maximize2,
   pause: Pause,
-  person: Person,
-  play_arrow: PlayArrow,
-  progress_activity: ProgressActivity,
-  record_voice_over: RecordVoiceOver,
-  refresh: Refresh,
-  replay: Replay,
-  restart_alt: RestartAlt,
+  person: User,
+  play_arrow: Play,
+  progress_activity: LoaderCircle,
+  record_voice_over: Speech,
+  refresh: RefreshCw,
+  replay: RotateCcw,
+  restart_alt: RotateCcw,
   search: Search,
   settings: Settings,
-  skip_next: SkipNext,
-  skip_previous: SkipPrevious,
-  speed: Speed,
-  stop: Stop,
-  task_alt: TaskAlt,
-  toc: Toc,
+  skip_next: SkipForward,
+  skip_previous: SkipBack,
+  speed: Gauge,
+  stop: Square,
+  task_alt: CircleCheck,
+  toc: List,
   upload: Upload,
-  visibility: Visibility,
-  visibility_off: VisibilityOff,
-  warning: Warning,
-} as const satisfies Record<string, Svg>;
+  visibility: Eye,
+  visibility_off: EyeOff,
+  warning: TriangleAlert,
+  // Direction D table (HANDOFF.md §2)
+  House,
+  LibraryBig,
+  Menu,
+  Plus,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  RotateCcw,
+  RotateCw,
+  Gauge,
+  Moon,
+  Speech,
+  ChevronUp,
+  ChevronDown,
+  X,
+  EllipsisVertical,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  AudioLines,
+  CircleCheck,
+  User,
+  Pencil,
+  Globe,
+  Image,
+  RefreshCw,
+  Trash2,
+  Settings,
+  Shield,
+  LogOut,
+  LayoutGrid,
+  List,
+  AlignLeft,
+  ChevronsDown,
+  Eye,
+  EyeOff,
+  TriangleAlert,
+  Search,
+  Upload,
+} as const satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
 
-/** Material Symbols icon. Decorative unless `label` is given; forward the
- * button's accessible name through `label`, never render text here. The +10 %
- * scale keeps the glyphs optically balanced with the surrounding text. */
+/** The four transport icons are drawn filled (HANDOFF icon table). */
+const FILLED = new Set<IconName>([
+  "play_arrow",
+  "pause",
+  "skip_next",
+  "skip_previous",
+  "Play",
+  "Pause",
+  "SkipBack",
+  "SkipForward",
+]);
+
+/** Lucide icon at the requested size, stroke width 2. Decorative unless
+ * `label` is given; forward the button's accessible name through `label`,
+ * never render text here. */
 export function Icon({
   name,
   size = 20,
@@ -96,16 +164,16 @@ export function Icon({
   className?: string;
   label?: string;
 }) {
-  const Svg: Svg = ICONS[name];
-  const px = Math.round(size * 1.1);
+  const Svg: LucideIcon = ICONS[name];
+  const filled = FILLED.has(name);
   return (
     <Svg
-      width={px}
-      height={px}
+      size={size}
       className={className}
-      fill="currentColor"
+      strokeWidth={filled ? 0 : 2}
+      fill={filled ? "currentColor" : undefined}
       {...(label
-        ? { role: "img" as const, "aria-label": label }
+        ? { role: "img", "aria-label": label }
         : { "aria-hidden": true })}
     />
   );

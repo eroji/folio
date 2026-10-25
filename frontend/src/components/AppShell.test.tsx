@@ -145,19 +145,6 @@ describe("AppShell", () => {
     expect(within(menu).queryByRole("menuitem", { name: "Admin" })).toBeNull();
   });
 
-  it("switches and persists the theme from the inline radiogroup in one click", async () => {
-    renderShell();
-    const menu = await openRailMenu();
-    const dark = within(menu).getByRole("menuitemradio", { name: "Dark" });
-    fireEvent.click(dark);
-    expect(dark.getAttribute("aria-checked")).toBe("true");
-    expect(within(menu).getByRole("menuitemradio", { name: "System" }).getAttribute("aria-checked")).toBe(
-      "false",
-    );
-    expect(localStorage.getItem("folio-theme")).toBe("dark");
-    expect(document.documentElement.dataset.theme).toBe("dark");
-  });
-
   it("signs out from the menu and lands on the login page", async () => {
     renderShell();
     const menu = await openRailMenu();

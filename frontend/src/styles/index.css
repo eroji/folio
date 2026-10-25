@@ -1,10 +1,55 @@
 @import "./tokens.css";
 
-body {
-  background: var(--bg);
-  color: var(--fg);
+/* ------------------------------------------------------------------ */
+/* Direction C → D compatibility shims. tokens.css is the verbatim     */
+/* Direction D file and must not be edited; these map the old utility  */
+/* names that consumer components still use onto the new dark tokens.  */
+/* ponytail: delete each shim when its consumers are restyled          */
+/* (HANDOFF phases 2–7).                                               */
+/* ------------------------------------------------------------------ */
+@theme inline {
+  --breakpoint-desktop: 1050px; /* old shell breakpoint, until Phase 2 */
+  --text-read: 1.0625rem;       /* old read-along default, Phase 3 retunes */
+  --radius-cover: 10px;         /* D grid-cover radius */
+
+  --color-divider: var(--color-border);
+  --color-control-border: var(--color-off);
+  --color-accent-fg: var(--color-accent);
+  --color-selected: var(--color-accent);
+  --color-on-selected: var(--color-on-fg);
+  --color-on-primary: var(--color-on-fg);
+  --color-progress: var(--color-accent);
+  --color-track: var(--color-border);
+  --color-paper: var(--color-surface);
+  --color-paper-border: var(--color-border);
+  --color-reading: var(--color-fg);
+  --color-highlight: var(--color-raised);
+  --color-avatar: var(--color-accent);
+  --color-on-avatar: var(--color-on-fg);
+  --color-grabber: var(--color-border);
+  --color-cover-badge: rgb(0 0 0 / 0.6);
+}
+
+/* D rules: primary actions are white pills, cover placeholders are flat. */
+.bg-primary-gradient {
+  background: var(--color-fg);
+  color: var(--color-on-fg);
+}
+.bg-cover-placeholder {
+  background: var(--color-raised);
+  color: var(--color-fg);
+}
+/* Read-along uses Figtree in D (no serif face). */
+.font-reading {
   font-family: var(--font-ui);
-  -webkit-font-smoothing: antialiased;
+}
+
+/* Density: 44px targets on touch (kept from the old tokens). */
+@media (pointer: coarse) {
+  .tap {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 /* Safe-area helpers (viewport-fit=cover is set in index.html). */
@@ -27,21 +72,21 @@ body {
 .bar-indeterminate {
   width: 30%;
   height: 100%;
-  border-radius: var(--radius-xs);
-  background: var(--progress);
+  border-radius: 999px;
+  background: var(--color-accent);
   animation: bar-indeterminate 1.2s ease-in-out infinite;
 }
 
 /* Reader panel: thin, always-visible scrollbar. */
 .reader-scroll {
   scrollbar-width: thin;
-  scrollbar-color: var(--divider) transparent;
+  scrollbar-color: var(--color-border) transparent;
 }
 .reader-scroll::-webkit-scrollbar {
   width: 10px;
 }
 .reader-scroll::-webkit-scrollbar-thumb {
-  background: var(--divider);
-  border: 3px solid var(--paper);
+  background: var(--color-border);
+  border: 3px solid var(--color-bg);
   border-radius: 999px;
 }

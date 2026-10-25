@@ -84,7 +84,7 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
     <main className="flex min-h-dvh flex-col items-center bg-surface px-6 pt-24 pb-8 pt-safe desktop:justify-center desktop:bg-bg desktop:pt-8">
       <div className="flex w-full max-w-[440px] flex-col gap-7 desktop:rounded-lg desktop:border desktop:border-divider desktop:bg-surface desktop:p-10">
         <div className="flex flex-col items-center gap-2.5 text-center">
-          <img src={folioMark} alt="" width={46} height={52} />
+          <img src={folioMark} alt="" width={52} height={52} />
           <h1 className="font-display text-[28px] font-bold leading-none tracking-[-0.01em]">Folio</h1>
         </div>
 

@@ -2,9 +2,7 @@ import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "reac
 import { Link, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { useAuth } from "../auth/AuthProvider";
-import type { ThemeChoice } from "../hooks/useTheme";
 import { Icon } from "./Icon";
-import { ThemeSwitch } from "./ThemeSwitch";
 
 /** Where the trigger lives; decides trigger look and menu anchoring.
  * rail: avatar at the rail bottom (popover to the right), header: ⋯ in the
@@ -15,16 +13,8 @@ const row =
   "flex min-h-8 items-center gap-2 rounded-md px-2 pr-3 text-left text-base whitespace-nowrap hover:bg-raised";
 
 /** Avatar trigger plus the account menu: identity header, Settings, Admin
- * (admins only), inline System/Light/Dark theme switch, Sign out. */
-export function AccountMenu({
-  placement,
-  choice,
-  onSelectTheme,
-}: {
-  placement: AccountPlacement;
-  choice: ThemeChoice;
-  onSelectTheme: (choice: ThemeChoice) => void;
-}) {
+ * (admins only), Sign out. The app is dark only — there is no theme control. */
+export function AccountMenu({ placement }: { placement: AccountPlacement }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -109,13 +99,7 @@ export function AccountMenu({
           <Icon name="admin_panel_settings" size={18} /> Admin
         </Link>
       )}
-      <div className="flex min-h-9 items-center justify-between gap-4 py-1 pl-2 pr-1">
-        <span className="flex items-center gap-2 text-base">
-          <Icon name="contrast" size={18} /> Theme
-        </span>
-        <ThemeSwitch choice={choice} onSelect={onSelectTheme} role="menuitemradio" />
-      </div>
-      <div aria-hidden className="my-1 h-px bg-divider" />
+      <div className="my-1 h-px bg-divider" aria-hidden />
       <button type="button" role="menuitem" className={row} onClick={signOut}>
         <Icon name="logout" size={18} /> Sign out
       </button>

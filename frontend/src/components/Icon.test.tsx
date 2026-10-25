@@ -3,17 +3,31 @@ import { describe, expect, it } from "vitest";
 import { Icon } from "./Icon";
 
 describe("Icon", () => {
-  it("renders every symbol 10 % larger than the requested size", () => {
+  it("renders at the requested size", () => {
     const { container } = render(<Icon name="play_arrow" size={20} />);
     const svg = container.querySelector("svg")!;
-    expect(svg.getAttribute("width")).toBe("22");
-    expect(svg.getAttribute("height")).toBe("22");
+    expect(svg.getAttribute("width")).toBe("20");
+    expect(svg.getAttribute("height")).toBe("20");
   });
 
-  it("rounds the scaled size for odd values", () => {
-    const { container } = render(<Icon name="close" size={16} />);
+  it("draws the transport icons filled and everything else stroked", () => {
+    const { container } = render(
+      <div>
+        <Icon name="play_arrow" />
+        <Icon name="close" />
+      </div>,
+    );
+    const play = container.querySelectorAll("svg")[0]!;
+    const close = container.querySelectorAll("svg")[1]!;
+    expect(play.getAttribute("fill")).toBe("currentColor");
+    expect(play.getAttribute("stroke-width")).toBe("0");
+    expect(close.getAttribute("stroke-width")).toBe("2");
+  });
+
+  it("is decorative without a label and named with one", () => {
+    const { container } = render(<Icon name="close" label="Close" />);
     const svg = container.querySelector("svg")!;
-    expect(svg.getAttribute("width")).toBe("18"); // 16 × 1.1 = 17.6
-    expect(svg.getAttribute("height")).toBe("18");
+    expect(svg.getAttribute("aria-label")).toBe("Close");
+    expect(svg.getAttribute("role")).toBe("img");
   });
 });

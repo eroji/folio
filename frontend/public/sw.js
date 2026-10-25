@@ -3,18 +3,19 @@
  * other /api/ call are network-only: audio must never live in the cache
  * (docs/folio-application-spec.md, PWA). Bump VERSION when the shell changes;
  * activate deletes everything from older versions. */
-const VERSION = "folio-v1";
+const VERSION = "folio-v2";
 const SHELL_CACHE = VERSION + "-shell";
 const CONTENT_CACHE = VERSION + "-content";
 const SHELL = [
   "/",
   "/offline.html",
-  "/manifest.webmanifest",
+  "/site.webmanifest",
   "/favicon.svg",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/icon-maskable-512.png",
-  "/icons/apple-touch-icon-180.png",
+  "/favicon.ico",
+  "/apple-touch-icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
 ];
 
 /** Pure routing decision, unit-tested from src/pwa.test.ts by evaluating this

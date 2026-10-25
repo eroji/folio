@@ -6,21 +6,10 @@
     <title>Folio</title>
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#F6F7FB" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#12141F" media="(prefers-color-scheme: dark)" />
-    <script>
-      // Resolve the theme before first paint: stored choice, else the OS
-      // setting. data-theme is always "light" or "dark" (tokens.css keys off it).
-      const stored = localStorage.getItem("folio-theme");
-      document.documentElement.dataset.theme =
-        stored === "light" || stored === "dark"
-          ? stored
-          : window.matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "light";
-    </script>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#0B0B0C" />
+    <meta name="color-scheme" content="dark" />
   </head>
   <body>
     <div id="root"></div>
