@@ -79,7 +79,8 @@ const ICONS = {
 export type IconName = keyof typeof ICONS;
 
 /** Material Symbols icon. Decorative unless `label` is given; forward the
- * button's accessible name through `label`, never render text here. */
+ * button's accessible name through `label`, never render text here. The +10 %
+ * scale keeps the glyphs optically balanced with the surrounding text. */
 export function Icon({
   name,
   size = 20,
@@ -92,10 +93,11 @@ export function Icon({
   label?: string;
 }) {
   const Svg: Svg = ICONS[name];
+  const px = Math.round(size * 1.1);
   return (
     <Svg
-      width={size}
-      height={size}
+      width={px}
+      height={px}
       className={className}
       fill="currentColor"
       {...(label

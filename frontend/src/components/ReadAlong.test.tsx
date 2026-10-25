@@ -22,7 +22,6 @@ describe("ReadAlong", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    delete (Element.prototype as unknown as { scrollTo?: unknown }).scrollTo;
   });
 
   async function play(getPlayer: () => PlayerContextValue, fakeTimers = false) {
@@ -45,20 +44,57 @@ describe("ReadAlong", () => {
     expect(document.querySelector(".sr-only")?.textContent).toContain(`Two ${CH1}-seg1 here`);
   });
 
-  it("auto-scrolls the panel, never the window", async () => {
-    vi.useFakeTimers();
-    const getPlayer = renderPlayer(<ReadAlong />);
-    await play(getPlayer, true);
-    const panel = document.querySelector<HTMLElement>(".reader-scroll")!;
+  /** Stub rAF/cAF so the test drives animation frames with explicit
+   * timestamps. `starts` counts animations begun by the component (rAF calls
+   * made outside a frame callback), so chained continuations do not skew it. */
+  function stubFrames() {
+    let nextId = 1;
+    let depth = 0;
+    const starts: number[] = [];
+    const frames = new Map<number, FrameRequestCallback>();
+    const raf = vi.fn((cb: FrameRequestCallback) => {
+      const id = nextId++;
+      if (depth === 0) starts.push(id);
+      frames.set(id, cb);
+      return id;
+    });
+    const caf = vi.fn((id: number) => {
+      frames.delete(id);
+    });
+    vi.stubGlobal("requestAnimationFrame", raf);
+    vi.stubGlobal("cancelAnimationFrame", caf);
+    return {
+      starts,
+      caf,
+      run: (time: number) => {
+        const pending = [...frames.values()];
+        frames.clear();
+        depth += 1;
+        act(() => {
+          for (const cb of pending) cb(time);
+        });
+        depth -= 1;
+      },
+    };
+  }
+
+  function stubPanelGeometry(panel: HTMLElement, offsetTop = 900) {
     let scrollTop = 0;
     Object.defineProperty(panel, "scrollTop", { configurable: true, get: () => scrollTop, set: (v: number) => (scrollTop = v) });
     Object.defineProperty(panel, "clientHeight", { configurable: true, get: () => 400 });
     for (const span of panel.querySelectorAll("span")) {
-      Object.defineProperty(span, "offsetTop", { configurable: true, get: () => 900 });
+      Object.defineProperty(span, "offsetTop", { configurable: true, get: () => offsetTop });
     }
-    panel.scrollTo = vi.fn((options?: ScrollToOptions) => {
-      scrollTop = options?.top ?? 0;
-    }) as unknown as typeof panel.scrollTo;
+    return () => panel.scrollTop;
+  }
+
+  it("auto-scrolls the panel in animation steps, never the window, replacing the previous animation", async () => {
+    vi.useFakeTimers();
+    const { starts, caf, run } = stubFrames();
+    const getPlayer = renderPlayer(<ReadAlong />);
+    await play(getPlayer, true);
+    const panel = document.querySelector<HTMLElement>(".reader-scroll")!;
+    const scrollTop = stubPanelGeometry(panel);
     const windowScroll = vi.spyOn(window, "scrollTo");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(300); // past the throttle
@@ -68,25 +104,55 @@ describe("ReadAlong", () => {
       el.currentTime = 6;
       el.dispatchEvent(new Event("timeupdate"));
     });
-    expect(panel.scrollTop).toBe(700); // active sentence centered in the panel
+    expect(starts).toHaveLength(1); // one animation toward the new target
+    run(1000); // t=0
+    run(1150); // t≈0.5 of the 300 ms animation → eased to 75 % of 700
+    expect(scrollTop()).toBeCloseTo(525, 0);
+    expect(scrollTop()).toBeLessThan(700); // still in flight, not a jump
+    act(() => {
+      el.currentTime = 7;
+      el.dispatchEvent(new Event("timeupdate"));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300); // past the throttle → target moves
+    });
+    act(() => {
+      el.currentTime = 8;
+      el.dispatchEvent(new Event("timeupdate"));
+    });
+    expect(caf).toHaveBeenCalledTimes(1); // the in-flight animation was cancelled
+    expect(starts).toHaveLength(2); // …and replaced by a new one
+    run(2000);
+    run(2300); // animation finished
+    expect(scrollTop()).toBe(700); // active sentence centered in the panel
     expect(window.scrollY).toBe(0);
     expect(windowScroll).not.toHaveBeenCalled();
   });
 
-  it("auto-scrolls at most every 250 ms while time advances", async () => {
+  it("refreshes the scroll target at most every 250 ms while time advances", async () => {
     vi.useFakeTimers();
-    const scroll = vi.fn();
-    Element.prototype.scrollTo = scroll;
+    const { starts, run } = stubFrames();
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer, true);
+    const panel = document.querySelector<HTMLElement>(".reader-scroll")!;
+    stubPanelGeometry(panel);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300); // past the initial throttle
+    });
     const el = getPlayer().elements[0];
-    for (let i = 1; i <= 5; i += 1) {
+    act(() => {
+      el.currentTime = 1;
+      el.dispatchEvent(new Event("timeupdate"));
+    });
+    expect(starts).toHaveLength(1); // target moved off 0 → one animation started
+    run(1000);
+    for (let i = 2; i <= 5; i += 1) {
       act(() => {
         el.currentTime = i;
         el.dispatchEvent(new Event("timeupdate"));
       });
     }
-    expect(scroll).toHaveBeenCalledTimes(1); // the play render's scroll; the loop is throttled out
+    expect(starts).toHaveLength(1); // the loop is throttled out
     await act(async () => {
       await vi.advanceTimersByTimeAsync(300);
     });
@@ -94,19 +160,28 @@ describe("ReadAlong", () => {
       el.currentTime = 6;
       el.dispatchEvent(new Event("timeupdate"));
     });
-    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(starts).toHaveLength(2);
   });
 
-  it("pauses auto-scroll for ~5 s after a manual scroll", async () => {
+  it("stops the animation and pauses auto-scroll for ~5 s after a manual scroll", async () => {
     vi.useFakeTimers();
-    const scroll = vi.fn();
-    Element.prototype.scrollTo = scroll;
+    const { starts, caf, run } = stubFrames();
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer, true);
+    const panel = document.querySelector<HTMLElement>(".reader-scroll")!;
+    stubPanelGeometry(panel);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
     const el = getPlayer().elements[0];
-    const box = document.querySelector('[aria-live="off"]')!;
-    expect(scroll).toHaveBeenCalledTimes(1);
-    fireEvent.wheel(box);
+    act(() => {
+      el.currentTime = 1;
+      el.dispatchEvent(new Event("timeupdate"));
+    });
+    expect(starts).toHaveLength(1);
+    run(1000); // animation in flight
+    fireEvent.wheel(panel);
+    expect(caf).toHaveBeenCalledTimes(1); // stopped immediately
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
@@ -114,7 +189,7 @@ describe("ReadAlong", () => {
       el.currentTime = 2;
       el.dispatchEvent(new Event("timeupdate"));
     });
-    expect(scroll).toHaveBeenCalledTimes(1); // suppressed while the user looks around
+    expect(starts).toHaveLength(1); // suppressed while the user looks around
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
@@ -122,7 +197,7 @@ describe("ReadAlong", () => {
       el.currentTime = 3;
       el.dispatchEvent(new Event("timeupdate"));
     });
-    expect(scroll).toHaveBeenCalledTimes(2); // resumed
+    expect(starts).toHaveLength(2); // resumed
   });
 
   it("tapping a sentence seeks there and prepares that segment", async () => {
