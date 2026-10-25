@@ -1,4 +1,5 @@
-import { act, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
+import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayerContextValue } from "./PlayerProvider";
 import { TTS_LOOKAHEAD } from "./PlayerProvider";
@@ -32,6 +33,10 @@ async function loadAndPlay(getPlayer: () => PlayerContextValue) {
     getPlayer().toggle();
   });
   await waitFor(() => expect(getPlayer().playing).toBe(true));
+}
+
+function SearchProbe() {
+  return <p data-testid="search">{useLocation().search}</p>;
 }
 
 describe("PlayerProvider", () => {
@@ -219,6 +224,21 @@ describe("PlayerProvider", () => {
     await waitFor(() => expect(getPlayer().settings.voices.en).toBe("danny-en"));
     await loadAndPlay(getPlayer);
     expect(calls.some((call) => call.voice === "danny-en")).toBe(true);
+  });
+
+  it("stop pauses both elements, saves, clears the book, and clears the URL query", async () => {
+    const { saveCalls } = installPlayerFetch();
+    const getPlayer = renderPlayer(<SearchProbe />, [`/player?book=${BOOK_ID}`]);
+    await loadAndPlay(getPlayer);
+    act(() => getPlayer().stop());
+    expect(getPlayer().book).toBeNull();
+    expect(getPlayer().chapter).toBeNull();
+    expect(getPlayer().playing).toBe(false);
+    expect(getPlayer().segments).toHaveLength(0);
+    expect(paused).toContain(getPlayer().elements[0]);
+    expect(paused).toContain(getPlayer().elements[1]);
+    await waitFor(() => expect(saveCalls.length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByTestId("search").textContent).toBe(""));
   });
 });
 

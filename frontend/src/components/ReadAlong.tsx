@@ -34,7 +34,7 @@ function readFontStep(): number {
  * tap-to-seek, A−/A+ font steps persisted in localStorage. */
 export function ReadAlong({ className }: { className?: string }) {
   const player = usePlayer();
-  const box = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const lastScroll = useRef(0);
   const manualUntil = useRef(0);
 
@@ -67,17 +67,19 @@ export function ReadAlong({ className }: { className?: string }) {
   const activeSentence: Sentence | undefined = all[active];
 
   // Runs on every render (timeupdate bumps it); the throttle keeps scrolling ≤ 4/s.
+  // Scrolls the panel only — the window must never jump.
   useEffect(() => {
     if (!player.playing) return;
     const now = Date.now();
     if (now < manualUntil.current || now - lastScroll.current < SCROLL_MS) return;
-    const node = box.current?.querySelector('[aria-current="true"]');
-    if (!node) return;
+    const box = panel.current;
+    const node = box?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!box || !node) return;
     lastScroll.current = now;
     const reduced =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    node.scrollIntoView?.({ block: "center", behavior: reduced ? "auto" : "smooth" });
+    box.scrollTo?.({ top: node.offsetTop - box.clientHeight / 2, behavior: reduced ? "auto" : "smooth" });
   });
 
   const markManual = () => {
@@ -101,58 +103,62 @@ export function ReadAlong({ className }: { className?: string }) {
     });
 
   return (
-    <div className={clsx("mx-auto w-full max-w-[68ch] px-5 md:px-6", className)}>
-      <div className="flex justify-end gap-1">
-        <button
-          type="button"
-          aria-label="Decrease font size"
-          disabled={step === 0}
-          onClick={() => changeFont(-1)}
-          className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
-        >
-          A−
-        </button>
-        <button
-          type="button"
-          aria-label="Increase font size"
-          disabled={step === FONT_SCALES.length - 1}
-          onClick={() => changeFont(1)}
-          className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
-        >
-          A+
-        </button>
-      </div>
+    <div className={clsx("mx-auto w-full max-w-[68ch]", className)}>
       <div
-        ref={box}
-        data-font-step={step}
-        aria-live="off"
+        ref={panel}
         onWheel={markManual}
         onTouchMove={markManual}
         onKeyDown={markManual}
-        style={{ fontSize: `calc(clamp(1.05rem, 0.7rem + 1.2vw, 1.35rem) * ${FONT_SCALES[step]})`, lineHeight: 1.75 }}
-        className="text-ink [text-wrap:pretty]"
+        className="reader-scroll relative max-h-[calc(100dvh-20rem)] overflow-y-auto rounded-card border border-line bg-paper px-8 pb-8 md:px-10 md:pb-10"
       >
-        {groups.map((group) => (
-          <p key={group.segment.id} className="mb-[0.85em] last:mb-0">
-            {group.sentences.map((sentence) => (
-              <span
-                key={sentence.start}
-                aria-current={sentence === activeSentence ? "true" : undefined}
-                onClick={() => tapSentence(sentence)}
-                className={clsx(
-                  "cursor-pointer rounded-r py-px",
-                  sentence === activeSentence &&
-                    "bg-brand-violet/15 shadow-[inset_2px_0_0_var(--color-brand-violet)]",
-                )}
-              >
-                {sentence.text}{" "}
-              </span>
-            ))}
+        <div className="sticky top-0 z-10 -mx-8 mb-2 flex justify-end gap-1 bg-paper/95 px-8 pb-2 pt-8 backdrop-blur md:-mx-10 md:px-10 md:pt-10">
+          <button
+            type="button"
+            aria-label="Decrease font size"
+            disabled={step === 0}
+            onClick={() => changeFont(-1)}
+            className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
+          >
+            A−
+          </button>
+          <button
+            type="button"
+            aria-label="Increase font size"
+            disabled={step === FONT_SCALES.length - 1}
+            onClick={() => changeFont(1)}
+            className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
+          >
+            A+
+          </button>
+        </div>
+        <div
+          data-font-step={step}
+          aria-live="off"
+          style={{ fontSize: `calc(clamp(1.05rem, 0.7rem + 1.2vw, 1.35rem) * ${FONT_SCALES[step]})`, lineHeight: 1.75 }}
+          className="font-reading text-ink [text-wrap:pretty]"
+        >
+          {groups.map((group) => (
+            <p key={group.segment.id} className="mb-[0.85em] last:mb-0">
+              {group.sentences.map((sentence) => (
+                <span
+                  key={sentence.start}
+                  aria-current={sentence === activeSentence ? "true" : undefined}
+                  onClick={() => tapSentence(sentence)}
+                  className={clsx(
+                    "cursor-pointer rounded-r py-px",
+                    sentence === activeSentence &&
+                      "bg-brand-violet/15 shadow-[inset_2px_0_0_var(--color-brand-violet)]",
+                  )}
+                >
+                  {sentence.text}{" "}
+                </span>
+              ))}
+            </p>
+          ))}
+          <p className="sr-only" aria-live="polite">
+            {activeSentence?.text}
           </p>
-        ))}
-        <p className="sr-only" aria-live="polite">
-          {activeSentence?.text}
-        </p>
+        </div>
       </div>
     </div>
   );

@@ -159,7 +159,8 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | W | `feat/reader-book` | B | page-like reader with internal scrollbar + serif, chapter select + arrows, Plex-style mini player, `stop()` |
 | X | `feat/book-settings` | C | cover play/percent overlay, book settings with chapters + pronunciation table, reset confirmation |
 | Y | `feat/voices-cleanup` | D | language-only voice picker, no Default/Show-all, no `tts` |
-| 2026-10-24 | UX iteration 2 dispatched from the second demo: reader-as-page, pronunciation rules, chapter select, Plex mini player, book settings, voice cleanup. |
+
+**Status:** dispatched 2026-10-24 from the second demo (reader-as-page, pronunciation rules, chapter select, Plex mini player, book settings, voice cleanup).
 
 ## Known gaps carried into M3+
 

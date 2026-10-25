@@ -11,6 +11,7 @@
   /* Semantic surface set; light default, dark below. */
   --page: var(--surface-light);
   --card: #ffffff;
+  --paper: #fbfaf7; /* warm reading surface behind the read-along panel */
   --fg: var(--ink);
   --muted: #5b6275;
   --line: #e2e5ef;
@@ -22,6 +23,7 @@
   :root:not([data-theme]) {
     --page: var(--surface-dark);
     --card: var(--ink);
+    --paper: var(--ink);
     --fg: #f7f8fc;
     --muted: #a3a9ba;
     --line: #2b3049;
@@ -32,6 +34,7 @@
 :root[data-theme="dark"] {
   --page: var(--surface-dark);
   --card: var(--ink);
+  --paper: var(--ink);
   --fg: #f7f8fc;
   --muted: #a3a9ba;
   --line: #2b3049;
@@ -46,12 +49,14 @@
   --color-brand-tint: var(--brand-tint);
   --color-page: var(--page);
   --color-card: var(--card);
+  --color-paper: var(--paper);
   --color-ink: var(--fg);
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-danger: var(--danger);
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-reading: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --radius-card: 12px;
   --radius-pill: 999px;
 }

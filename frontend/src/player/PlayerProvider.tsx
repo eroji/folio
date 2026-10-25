@@ -34,9 +34,12 @@ const REWIND_S = 3;
 /** Prompt only when the other device is more than this far ahead. */
 const AHEAD_PROMPT_S = 60;
 
-function fmtClock(seconds: number): string {
+/** m:ss, or h:mm:ss past an hour; shared by the player screens. */
+export function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+  const m = Math.floor(total / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
 export type SleepChoice = "chapter" | number | null;
@@ -64,12 +67,16 @@ export interface PlayerContextValue {
   progressPercent: number;
   /** Non-null while another device's saved position is >60 s ahead. */
   resumePrompt: ResumePromptProps | null;
+  /** Seconds played within the current chapter. */
   chapterElapsed: number;
-  chapterDuration: number;
+  /** Sum of the current chapter's known segment durations, in seconds. */
+  chapterTotal: number;
   elements: readonly [HTMLAudioElement, HTMLAudioElement];
   load: (bookId: string, chapterId?: string) => Promise<void>;
   play: () => Promise<void>;
   pause: () => void;
+  /** Pause, save, forget the book, and clear the URL query. */
+  stop: () => void;
   toggle: () => void;
   seekChapter: (seconds: number) => void;
   seekSegment: (index: number, offsetSeconds: number) => void;
@@ -78,7 +85,7 @@ export interface PlayerContextValue {
   skipBack: () => void;
   skipForward: () => void;
   stepChapter: (delta: number) => Promise<void>;
-  goToChapter: (chapterId: string) => void;
+  goToChapter: (chapterId: string) => Promise<void>;
   setRate: (rate: number) => void;
   setSleep: (choice: SleepChoice) => void;
   retry: () => void;
@@ -380,7 +387,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           s.resumePrompt = {
             device: saved.device_label,
             chapter: detail.chapters[ci]!.title,
-            time: fmtClock(saved.offset_s + (segment ? segment.char_start * secondsPerChar : 0)),
+            time: formatTime(saved.offset_s + (segment ? segment.char_start * secondsPerChar : 0)),
             onContinue: () => void applyResume(saved),
             onStartHere: () => void applyResume(local),
           };
@@ -420,6 +427,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   function toggle() {
     if (s.intent) pause();
     else void play();
+  }
+
+  function stop() {
+    silence();
+    s.intent = false;
+    s.preparing = false;
+    saveNow(); // never lose the position we stop at
+    s.book = null;
+    s.chapters = [];
+    s.chapterIdx = 0;
+    s.segments = [];
+    s.index = 0;
+    s.status = {};
+    s.time = 0;
+    s.error = null;
+    s.resumePrompt = null;
+    if (location.search) navigate(location.pathname, { replace: true }); // /player must not reload the book
+    bump();
   }
 
   /** Seek to a segment + offset within it; prepares first when unknown. */
@@ -468,9 +493,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (idx !== s.chapterIdx) await openChapter(idx, s.intent);
   }
 
-  function goToChapter(chapterId: string) {
+  function goToChapter(chapterId: string): Promise<void> {
     const idx = s.chapters.findIndex((c) => c.id === chapterId);
-    if (idx >= 0 && idx !== s.chapterIdx) void stepChapter(idx - s.chapterIdx);
+    if (idx >= 0 && idx !== s.chapterIdx) return stepChapter(idx - s.chapterIdx);
+    return Promise.resolve();
   }
 
   function setRate(rate: number) {
@@ -667,11 +693,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     progressPercent,
     resumePrompt: s.resumePrompt,
     chapterElapsed: elapsed(),
-    chapterDuration: chapterTotal(),
+    chapterTotal: chapterTotal(),
     elements: els,
     load,
     play,
     pause,
+    stop,
     toggle,
     seekChapter,
     seekSegment,
