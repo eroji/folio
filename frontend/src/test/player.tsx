@@ -184,11 +184,11 @@ function Probe() {
 }
 
 /** Mount the provider at /player with a probe; returns a getter for the live context. */
-export function renderPlayer(extra?: ReactNode): () => PlayerContextValue {
+export function renderPlayer(extra?: ReactNode, entries: string[] = ["/player"]): () => PlayerContextValue {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/player"]}>
+      <MemoryRouter initialEntries={entries}>
         <PlayerProvider>
           <Probe />
           {extra}

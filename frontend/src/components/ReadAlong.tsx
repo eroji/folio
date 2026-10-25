@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { usePlayer } from "../player/usePlayer";
 
@@ -19,10 +19,19 @@ interface Sentence {
 
 const SCROLL_MS = 250; // auto-scroll throttle
 const MANUAL_MS = 5000; // auto-scroll pause after the user scrolls
+const FONT_KEY = "folio-readalong-font";
+/** A− / A+ steps applied to the base clamp(); two steps up from the default. */
+const FONT_SCALES = [1, 1.15, 1.3];
 
-/** Read-along panel: the whole chapter as paragraphs, the spoken sentence
- * highlighted (position = segment index + time/duration share mapped through
- * char_start/char_end), auto-centered, tap-to-seek. */
+function readFontStep(): number {
+  const stored = Number(localStorage.getItem(FONT_KEY));
+  return Number.isInteger(stored) && stored >= 0 && stored < FONT_SCALES.length ? stored : 0;
+}
+
+/** Read-along: the whole chapter as ebook-styled paragraphs, the spoken
+ * sentence highlighted with a tint + left rule (position = segment index +
+ * time/duration share mapped through char_start/char_end), auto-centered,
+ * tap-to-seek, A−/A+ font steps persisted in localStorage. */
 export function ReadAlong({ className }: { className?: string }) {
   const player = usePlayer();
   const box = useRef<HTMLDivElement>(null);
@@ -83,38 +92,68 @@ export function ReadAlong({ className }: { className?: string }) {
     player.seekSegment(sentence.segmentIdx, ((sentence.start - segment.char_start) / span) * seconds);
   };
 
+  const [step, setStep] = useState(readFontStep);
+  const changeFont = (delta: number) =>
+    setStep((current) => {
+      const next = Math.min(FONT_SCALES.length - 1, Math.max(0, current + delta));
+      localStorage.setItem(FONT_KEY, String(next));
+      return next;
+    });
+
   return (
-    <div
-      ref={box}
-      aria-live="off"
-      onWheel={markManual}
-      onTouchMove={markManual}
-      onKeyDown={markManual}
-      className={clsx(
-        "max-h-[40dvh] overflow-y-auto rounded-card border border-line bg-card px-4 py-3 text-sm leading-relaxed",
-        className,
-      )}
-    >
-      {groups.map((group) => (
-        <p
-          key={group.segment.id}
-          className={clsx("mb-3 rounded px-1 last:mb-0", group.segmentIdx === player.index && "bg-brand-tint/20")}
+    <div className={clsx("mx-auto w-full max-w-[68ch] px-5 md:px-6", className)}>
+      <div className="flex justify-end gap-1">
+        <button
+          type="button"
+          aria-label="Decrease font size"
+          disabled={step === 0}
+          onClick={() => changeFont(-1)}
+          className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
         >
-          {group.sentences.map((sentence) => (
-            <span
-              key={sentence.start}
-              aria-current={sentence === activeSentence ? "true" : undefined}
-              onClick={() => tapSentence(sentence)}
-              className={clsx("cursor-pointer", sentence === activeSentence ? "font-medium text-ink" : "text-muted")}
-            >
-              {sentence.text}{" "}
-            </span>
-          ))}
+          A−
+        </button>
+        <button
+          type="button"
+          aria-label="Increase font size"
+          disabled={step === FONT_SCALES.length - 1}
+          onClick={() => changeFont(1)}
+          className="grid h-11 w-11 place-items-center rounded-pill border border-line bg-card text-sm font-medium disabled:opacity-40"
+        >
+          A+
+        </button>
+      </div>
+      <div
+        ref={box}
+        data-font-step={step}
+        aria-live="off"
+        onWheel={markManual}
+        onTouchMove={markManual}
+        onKeyDown={markManual}
+        style={{ fontSize: `calc(clamp(1.05rem, 0.7rem + 1.2vw, 1.35rem) * ${FONT_SCALES[step]})`, lineHeight: 1.75 }}
+        className="text-ink [text-wrap:pretty]"
+      >
+        {groups.map((group) => (
+          <p key={group.segment.id} className="mb-[0.85em] last:mb-0">
+            {group.sentences.map((sentence) => (
+              <span
+                key={sentence.start}
+                aria-current={sentence === activeSentence ? "true" : undefined}
+                onClick={() => tapSentence(sentence)}
+                className={clsx(
+                  "cursor-pointer rounded-r py-px",
+                  sentence === activeSentence &&
+                    "bg-brand-violet/15 shadow-[inset_2px_0_0_var(--color-brand-violet)]",
+                )}
+              >
+                {sentence.text}{" "}
+              </span>
+            ))}
+          </p>
+        ))}
+        <p className="sr-only" aria-live="polite">
+          {activeSentence?.text}
         </p>
-      ))}
-      <p className="sr-only" aria-live="polite">
-        {activeSentence?.text}
-      </p>
+      </div>
     </div>
   );
 }

@@ -18,7 +18,7 @@ Folio turns ebooks the household already owns (EPUB, PDF, Kindle) into a shared,
 
 ## Positioning
 
-Your own ebooks, narrated by your own TTS GPU — a private Audible with no per-book cost, no vendor lock-in, nothing leaving your network. Confirmed by the owner as the core claim a neighboring product could not copy.
+Your own ebooks, narrated by your own TTS GPU — a private Audible with no per-book cost, no vendor lock-in, nothing leaving your network.
 
 ## Operating Context
 

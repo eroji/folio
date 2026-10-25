@@ -108,4 +108,30 @@ describe("ReadAlong", () => {
     expect(prepareCalls.at(-1)).toEqual({ segment_id: `${CH1}-seg8`, count: 6 });
     await waitFor(() => expect(getPlayer().playing).toBe(true));
   });
+
+  it("A+ enlarges one step, clamps at the top, and persists the choice", () => {
+    localStorage.clear();
+    renderPlayer(<ReadAlong />);
+    const box = document.querySelector('[aria-live="off"]') as HTMLElement;
+    const up = screen.getByRole("button", { name: "Increase font size" });
+    const down = screen.getByRole("button", { name: "Decrease font size" });
+    expect(box.dataset.fontStep).toBe("0");
+    expect((down as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(up);
+    expect(box.dataset.fontStep).toBe("1");
+    expect(localStorage.getItem("folio-readalong-font")).toBe("1");
+    fireEvent.click(up);
+    fireEvent.click(up); // clamps at the largest step
+    expect(box.dataset.fontStep).toBe("2");
+    expect((up as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(down);
+    expect(box.dataset.fontStep).toBe("1");
+    expect(localStorage.getItem("folio-readalong-font")).toBe("1");
+  });
+
+  it("restores the persisted font step on mount", () => {
+    localStorage.setItem("folio-readalong-font", "2");
+    renderPlayer(<ReadAlong />);
+    expect((document.querySelector('[aria-live="off"]') as HTMLElement).dataset.fontStep).toBe("2");
+  });
 });

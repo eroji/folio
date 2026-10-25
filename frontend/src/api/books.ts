@@ -2,7 +2,7 @@
 import { useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ApiError, api, csrfToken } from "./client";
-import type { BookDetailResponse, BookListResponse, UploadResult } from "./types";
+import type { BookDetailResponse, BookListResponse, Chapter, UploadResult } from "./types";
 
 export type BookSort = "recent" | "title" | "author" | "progress";
 
@@ -42,6 +42,14 @@ export function useReprocessBook(id: string) {
 
 export function useDeleteBook(id: string) {
   return useMutation({ mutationFn: () => api.del<undefined>(`/books/${id}`) });
+}
+
+/** Admin/uploader: include a chapter in playback or exclude it from it. */
+export function useSetChapterExcluded(bookId: string) {
+  return useMutation({
+    mutationFn: ({ chapterId, excluded }: { chapterId: string; excluded: boolean }) =>
+      api.patch<{ chapter: Chapter }>(`/books/${bookId}/chapters/${chapterId}`, { excluded }),
+  });
 }
 
 /** Uploads one file with XHR — fetch has no upload progress events.
