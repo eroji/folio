@@ -24,8 +24,9 @@ from folio.errors import ApiError
 from folio.ingest import DRM_MESSAGE
 from folio.ingest.detect import Format, detect_format, epub_is_drm_protected
 from folio.jobs import enqueue, notify
-from folio.models import Book, BookFile, Chapter, Segment, User
+from folio.models import Book, BookFile, Chapter, Progress, Segment, User
 from folio.models.book import BOOK_SEARCH_EXPR
+from folio.routers.progress import progress_dict
 from folio.security import require_csrf
 from folio.storage import book_dir, cover_dir, ensure_dirs, original_path
 
@@ -329,11 +330,11 @@ def get_book(
     chapters = db.scalars(
         select(Chapter).where(Chapter.book_id == book.id).order_by(Chapter.idx)
     ).all()
-    # Progress is M5; the shape is pinned by the spec so the UI can code against it.
+    row = db.get(Progress, (user.id, book.id))
     return {
         "book": _public(book),
         "chapters": [ChapterPublic.model_validate(c) for c in chapters],
-        "progress": None,
+        "progress": progress_dict(row) if row else None,
     }
 
 

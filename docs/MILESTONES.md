@@ -143,6 +143,9 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | 2026-10-24 | **T-B merged** (`6fb6e3f`): prepare/stream/retry, voices + preview, admin cache clear, real TTS health (`tts: ok`), worker claims TTS before ingest. Live smoke: 3 segments ready in ~6 s, 39.8 s Opus, `Range` → 206 with `Content-Range`. |
 | 2026-10-24 | **M4 accepted (device checks pending).** Found and fixed a self-amplifying SSE loop: `prepare` notified on every idempotent call, each `audio` frame re-triggered `prepare` in the player and flooded the browser (`ERR_INSUFFICIENT_RESOURCES`). Fix: notify only on real status transitions + a single in-flight prepare + frame filtering. Added a regression test. Playwright 7/7; acceptance covers voices/preview/prepare/Range/cache-clear/health; Media Session metadata and handlers verified in Chromium. |
 
+| 2026-10-24 | **M5 settings merged** (`bad43de`): `/me/settings`-backed listening preferences with optimistic coalesced saves and a localStorage fallback; the player now uses the saved speed, skip intervals, auto-play-next and per-language voice without a reload. 59 web tests. |
+| 2026-10-24 | Progress API (P) and progress UI (Q) in flight: progress table + endpoints, save/resume with 3 s rewind, cross-device prompt, Continue listening, finished/reset. |
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
