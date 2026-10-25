@@ -147,7 +147,13 @@ function Shell() {
             <Icon name="chevron_left" size={22} />
           </button>
         )}
-        <AccountMenu placement="header" choice={choice} onSelectTheme={select} />
+        {/* On a book page the header ⋯ is the book menu (rendered by
+            BookDetailPage); the account items live on the "You" tab. */}
+        {/^\/books\/[^/]+$/.test(location.pathname) ? (
+          <span className="size-11" aria-hidden />
+        ) : (
+          <AccountMenu placement="header" choice={choice} onSelectTheme={select} />
+        )}
       </header>
 
       <main

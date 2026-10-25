@@ -24,7 +24,9 @@ test("an edited title survives a reprocess", async ({ page }) => {
   await expect(row).toContainText(/Ready|already in your library/i, { timeout: 90_000 });
   await row.getByRole("link").first().click();
 
-  await page.getByRole("link", { name: "Edit" }).click();
+  // Phase 4 moved the management actions into the Manage tab.
+  await page.getByRole("tab", { name: "Manage" }).click();
+  await page.getByRole("link", { name: "Edit details" }).click();
   // Unique per run so a previous run's edit cannot satisfy the assertion.
   const editedTitle = `The Lighthouse at Low Tide ${Date.now()}`;
   await page.getByRole("textbox", { name: "Title", exact: true }).fill(editedTitle);
@@ -43,7 +45,8 @@ test("an edited title survives a reprocess", async ({ page }) => {
   expect(reprocess.ok()).toBeTruthy();
 
   await page.reload();
-  await expect(page.getByText("Ready").first()).toBeVisible({ timeout: 90_000 });
+  await page.getByRole("tab", { name: "Manage" }).click();
+  await expect(page.getByText("Ready ·").first()).toBeVisible({ timeout: 90_000 });
   // The manual edit must survive the automatic re-ingest.
   await expect(page.getByRole("heading", { name: editedTitle })).toBeVisible();
 });

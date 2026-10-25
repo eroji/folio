@@ -85,6 +85,13 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-cover-badge: var(--cover-badge);
+}
+
+/* Cover progress badge tag (handoff "Cover progress badge"): the same dark
+   chip with white text in both themes, so it is theme-independent. */
+:root {
+  --cover-badge: rgba(18, 20, 31, 0.82);
 }
 
 :root,
