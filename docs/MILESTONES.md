@@ -190,6 +190,8 @@ Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Imp
 | 5 | Restyle undesigned screens with the new tokens/components (structure unchanged) | **done** — 167 web tests; Library/Search, Upload/Login, Settings/Admin/Edit/Player |
 | 6 | Remove lucide, unused styles; update DESIGN.md and DECISIONS.md | **done** — lucide/Inter/Outfit removed, alias layer deleted, DESIGN.md rewritten |
 
+**Post-acceptance fixes (2026-10-25):** focus mode rebuilt to the reference; Manage shows 15 chapter rows before "Show all"; chapter inclusion updates the Chapters tab, count and numbering immediately; the stray Find metadata search box rendered outside Manage is removed.
+
 **Status: complete 2026-10-25.** All six phases shipped. 167 web tests, 9 Playwright, acceptance all-pass, Lighthouse accessibility **100** on login/library/book/player with no failing audits. Reference screenshots: `docs/screenshots/redesign-*.png`.
 
 **Notes:** the reference HTML uses `data-theme` on `<html>`; the app now resolves System at runtime. Filled icon variants are not shipped in `@material-symbols/svg-400` (rounded/outlined only) — play/pause/skip are visually filled already. Lighthouse runs must be done outside the repo (an earlier run dumped a Chrome profile into it; ignored now).
