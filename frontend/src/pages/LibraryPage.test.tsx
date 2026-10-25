@@ -289,7 +289,7 @@ describe("LibraryPage", () => {
     expect(within(row).getByText("10 m")).toBeTruthy();
     expect(within(row).getByText("8 m left")).toBeTruthy();
     expect(
-      within(row).getByRole("button", { name: "More options for this book" }),
+      within(row).getByRole("button", { name: "More options for Dune" }),
     ).toBeTruthy();
   });
 

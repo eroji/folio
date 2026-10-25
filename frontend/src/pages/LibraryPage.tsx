@@ -3,9 +3,8 @@
  * remembered per user in localStorage. URL params (from "See all" links)
  * win over the stored preferences. */
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthProvider";
 import {
   formatLength,
@@ -17,23 +16,13 @@ import {
   type BookGroupShelf,
   type BookSort,
 } from "../api/books";
-import {
-  continueQueryKey,
-  finishedQueryKey,
-  markFinished,
-  progressQueryKey,
-  resetProgress,
-  useProgressMembership,
-} from "../api/progress";
-import { useUpdateBook } from "../api/metadata";
+import { useProgressMembership } from "../api/progress";
 import { BookCard, BookCover } from "../components/BookCard";
-import { BookMenu } from "../components/BookMenu";
+import { BookRowMenu } from "../components/BookRowMenu";
 import { useCarouselRow } from "../components/Carousel";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import type { IconName } from "../components/Icon";
-import { NarratorVoiceDialog } from "../components/NarratorVoiceDialog";
 import type { Book, Progress } from "../api/types";
 
 const GROUPS: { value: BookGroup; label: string }[] = [
@@ -104,149 +93,10 @@ function groupLabel(group: BookGroup, shelf: BookGroupShelf): string {
   return shelf.label;
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** The gradient primary action every empty state points at. */
-function UploadLink() {
-  return (
-    <Link
-      to="/upload"
-      className="tap mt-2 inline-flex h-12 items-center justify-center rounded-md bg-primary-gradient px-6 font-display font-semibold"
-    >
-      Upload a book
-    </Link>
-  );
-}
-
-/** Wraps case-insensitive matches of `query` in <mark> on the highlight token. */
-function Highlight({ text, query }: { text: string; query: string }) {
-  if (!query) return <>{text}</>;
-  const parts = text.split(new RegExp(`(${escapeRegExp(query)})`, "gi"));
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <mark key={i} className="rounded-xs bg-highlight text-fg">
-            {part}
-          </mark>
-        ) : (
-          part
-        ),
-      )}
-    </>
-  );
-}
-
 function timeLeft(book: Book, progress: Progress): string {
   if (progress.finished_at) return "Finished";
   if (!book.est_duration_s) return `${Math.round(progress.percent)}% done`;
   return `${formatLength(book.est_duration_s * (1 - progress.percent / 100))} left`;
-}
-
-/** Search view: count line, Authors, Books. Reused by SearchPage until the
- * Phase 6 redesign. */
-export function SearchResults({
-  query,
-  books,
-  total,
-  progressById,
-}: {
-  query: string;
-  books: Book[];
-  total: number;
-  progressById: Map<string, Progress>;
-}) {
-  // Authors are grouped from the loaded page: the API returns books, not
-  // authors, so counts cover the current result page only (docs/DECISIONS.md).
-  const authors = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const book of books) {
-      for (const author of new Set(book.authors)) {
-        if (author.toLowerCase().includes(query.toLowerCase())) {
-          counts.set(author, (counts.get(author) ?? 0) + 1);
-        }
-      }
-    }
-    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [books, query]);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <p role="status" className="text-sm text-fg-2">
-        {total} results for “{query}” in titles, authors and series
-      </p>
-      {books.length === 0 ? (
-        <EmptyState
-          icon={<Icon name="search" size={28} />}
-          title={`No books match “${query}”`}
-          action={<UploadLink />}
-        />
-      ) : (
-        <>
-          {authors.length > 0 && (
-            <section aria-label="Authors" className="flex flex-col gap-1">
-              <h2 className="text-sm font-semibold text-fg-2">Authors</h2>
-              {authors.map(([author, count]) => (
-                <Link
-                  key={author}
-                  to={`/search?q=${encodeURIComponent(author)}`}
-                  className="tap flex min-w-0 items-center gap-3 rounded-md bg-raised p-2"
-                >
-                  <span
-                    aria-hidden
-                    className="grid size-10 shrink-0 place-items-center rounded-full bg-selected text-on-selected"
-                  >
-                    <Icon name="person" size={20} />
-                  </span>
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate text-base font-semibold">
-                      <Highlight text={author} query={query} />
-                    </span>
-                    <span className="text-xs text-fg-2">
-                      {count} {count === 1 ? "book" : "books"}
-                    </span>
-                  </span>
-                </Link>
-              ))}
-            </section>
-          )}
-          <section aria-label="Books" className="flex flex-col gap-1">
-            <h2 className="text-sm font-semibold text-fg-2">Books</h2>
-            {books.map((book) => {
-              const progress = progressById.get(book.id);
-              const line = progress
-                ? timeLeft(book, progress)
-                : book.est_duration_s
-                  ? `Not started · ${formatLength(book.est_duration_s)}`
-                  : "Not started";
-              return (
-                <Link
-                  key={book.id}
-                  to={`/books/${book.id}`}
-                  className="tap flex min-w-0 items-center gap-3 rounded-md p-2 hover:bg-raised"
-                >
-                  <span className="relative block aspect-[2/3] w-10 shrink-0 overflow-hidden rounded-sm shadow-(--shadow-cover)">
-                    <BookCover book={book} className="absolute inset-0 h-full w-full" />
-                  </span>
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate text-base font-semibold">
-                      <Highlight text={book.title} query={query} />
-                    </span>
-                    <span className="truncate text-sm text-fg-2">
-                      <Highlight text={book.authors.join(", ")} query={query} />
-                    </span>
-                    <span className="truncate text-xs tabular text-fg-2">{line}</span>
-                  </span>
-                </Link>
-              );
-            })}
-          </section>
-        </>
-      )}
-    </div>
-  );
 }
 
 function Chip({
@@ -330,23 +180,6 @@ function Shelf({
 
 /** List-view row: 40px cover, title, author, length, progress, ⋮. */
 function ListRow({ book, progress }: { book: Book; progress: Progress | null }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [resetOpen, setResetOpen] = useState(false);
-  const [narratorOpen, setNarratorOpen] = useState(false);
-  const toggleFinished = useMutation({
-    mutationFn: (value: boolean) => markFinished(book.id, value),
-    onSuccess: () => invalidate(),
-  });
-  const reset = useMutation({ mutationFn: () => resetProgress(book.id), onSuccess: () => invalidate() });
-  const narratorUpdate = useUpdateBook(book.id);
-
-  function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: ["books"] });
-    void queryClient.invalidateQueries({ queryKey: continueQueryKey });
-    void queryClient.invalidateQueries({ queryKey: finishedQueryKey });
-  }
-
   return (
     <li className="flex min-w-0 items-center gap-3.5 rounded-lg px-2 py-1.5 hover:bg-raised/60">
       <Link
@@ -374,56 +207,7 @@ function ListRow({ book, progress }: { book: Book; progress: Progress | null }) 
           {progress ? timeLeft(book, progress) : "Not started"}
         </span>
       </span>
-      <BookMenu
-        finished={Boolean(progress?.finished_at)}
-        pending={toggleFinished.isPending}
-        onToggleFinished={(value) => toggleFinished.mutate(value)}
-        onReset={() => setResetOpen(true)}
-        onNarrator={() => setNarratorOpen(true)}
-        onGoToAuthor={() =>
-          navigate(
-            book.authors[0] ? `/search?q=${encodeURIComponent(book.authors[0])}` : "/search",
-          )
-        }
-      />
-      {resetOpen && (
-        <ConfirmDialog
-          title={`Reset your progress in ${book.title}?`}
-          description="This cannot be undone."
-          confirmLabel="Reset"
-          busy={reset.isPending}
-          onCancel={() => setResetOpen(false)}
-          onConfirm={() =>
-            reset.mutate(undefined, {
-              onSuccess: () => {
-                localStorage.removeItem(`folio-pos-${book.id}`);
-                void queryClient.invalidateQueries({ queryKey: progressQueryKey(book.id) });
-                invalidate();
-                setResetOpen(false);
-              },
-            })
-          }
-        />
-      )}
-      {narratorOpen && (
-        <NarratorVoiceDialog
-          value={book.narrator_voice}
-          language={book.language}
-          error={narratorUpdate.isError ? narratorUpdate.error.message : null}
-          onClose={() => setNarratorOpen(false)}
-          onSelect={(next) =>
-            narratorUpdate.mutate(
-              { narrator_voice: next },
-              {
-                onSuccess: () => {
-                  invalidate();
-                  setNarratorOpen(false);
-                },
-              },
-            )
-          }
-        />
-      )}
+      <BookRowMenu book={book} progress={progress} />
     </li>
   );
 }

@@ -96,7 +96,7 @@ function renderUpload() {
 
 function dropFiles(names: string[]) {
   const files = names.map((name) => new File(["data"], name));
-  fireEvent.drop(screen.getByText("Drop EPUB, PDF or Kindle files here"), { dataTransfer: { files } });
+  fireEvent.drop(screen.getByText("Drop books here"), { dataTransfer: { files } });
 }
 
 beforeEach(() => {
@@ -131,9 +131,10 @@ afterEach(() => {
 describe("UploadPage", () => {
   it("renders the drop zone with the pinned copy and an empty session list", () => {
     renderUpload();
-    expect(screen.getByText("Drop EPUB, PDF or Kindle files here")).toBeTruthy();
-    expect(screen.getByText(/Up to 200 MB each · \.epub, \.pdf, \.mobi, \.azw, \.azw3/)).toBeTruthy();
-    expect(screen.getByText(/DRM-protected and KFX files aren.t supported/)).toBeTruthy();
+    expect(screen.getByText("Drop books here")).toBeTruthy();
+    expect(screen.getByText("EPUB, PDF, MOBI, AZW or AZW3 · up to 200 MB each · no DRM or KFX")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Upload" })).toBeTruthy();
+    expect(screen.getByText("Add to your library")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "This session" })).toBeTruthy();
     expect(screen.getByText(/appear here/i)).toBeTruthy();
     expect(screen.queryByRole("status")).toBeNull();
@@ -184,7 +185,7 @@ describe("UploadPage", () => {
     statuses[BOOK_A] = "needs_ocr";
     renderUpload();
     dropFiles(["scan.pdf"]);
-    expect(await screen.findByText(/needs OCR before it can be narrated/)).toBeTruthy();
+    expect(await screen.findByText("Added · scanned PDF, needs OCR")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open book" }).getAttribute("href")).toBe(`/books/${BOOK_A}`);
   });
 

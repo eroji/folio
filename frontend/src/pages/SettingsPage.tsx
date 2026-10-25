@@ -1,4 +1,9 @@
+/** Settings (Direction D §4): title, left section pills (Playback and
+ * Voices only — the app is dark, there is no Theme), rows with dividers,
+ * steppers and switches. Every change saves immediately; a failed save
+ * reverts the control and shows an inline error under its row. */
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import clsx from "clsx";
 import { useListeningSettings, useUpdateSettings } from "../api/settings";
 import {
   groupVoicesByLanguage,
@@ -11,7 +16,7 @@ import {
 import { Icon } from "../components/Icon";
 import { Switch } from "../components/Switch";
 
-const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5] as const;
+const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5] as const;
 const LANGUAGES = [
   { code: "en", label: "English" },
   { code: "ja", label: "Japanese" },
@@ -22,56 +27,93 @@ const LANGUAGES = [
 
 const SKIP_MIN = 5;
 const SKIP_MAX = 120;
-const control = "h-9 rounded-md border border-control-border bg-surface text-base";
+const SKIP_STEP = 5;
+
+const SECTIONS = [
+  { id: "playback", label: "Playback" },
+  { id: "voices", label: "Voices" },
+] as const;
+
+const selectPill =
+  "select-pill tap h-10 border border-border bg-raised text-base text-fg";
+const selectChevron = "pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-fg-2";
+const outlinedPill =
+  "tap inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border px-4 text-base font-semibold text-fg hover:bg-raised disabled:opacity-50";
 
 function skipValid(value: string): boolean {
   const n = Number(value);
   return Number.isInteger(n) && n >= SKIP_MIN && n <= SKIP_MAX;
 }
 
-/** Card in the Manage-tab style: bordered surface, 8 px radius, header row
- * with the section title (15 px/700) and optional action, rows below. */
-function Card({
-  id,
-  title,
-  action,
+function PillSelect({
+  ariaLabel,
+  width,
+  value,
+  disabled,
+  onChange,
   children,
 }: {
-  id: string;
-  title: string;
-  action?: ReactNode;
+  ariaLabel: string;
+  width: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
   children: ReactNode;
 }) {
   return (
-    <section aria-labelledby={id} className="rounded-lg border border-divider bg-surface px-4 pb-2">
-      <div className="flex min-h-9 flex-wrap items-center justify-between gap-3 pt-3">
-        <h2 id={id} className="text-md font-bold">
-          {title}
-        </h2>
-        {action}
-      </div>
-      {children}
-    </section>
+    <span className={clsx("relative inline-flex", width, "max-w-full")}>
+      <select
+        aria-label={ariaLabel}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className={clsx(selectPill, "w-full")}
+      >
+        {children}
+      </select>
+      <Icon name="ChevronDown" size={18} className={selectChevron} />
+    </span>
   );
 }
 
-/** One setting row: label (14 px/600) plus optional one-line description
- * (13 px secondary) on the left, the control right-aligned. */
-function Row({ title, description, children }: { title: ReactNode; description?: string; children: ReactNode }) {
+/** One setting row: bold title + one-line explanation left, control right,
+ * divider above; optional inline error under (failed save). */
+function Row({
+  title,
+  description,
+  error,
+  children,
+}: {
+  title: ReactNode;
+  description?: string;
+  error?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
-      <div className="flex min-w-0 flex-1 basis-[220px] flex-col gap-0.5">
-        <span className="text-base font-semibold">{title}</span>
-        {description && <span className="text-sm text-fg-2">{description}</span>}
+    <div className="border-t border-border">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
+        <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+          <span className="text-lg font-bold">{title}</span>
+          {description && <span className="text-base leading-snug text-fg-2">{description}</span>}
+        </div>
+        {children}
       </div>
-      {children}
+      {error}
     </div>
   );
 }
 
-/** Number input for a skip interval: local text so the user can type freely,
- * inline validation, and a commit only while the value is in range. */
-function SkipField({
+function SaveError() {
+  return (
+    <p role="alert" className="pb-3 text-sm text-danger">
+      Couldn’t save — the change reverted to the saved settings.
+    </p>
+  );
+}
+
+/** − value + stepper (5–120 s, step 5). Typing validates like the old
+ * field; the arrows commit immediately. */
+function SkipStepper({
   label,
   value,
   onCommit,
@@ -84,25 +126,52 @@ function SkipField({
   useEffect(() => setText(String(value)), [value]);
   const invalid = text.trim() !== "" && !skipValid(text);
 
+  function step(delta: number) {
+    const current = skipValid(text) ? Number(text) : value;
+    const next = Math.min(SKIP_MAX, Math.max(SKIP_MIN, current + delta));
+    setText(String(next));
+    onCommit(next);
+  }
+
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">
-        <input
-          type="number"
-          inputMode="numeric"
-          min={SKIP_MIN}
-          max={SKIP_MAX}
-          step={5}
-          aria-label={label}
-          aria-invalid={invalid}
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            if (skipValid(event.target.value)) onCommit(Number(event.target.value));
-          }}
-          className={`${control} tap w-[76px] px-2.5 text-right tabular-nums`}
-        />
-        <span aria-hidden className="w-7 text-sm text-fg-2">
+        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-raised p-[3px]">
+          <button
+            type="button"
+            aria-label={`Less ${label}`}
+            title={`Less ${label}`}
+            onClick={() => step(-SKIP_STEP)}
+            className="tap grid size-[34px] shrink-0 place-items-center rounded-full text-fg hover:bg-border/60"
+          >
+            <Icon name="ChevronLeft" size={18} />
+          </button>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={SKIP_MIN}
+            max={SKIP_MAX}
+            step={SKIP_STEP}
+            aria-label={`${label} in seconds`}
+            aria-invalid={invalid}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              if (skipValid(event.target.value)) onCommit(Number(event.target.value));
+            }}
+            className="tap h-[34px] w-11 border-0 bg-transparent text-center text-md font-bold tabular text-fg [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <button
+            type="button"
+            aria-label={`More ${label}`}
+            title={`More ${label}`}
+            onClick={() => step(SKIP_STEP)}
+            className="tap grid size-[34px] shrink-0 place-items-center rounded-full text-fg hover:bg-border/60"
+          >
+            <Icon name="ChevronRight" size={18} />
+          </button>
+        </span>
+        <span aria-hidden className="text-base text-fg-2">
           sec
         </span>
       </div>
@@ -115,7 +184,7 @@ function SkipField({
   );
 }
 
-/** 36 px play/stop button speaking a sample of one voice. */
+/** 40 px outlined pill button speaking a sample of one voice (Play → Pause). */
 function VoicePreview({ voice }: { voice: string }) {
   const [playing, setPlaying] = useState(false);
   const sample = useRef<{ url: string; audio: HTMLAudioElement } | null>(null);
@@ -154,28 +223,29 @@ function VoicePreview({ voice }: { voice: string }) {
       type="button"
       onClick={toggle}
       aria-label={`Preview ${voice}`}
-      title="Preview voice"
-      className="tap grid size-9 place-items-center rounded-md border border-control-border bg-surface text-fg"
+      title={`Preview ${voice}`}
+      className="tap grid size-10 shrink-0 place-items-center rounded-full border border-border bg-transparent text-fg hover:bg-raised"
     >
-      <Icon name={playing ? "stop" : "play_arrow"} size={20} />
+      <Icon name={playing ? "Pause" : "Play"} size={18} />
     </button>
   );
 }
 
-/** One language's row: a 168 px select (same width everywhere so the
- * column lines up) plus Preview. A saved voice the engine no longer lists
- * stays selected and reads "{voice} (no longer available)". */
+/** One language row: "English en", 180 px voice pill select + Preview. A
+ * saved voice the engine no longer lists reads "(no longer available)". */
 function VoiceRow({
   code,
   label,
   value,
   options,
+  error,
   onChange,
 }: {
   code: string;
   label: string;
   value: string | undefined;
   options: Voice[];
+  error: boolean;
   onChange: (voice: string) => void;
 }) {
   const empty = options.length === 0;
@@ -186,17 +256,18 @@ function VoiceRow({
     <Row
       title={
         <>
-          {label} <span className="text-sm font-medium text-fg-2">{code}</span>
+          {label} <span className="text-base font-medium text-fg-2">{code}</span>
         </>
       }
+      error={error ? <SaveError /> : undefined}
     >
       <div className="flex items-center gap-2">
-        <select
-          aria-label={`Voice for ${label}`}
+        <PillSelect
+          ariaLabel={`Voice for ${label}`}
+          width="w-[180px]"
           value={selected}
-          onChange={(event) => onChange(event.target.value)}
           disabled={empty}
-          className={`${control} tap w-[168px] max-w-full px-2`}
+          onChange={onChange}
         >
           {empty ? (
             <option value="">No voices available for this language</option>
@@ -211,137 +282,185 @@ function VoiceRow({
               ))}
             </>
           )}
-        </select>
+        </PillSelect>
         {!empty && selected && <VoicePreview voice={selected} />}
       </div>
     </Row>
   );
 }
 
-/** Settings (handoff "Other designed screens"): cards of setting rows,
- * every control saving on change through the optimistic useUpdateSettings.
- * The app is dark only — there is no Appearance card. */
 export function SettingsPage() {
   const refresh = useRefreshVoices();
   const { settings, isPending } = useListeningSettings();
   const { update, status } = useUpdateSettings();
   const { data: voices } = useVoices();
   const { mutate } = refresh;
+  const [section, setSection] = useState<string>("playback");
+  /** The row a failed save is attributed to; the coalesced PUT covers every
+   * key changed since the last success, so the error shows under the last one. */
+  const [errorKey, setErrorKey] = useState<string | null>(null);
   useEffect(() => {
     void mutate(); // Settings re-queries the engine when opened (spec "Discovery").
   }, [mutate]);
+
+  const saveFailed = status === "error";
+  const change = (key: string, patch: Parameters<typeof update>[0]) => {
+    setErrorKey(key);
+    update(patch);
+  };
 
   // The engine's "tts" entry is its internal fallback, not a real voice.
   const items = (voices?.items ?? []).filter((voice) => voice.id !== "tts");
   const availableCount = items.filter((voice) => voice.available).length;
   const groups = groupVoicesByLanguage(items);
 
-  function changeVoice(language: string, voice: string) {
-    update({ voices: { ...settings.voices, [language]: voice } });
-  }
-
   return (
-    <div className="flex w-full flex-col gap-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 pb-1">
-        <h1 className="font-display text-xl font-bold tracking-[-0.01em]">Settings</h1>
-        <span role="status" className="inline-flex items-center gap-1 text-sm text-fg-2">
-          <Icon name="check" size={16} /> Changes save automatically
-        </span>
-      </div>
-      {status === "error" && (
-        <p role="alert" className="-mt-2 text-sm text-danger">
-          Couldn’t save — the change reverted to the saved settings.
-        </p>
-      )}
+    <div className="flex flex-col gap-8">
+      <h1 className="font-display text-4xl">Settings</h1>
+      <div className="flex flex-wrap items-start gap-8 desktop:gap-12">
+        <nav aria-label="Settings sections" className="flex w-full flex-col gap-1 desktop:w-52">
+          {SECTIONS.map(({ id, label }) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              aria-current={section === id ? "true" : undefined}
+              onClick={() => setSection(id)}
+              className={clsx(
+                "tap flex h-11 items-center rounded-full px-4 text-md no-underline",
+                section === id ? "bg-raised font-bold text-fg" : "font-medium text-fg-2 hover:bg-raised",
+              )}
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
 
-      {isPending ? (
-        <div className="h-56 animate-pulse rounded-lg border border-divider bg-surface" aria-busy="true" />
-      ) : (
-        <Card id="s-playback" title="Playback">
-          <div className="divide-y divide-divider">
-            <Row title="Default speed" description="Used when you start a new book">
-              <select
-                aria-label="Default playback speed"
-                value={String(settings.speed)}
-                onChange={(event) => update({ speed: Number(event.target.value) })}
-                className={`${control} tap w-[104px] px-2`}
+        <div className="flex w-full min-w-0 flex-1 flex-col gap-10 desktop:max-w-[760px]">
+          {isPending ? (
+            <div className="h-72 animate-pulse rounded-xl bg-surface" aria-busy="true" />
+          ) : (
+            <section id="playback" aria-labelledby="playback-h" className="flex flex-col">
+              <h2 id="playback-h" className="pb-2 font-display text-xl">
+                Playback
+              </h2>
+              <Row title="Default speed" description="Used when you start a new book" error={saveFailed && errorKey === "speed" ? <SaveError /> : undefined}>
+                <PillSelect
+                  ariaLabel="Default playback speed"
+                  width="w-[120px]"
+                  value={String(settings.speed)}
+                  onChange={(value) => change("speed", { speed: Number(value) })}
+                >
+                  {(SPEEDS as readonly number[]).includes(settings.speed) ? (
+                    SPEEDS.map((value) => (
+                      <option key={value} value={String(value)}>
+                        {value}×
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value={String(settings.speed)}>{settings.speed}×</option>
+                      {SPEEDS.map((value) => (
+                        <option key={value} value={String(value)}>
+                          {value}×
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </PillSelect>
+              </Row>
+              <Row
+                title="Skip back"
+                description="Jump back this many seconds"
+                error={saveFailed && errorKey === "skip_back" ? <SaveError /> : undefined}
               >
-                {SPEEDS.map((value) => (
-                  <option key={value} value={String(value)}>
-                    {value}×
-                  </option>
-                ))}
-              </select>
-            </Row>
-            <Row title="Skip back" description={`${SKIP_MIN} to ${SKIP_MAX} seconds`}>
-              <SkipField
-                label="Skip back in seconds"
-                value={settings.skip_back}
-                onCommit={(seconds) => update({ skip_back: seconds })}
-              />
-            </Row>
-            <Row title="Skip forward" description={`${SKIP_MIN} to ${SKIP_MAX} seconds`}>
-              <SkipField
-                label="Skip forward in seconds"
-                value={settings.skip_forward}
-                onCommit={(seconds) => update({ skip_forward: seconds })}
-              />
-            </Row>
-            <Row title="Auto-play next chapter" description="Keep going when a chapter ends">
-              <Switch
-                label="Auto-play next chapter"
-                checked={settings.auto_next}
-                onChange={(next) => update({ auto_next: next })}
-              />
-            </Row>
-            <Row title="Speak chapter titles" description="Read each chapter’s title before its text">
-              <Switch
-                label="Speak chapter titles"
-                checked={settings.speak_titles}
-                onChange={(next) => update({ speak_titles: next })}
-              />
-            </Row>
-          </div>
-        </Card>
-      )}
-
-      <Card
-        id="s-voices"
-        title="Voices"
-        action={
-          <button
-            type="button"
-            onClick={() => refresh.mutate()}
-            disabled={refresh.isPending}
-            className="tap inline-flex h-8 items-center gap-1.5 rounded-md border border-control-border bg-surface px-2.5 text-sm font-medium hover:bg-raised disabled:opacity-50"
-          >
-            <Icon name="refresh" size={18} /> Refresh voices
-          </button>
-        }
-      >
-        <p className="pb-1 text-sm text-fg-2">
-          Your narrator for each book language. A book’s own narrator setting overrides these.
-          {voices && (
-            <> {availableCount} {availableCount === 1 ? "voice" : "voices"} available from the TTS server.</>
+                <SkipStepper
+                  label="Skip back"
+                  value={settings.skip_back}
+                  onCommit={(seconds) => change("skip_back", { skip_back: seconds })}
+                />
+              </Row>
+              <Row
+                title="Skip forward"
+                description="Jump ahead this many seconds"
+                error={saveFailed && errorKey === "skip_forward" ? <SaveError /> : undefined}
+              >
+                <SkipStepper
+                  label="Skip forward"
+                  value={settings.skip_forward}
+                  onCommit={(seconds) => change("skip_forward", { skip_forward: seconds })}
+                />
+              </Row>
+              <Row
+                title="Auto-play next chapter"
+                description="Keep going when a chapter ends"
+                error={saveFailed && errorKey === "auto_next" ? <SaveError /> : undefined}
+              >
+                <Switch
+                  label="Auto-play next chapter"
+                  checked={settings.auto_next}
+                  onChange={(next) => change("auto_next", { auto_next: next })}
+                />
+              </Row>
+              <Row
+                title="Speak chapter titles"
+                description="Read each chapter’s title before its text"
+                error={saveFailed && errorKey === "speak_titles" ? <SaveError /> : undefined}
+              >
+                <Switch
+                  label="Speak chapter titles"
+                  checked={settings.speak_titles}
+                  onChange={(next) => change("speak_titles", { speak_titles: next })}
+                />
+              </Row>
+            </section>
           )}
-        </p>
-        {isPending || !voices ? (
-          <div className="h-40 animate-pulse rounded-md bg-raised" aria-busy="true" />
-        ) : (
-          <div className="border-t border-divider divide-y divide-divider">
-            {LANGUAGES.map(({ code, label }) => (
-              <VoiceRow
-                key={code}
-                code={code}
-                label={label}
-                value={settings.voices[code]}
-                options={groups[code.split("-")[0]!.toLowerCase()] ?? []}
-                onChange={(voice) => changeVoice(code, voice)}
-              />
-            ))}
-          </div>
-        )}
-      </Card>
+
+          <section id="voices" aria-labelledby="voices-h" className="flex flex-col">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
+              <h2 id="voices-h" className="font-display text-xl">
+                Voices
+              </h2>
+              <button
+                type="button"
+                onClick={() => refresh.mutate()}
+                disabled={refresh.isPending}
+                className={outlinedPill}
+              >
+                <Icon name="RefreshCw" size={18} />
+                Refresh voices
+              </button>
+            </div>
+            <p className="pb-2 text-base text-fg-2">
+              Your narrator for each book language. A book’s own narrator setting overrides these.
+              {voices && (
+                <>
+                  {" "}
+                  {availableCount} {availableCount === 1 ? "voice" : "voices"} from your TTS server.
+                </>
+              )}
+            </p>
+            {isPending || !voices ? (
+              <div className="h-40 animate-pulse rounded-xl bg-surface" aria-busy="true" />
+            ) : (
+              <div>
+                {LANGUAGES.map(({ code, label }) => (
+                  <VoiceRow
+                    key={code}
+                    code={code}
+                    label={label}
+                    value={settings.voices[code]}
+                    options={groups[code.split("-")[0]!.toLowerCase()] ?? []}
+                    error={saveFailed && errorKey === `voice-${code}`}
+                    onChange={(voice) =>
+                      change(`voice-${code}`, { voices: { ...settings.voices, [code]: voice } })
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

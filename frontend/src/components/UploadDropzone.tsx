@@ -1,6 +1,7 @@
 import { useState, type DragEvent } from "react";
 import clsx from "clsx";
 import { Icon } from "./Icon";
+import folioMark from "../assets/folio-mark.svg";
 
 /** Drag-and-drop zone wrapping a hidden file input; the whole label is the
  * drop target and opens the picker on tap (handoff "Upload"). */
@@ -23,18 +24,19 @@ export function UploadDropzone({ onFiles }: { onFiles: (files: File[]) => void }
       onDragLeave={() => setDragging(false)}
       onDrop={drop}
       className={clsx(
-        "flex cursor-pointer flex-col items-center gap-2.5 rounded-lg border-2 border-dashed bg-surface px-5 py-8 text-center",
-        "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-progress",
-        dragging ? "border-progress" : "border-control-border",
+        "flex cursor-pointer flex-col items-center gap-3.5 rounded-2xl border-2 border-dashed bg-fg/[0.02] px-6 py-12 text-center",
+        "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent",
+        dragging ? "border-accent" : "border-control-border",
       )}
     >
-      <Icon name="upload" size={32} className="text-fg-2" />
-      <span className="text-md font-semibold">Drop EPUB, PDF or Kindle files here</span>
-      <span className="inline-flex h-9 items-center rounded-md bg-primary-gradient px-3.5 text-base font-semibold">
-        Choose files
+      <img src={folioMark} alt="" width={56} height={56} aria-hidden />
+      <span className="font-display text-xl">Drop books here</span>
+      <span className="text-md text-fg-2">
+        EPUB, PDF, MOBI, AZW or AZW3 · up to 200 MB each · no DRM or KFX
       </span>
-      <span className="text-xs text-fg-2">
-        Up to 200 MB each · .epub, .pdf, .mobi, .azw, .azw3 · DRM-protected and KFX files aren’t supported
+      <span className="tap inline-flex h-11 items-center gap-2 rounded-full bg-fg px-[18px] text-md font-bold text-on-fg">
+        <Icon name="Upload" size={20} />
+        Choose files
       </span>
       <input
         type="file"
