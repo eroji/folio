@@ -20,10 +20,14 @@ test("the narrator voice override persists across a reload", async ({ page }) =>
   await expect(row).toContainText(/Ready|already in your library/i, { timeout: 90_000 });
   await row.getByRole("link").first().click();
 
-  // The book page opens the voice picker from the narrator icon button.
-  const voiceButton = page.getByRole("button", { name: /Narrator voice/ });
-  await voiceButton.click();
-  const option = page.getByRole("menuitemradio", { name: /Ashley/ }).first();
+  // Direction D: the book page's narrator is set only from the ⋮ menu.
+  const openNarrator = async () => {
+    await page.getByRole("button", { name: "More options for this book" }).click();
+    await page.getByRole("menuitem", { name: "Narrator voice…" }).click();
+  };
+  const dialog = page.getByRole("dialog", { name: "Narrator voice" });
+  await openNarrator();
+  const option = dialog.getByRole("button", { name: "Ashley", exact: true });
   await expect(option).toBeVisible();
   const patched = page.waitForResponse(
     (response) =>
@@ -33,16 +37,18 @@ test("the narrator voice override persists across a reload", async ({ page }) =>
   );
   await option.click();
   await patched;
-  await page.getByRole("button", { name: /Narrator voice/ }).click();
-  await expect(
-    page.getByRole("menuitemradio", { name: /Ashley/ }).first(),
-  ).toHaveAttribute("aria-checked", "true");
+  await openNarrator();
+  await expect(dialog.getByRole("button", { name: "Ashley", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
   await page.reload();
-  await page.getByRole("button", { name: /Narrator voice/ }).click();
-  await expect(
-    page.getByRole("menuitemradio", { name: /Ashley/ }).first(),
-  ).toHaveAttribute("aria-checked", "true");
+  await openNarrator();
+  await expect(dialog.getByRole("button", { name: "Ashley", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
   // The primary action starts the shared player (the bar at the bottom).
   await expect(page.getByRole("button", { name: /Play|Resume/ })).toBeVisible();

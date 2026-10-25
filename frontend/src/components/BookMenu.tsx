@@ -2,22 +2,27 @@ import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "reac
 import clsx from "clsx";
 import { Icon } from "./Icon";
 
-/** ⋯ book menu (handoff "Book page" item 3), visible to every listener:
- * Mark as finished / Mark as unfinished and Reset progress. The menu sizes to
- * its content; rows are 30 px with a mouse and 34 px on touch.
- * variant "inline": 36 px bordered trigger next to the primary action
- * (desktop); variant "header": borderless trigger for the phone header slot. */
+/** ⋮ book menu (Direction D "Book page" item 6), visible to every listener:
+ * Mark as finished/unfinished, Reset progress, Narrator voice… (the only
+ * place a book's narrator is chosen) and Go to author. Raised fill, 12px
+ * radius, 40px rows. variant "inline": 44px outlined pill trigger next to the
+ * primary action (desktop); variant "header": borderless 44px trigger for the
+ * phone header. Keyboard: arrows open/cycle, Escape closes and refocuses. */
 export function BookMenu({
   finished,
   pending,
   onToggleFinished,
   onReset,
+  onNarrator,
+  onGoToAuthor,
   variant = "inline",
 }: {
   finished: boolean;
   pending: boolean;
   onToggleFinished: (finished: boolean) => void;
   onReset: () => void;
+  onNarrator: () => void;
+  onGoToAuthor: () => void;
   variant?: "inline" | "header";
 }) {
   const [open, setOpen] = useState(false);
@@ -29,8 +34,6 @@ export function BookMenu({
     if (restoreFocus) triggerRef.current?.focus();
   }
 
-  // Same menu-button keyboard pattern as AccountMenu: arrows open/cycle,
-  // Escape closes and returns focus to the trigger.
   function onKeyDown(event: ReactKeyboardEvent) {
     if (event.key === "Escape") {
       if (open) {
@@ -62,22 +65,21 @@ export function BookMenu({
   }
 
   return (
-    <div className="relative" onKeyDown={onKeyDown}>
+    <div className="relative shrink-0" onKeyDown={onKeyDown}>
       <button
         ref={triggerRef}
         type="button"
         aria-label="More options for this book"
+        title="More options for this book"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={clsx(
-          "tap grid place-items-center rounded-md text-fg",
-          variant === "header"
-            ? "size-11 hover:bg-raised"
-            : "size-9 border border-control-border bg-surface hover:bg-raised",
+          "tap grid size-11 place-items-center rounded-full text-fg",
+          variant === "header" ? "hover:bg-raised" : "border border-border hover:bg-raised",
         )}
       >
-        <Icon name="more_horiz" size={variant === "header" ? 22 : 20} />
+        <Icon name="EllipsisVertical" size={22} />
       </button>
       {open && (
         <>
@@ -93,8 +95,8 @@ export function BookMenu({
             role="menu"
             aria-label="Book options"
             className={clsx(
-              "absolute z-40 w-max rounded-lg border border-divider bg-surface p-1 shadow-(--shadow-menu)",
-              variant === "header" ? "top-full right-0" : "top-10 left-0",
+              "absolute z-40 w-max rounded-lg border border-border bg-raised p-2 shadow-(--shadow-menu)",
+              variant === "header" ? "top-full right-0" : "top-12 left-0",
             )}
           >
             <button
@@ -107,7 +109,7 @@ export function BookMenu({
               }}
               className={menuItem}
             >
-              <Icon name="task_alt" size={18} />
+              <Icon name="CircleCheck" size={20} />
               {finished ? "Mark as unfinished" : "Mark as finished"}
             </button>
             <button
@@ -119,8 +121,32 @@ export function BookMenu({
               }}
               className={menuItem}
             >
-              <Icon name="restart_alt" size={18} />
+              <Icon name="RotateCcw" size={20} />
               Reset progress
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                close(false);
+                onNarrator();
+              }}
+              className={menuItem}
+            >
+              <Icon name="Speech" size={20} />
+              Narrator voice…
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                close(false);
+                onGoToAuthor();
+              }}
+              className={menuItem}
+            >
+              <Icon name="User" size={20} />
+              Go to author
             </button>
           </div>
         </>
@@ -130,4 +156,4 @@ export function BookMenu({
 }
 
 const menuItem =
-  "tap flex min-h-[34px] items-center gap-2 rounded-md pr-3 pl-2 text-left text-base whitespace-nowrap hover:bg-raised disabled:opacity-50 desktop:min-h-[30px]";
+  "tap flex min-h-10 w-full items-center gap-3.5 rounded-sm px-4 text-left text-md whitespace-nowrap text-fg hover:bg-border/60 disabled:opacity-50";

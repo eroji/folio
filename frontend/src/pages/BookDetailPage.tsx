@@ -1,15 +1,14 @@
-/** Phase 4 book page (handoff "Book page"): hero with cover progress badge,
- * one gradient primary action (Play / Resume / Playing now), the ⋯ listener
- * menu with undo toast, and Chapters / About / Manage tabs. Playback itself
- * lives in the Now Playing surfaces; this page only drives the shared player
- * state. Breakpoint-dependent fragments (meta line, chapter row cells, the
- * ⋯ trigger) render one variant at a time via `useIsDesktop` so the DOM and
- * the accessibility tree match the visible layout. */
+/** Direction D book page (handoff "Book page"): two columns — a ≤340px cover
+ * column (cover with accent progress bar, title, author link, meta, clamped
+ * description, progress line, white primary pill + outlined ⋮) and pill tabs
+ * on the right (Chapters / About / Manage). Under 768px it becomes one
+ * centered column with a back + ⋮ header. The ⋮ menu is the only place a
+ * book's narrator is chosen. Playback drives the shared player state only. */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { useBook, useDeleteBook, useReprocessBook, useSetChapterExcluded } from "../api/books";
+import { languageName, useBook, useDeleteBook, useReprocessBook, useSetChapterExcluded } from "../api/books";
 import { api } from "../api/client";
 import { useMetadataCandidates, useUpdateBook } from "../api/metadata";
 import { fetchSegments } from "../api/audio";
@@ -22,35 +21,25 @@ import {
   useBookProgress,
 } from "../api/progress";
 import { useListeningSettings } from "../api/settings";
+import { voiceLabel } from "../api/voices";
 import { useAuth } from "../auth/AuthProvider";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { BookCover } from "../components/BookCard";
 import { BookMenu } from "../components/BookMenu";
+import { ChapterRow } from "../components/ChapterRow";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { CoverEditor } from "../components/CoverEditor";
 import { CoverProgressBadge } from "../components/CoverProgressBadge";
 import { EmptyState } from "../components/EmptyState";
 import { FindMetadata } from "../components/FindMetadata";
 import { Icon } from "../components/Icon";
+import { NarratorVoiceDialog } from "../components/NarratorVoiceDialog";
 import { PronunciationRules } from "../components/PronunciationRules";
 import { StatusBadge } from "../components/StatusBadge";
-import { VoiceMenu } from "../components/VoiceMenu";
+import { Switch } from "../components/Switch";
 import { formatTime } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import type { Candidate, Chapter } from "../api/types";
-
-const DESKTOP_QUERY = "(min-width: 1050px)"; // the `desktop:` breakpoint in tokens.css
-
-function useIsDesktop(): boolean {
-  const [is, setIs] = useState(
-    () => typeof window.matchMedia === "function" && window.matchMedia(DESKTOP_QUERY).matches,
-  );
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const mql = window.matchMedia(DESKTOP_QUERY);
-    const onChange = () => setIs(mql.matches);
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
-  return is;
-}
 
 /** "4 h 12 m" / "36 m" for meta and time-left lines. */
 function formatLength(seconds: number): string {
@@ -62,20 +51,8 @@ function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(iso));
 }
 
-function languageName(code: string): string {
-  try {
-    return new Intl.DisplayNames(["en"], { type: "language" }).of(code.split("-")[0]!) ?? code;
-  } catch {
-    return code;
-  }
-}
-
 const TABS = ["Chapters", "About", "Manage"] as const;
 type Tab = (typeof TABS)[number];
-
-/** Safety net for the "Preparing…" state: cleared earlier when playback
- * starts or the player errors, but never left spinning forever. */
-const PREPARE_TIMEOUT_MS = 30_000;
 
 /** roving-tabindex tablist: arrows / Home / End move selection and focus. */
 function TabList({ tabs, active, onSelect }: { tabs: readonly Tab[]; active: Tab; onSelect: (tab: Tab) => void }) {
@@ -94,7 +71,7 @@ function TabList({ tabs, active, onSelect }: { tabs: readonly Tab[]; active: Tab
     refs.current.get(name)?.focus();
   }
   return (
-    <div role="tablist" aria-label="Book sections" className="flex gap-5 border-b border-divider">
+    <div role="tablist" aria-label="Book sections" className="flex flex-wrap gap-2">
       {tabs.map((tab, index) => (
         <button
           key={tab}
@@ -111,8 +88,8 @@ function TabList({ tabs, active, onSelect }: { tabs: readonly Tab[]; active: Tab
           onClick={() => onSelect(tab)}
           onKeyDown={(event) => onKeyDown(event, index)}
           className={clsx(
-            "tap border-b-2 text-base",
-            active === tab ? "border-fg font-semibold text-fg" : "border-transparent font-medium text-fg-2",
+            "tap h-[34px] rounded-full px-3.5 text-base",
+            active === tab ? "bg-fg font-bold text-on-fg" : "bg-raised font-medium text-fg hover:bg-border",
           )}
         >
           {tab}
@@ -122,70 +99,64 @@ function TabList({ tabs, active, onSelect }: { tabs: readonly Tab[]; active: Tab
   );
 }
 
-function ConfirmDialog({
-  title,
-  description,
-  confirmLabel,
-  danger,
-  busy,
-  onCancel,
-  onConfirm,
-}: {
-  title: string;
-  description: string;
-  confirmLabel: string;
-  danger?: boolean;
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
+function CoverDialog({ book, onClose }: { book: Parameters<typeof CoverEditor>[0]["book"]; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center p-4">
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-hidden
-        className="absolute inset-0 cursor-default bg-fg/50"
-        onClick={onCancel}
-      />
-      <div role="dialog" aria-modal="true" aria-label={title} className="relative w-full max-w-sm rounded-lg border border-divider bg-surface p-4">
-        <p className="font-display font-semibold">{title}</p>
-        <p className="mt-1 text-sm text-fg-2">{description}</p>
-        <div className="mt-4 flex gap-2">
-          <button type="button" onClick={onCancel} className="tap min-h-11 flex-1 rounded-md border border-control-border bg-surface px-4 text-base font-medium">
-            Cancel
-          </button>
+    <div
+      className="fixed inset-0 z-40 grid place-items-center p-4"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
+      <button type="button" tabIndex={-1} aria-hidden className="absolute inset-0 cursor-default bg-fg/50" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Change cover"
+        className="relative max-h-full w-full max-w-lg overflow-y-auto rounded-lg border border-border bg-surface p-4 shadow-(--shadow-menu)"
+      >
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="font-display text-xl">Change cover</h2>
           <button
             type="button"
-            disabled={busy}
-            onClick={onConfirm}
-            className={clsx(
-              "tap min-h-11 flex-1 rounded-md px-4 text-base font-semibold disabled:opacity-50",
-              danger ? "border border-danger text-danger" : "bg-primary-gradient text-on-primary",
-            )}
+            aria-label="Close"
+            onClick={onClose}
+            className="tap grid size-11 place-items-center rounded-full text-fg-2 hover:bg-raised"
           >
-            {confirmLabel}
+            <Icon name="X" size={20} />
           </button>
         </div>
+        <CoverEditor book={book} />
       </div>
     </div>
   );
 }
 
-function ManageCard({ title, aside, children }: { title: string; aside?: string; children: ReactNode }) {
+/** Settings-style Manage row: title + explanation left, controls right. */
+function ManageRow({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-divider bg-surface p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-md font-semibold">{title}</h2>
-        {aside && <span className="text-xs tabular text-fg-2">{aside}</span>}
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border py-4 first:border-t-0 first:pt-0">
+      <div className="flex min-w-0 basis-[260px] flex-1 flex-col gap-1">
+        <span className="text-lg font-bold">{title}</span>
+        <span className="text-base leading-[1.45] text-fg-2">{description}</span>
       </div>
-      {children}
-    </section>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    </div>
   );
 }
 
-const outlineButton =
-  "tap inline-flex h-9 items-center gap-1.5 rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50";
+const outlinePill =
+  "tap inline-flex h-10 items-center gap-2 rounded-full border border-border bg-transparent px-4 text-base font-semibold text-fg no-underline hover:bg-raised disabled:opacity-50";
 
 const STATUS_LABELS: Record<string, string> = {
   uploading: "Uploading",
@@ -201,7 +172,8 @@ export function BookDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const player = usePlayer();
-  const desktop = useIsDesktop();
+  // Mobile-first: without matchMedia (old browsers, jsdom) render the phone layout.
+  const phone = !useMediaQuery("(min-width: 768px)", false);
   const { data, isPending, error } = useBook(id);
   const progressQuery = useBookProgress(id);
   const { settings } = useListeningSettings();
@@ -217,6 +189,9 @@ export function BookDetailPage() {
   const [showAllChapters, setShowAllChapters] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [coverOpen, setCoverOpen] = useState(false);
+  const [narratorOpen, setNarratorOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [toast, setToast] = useState<{ message: string; undo?: boolean } | null>(null);
 
   useEffect(() => {
@@ -225,7 +200,7 @@ export function BookDetailPage() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // Clear the "Preparing…" pending flag once the requested chapter is really
+  // Clear the "Preparing…" state once the requested chapter is really
   // playing, once the player reports an error, or after the safety timeout.
   useEffect(() => {
     if (!pendingChapterId) return;
@@ -233,7 +208,7 @@ export function BookDetailPage() {
       setPendingChapterId(null);
       return;
     }
-    const timer = window.setTimeout(() => setPendingChapterId(null), PREPARE_TIMEOUT_MS);
+    const timer = window.setTimeout(() => setPendingChapterId(null), 30_000);
     return () => window.clearTimeout(timer);
   }, [pendingChapterId, player.error, player.playing, player.chapter]);
 
@@ -285,7 +260,7 @@ export function BookDetailPage() {
         title="Book not found"
         description={error.message}
         action={
-          <Link to="/" className="text-sm font-medium text-accent-fg underline">
+          <Link to="/library" className="text-base font-semibold text-fg underline">
             Back to library
           </Link>
         }
@@ -296,12 +271,16 @@ export function BookDetailPage() {
   if (isPending || !data) {
     return (
       <div className="animate-pulse" aria-busy="true">
-        <div className="flex gap-4">
-          <div className="h-24 w-16 rounded-cover bg-raised desktop:h-[180px] desktop:w-[120px]" />
-          <div className="flex-1 space-y-3">
-            <div className="h-8 w-2/3 rounded bg-raised" />
+        <div className="flex flex-wrap items-start gap-12 pt-2">
+          <div className="flex min-w-[260px] basis-[340px] flex-col gap-5">
+            <div className="aspect-[2/3] w-full max-w-[300px] rounded-lg bg-raised" />
+            <div className="h-9 w-2/3 rounded bg-raised" />
             <div className="h-4 w-1/2 rounded bg-raised" />
-            <div className="h-24 rounded-lg bg-raised" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-2 pt-10">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="h-12 rounded-lg bg-raised" />
+            ))}
           </div>
         </div>
       </div>
@@ -327,9 +306,13 @@ export function BookDetailPage() {
   const chapterSeconds = (chapter: Chapter) => chapter.char_count * secondsPerChar;
   const length = book.est_duration_s ? formatLength(book.est_duration_s) : null;
   const series = book.series ? `${book.series}${book.series_index != null ? ` #${book.series_index}` : ""}` : null;
+  const author = book.authors[0] ?? "";
+  const authorHref = `/search?q=${encodeURIComponent(author)}`;
   const progressChapter = progress ? data.chapters.find((chapter) => chapter.id === progress.chapter_id) ?? null : null;
   const currentIndex = loadedHere ? player.chapters.findIndex((chapter) => chapter.id === player.chapter?.id) : -1;
   const currentId = loadedHere ? player.chapter?.id ?? null : progressChapter?.id ?? null;
+  const resumeChapter = loadedHere ? player.chapter : progressChapter;
+  const resumeNumber = resumeChapter ? included.findIndex((chapter) => chapter.id === resumeChapter.id) + 1 : 0;
 
   /** "played" is approximate: chapters before the progress (or live player)
    * chapter count as played; a finished book is all played (DECISIONS).
@@ -345,8 +328,10 @@ export function BookDetailPage() {
   }
 
   function chapterPercent(chapter: Chapter): number | null {
-    if (loadedHere && chapter.id === player.chapter?.id) {
-      return player.chapterTotal > 0 ? Math.round((player.chapterElapsed / player.chapterTotal) * 100) : null;
+    // Live position when the player knows the chapter's audio duration;
+    // otherwise the character-based position from the saved progress row.
+    if (loadedHere && chapter.id === player.chapter?.id && player.chapterTotal > 0) {
+      return Math.round((player.chapterElapsed / player.chapterTotal) * 100);
     }
     if (!progress || chapter.id !== progressChapter?.id || chapter.char_count === 0) return null;
     const before = included.filter((other) => other.idx < chapter.idx).reduce((sum, other) => sum + other.char_count, 0);
@@ -369,121 +354,344 @@ export function BookDetailPage() {
   }
 
   async function restartFromStart(chapterId: string) {
-    if (player.book?.id === id) await player.goToChapter(chapterId);
-    else await player.load(id, chapterId);
+    if (player.book?.id !== id) await player.load(id, chapterId);
+    // load() resumes the saved position, which for a finished book is the
+    // last chapter: jump to the requested chapter, then rewind to 0.
+    await player.goToChapter(chapterId);
     player.seekChapter(0);
     await player.play();
   }
 
-  /** "Playing now" focuses the panel (desktop) or expands the sheet (phone). */
-  function focusPlayerSurface() {
-    if (!desktop) {
-      navigate(`/player?book=${id}`);
+  function primaryAction() {
+    if (playingHere) {
+      player.pause();
       return;
     }
-    const panel = document.querySelector<HTMLElement>('aside[aria-label="Now playing"]');
-    if (panel && !panel.matches("[inert]")) {
-      panel.querySelector<HTMLButtonElement>("button")?.focus();
+    if (finished) {
+      if (firstChapter) void restartFromStart(firstChapter.id);
       return;
     }
-    document.querySelector<HTMLElement>('section[aria-label="Now playing"] button')?.focus();
+    void playFrom(resumeChapter?.id ?? progress?.chapter_id ?? firstChapter?.id);
   }
 
   const preparingHere = !playingHere && (player.preparing || pendingChapterId !== null);
   const actionLabel = notPlayable
     ? "Play"
     : playingHere
-      ? "Playing now"
+      ? "Pause"
       : preparingHere
         ? "Preparing…"
-        : progress || loadedHere
-          ? "Resume"
-          : "Play";
+        : finished
+          ? "Play again"
+          : progress || loadedHere
+            ? resumeNumber > 0
+              ? `Resume Chapter ${resumeNumber}`
+              : "Resume"
+            : "Play";
   const coverLabel = finished
     ? `${book.title}, finished`
     : percent != null
       ? `${book.title}, ${percent}% listened`
       : book.title;
-  const metaLine = desktop
-    ? [languageName(book.language), length, `${included.length} chapters`, voice && `narrated by ${voice}`]
-    : [length, `${included.length} chapters`];
-  const progressLine = finished
-    ? "Finished"
-    : desktop
-      ? `${percent}% · ${formatLength((book.est_duration_s ?? 0) * (1 - (progress?.percent ?? 0) / 100))} left`
-      : `Ch. ${(progressChapter?.idx ?? 0) + 1} · ${percent}%`;
+  const metaDesktop = ["Book", languageName(book.language), length, `${included.length} chapters`].filter(Boolean).join(" · ");
+  const metaPhone = [
+    length,
+    `${included.length} chapters`,
+    finished ? "finished" : percent != null ? `${percent}% listened` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-  const chapterRowCells = (chapter: Chapter, number: number) => {
-    const state = chapterState(chapter);
-    const current = state === "current";
-    const pending = chapter.id === pendingChapterId;
-    const seconds = chapterSeconds(chapter);
-    const lengthText = desktop ? formatTime(seconds) : `${Math.max(1, Math.round(seconds / 60))} m`;
-    const rowPercent = current ? chapterPercent(chapter) : null;
-    return (
-      <>
-        <span className={clsx("tabular text-sm", current ? "font-semibold text-on-selected" : "text-fg-2")}>
-          {number}
-        </span>
-        <span className={clsx("min-w-0 truncate", current ? "font-semibold text-fg" : state === "played" ? "text-fg-2" : "text-fg")}>
-          {chapter.title}
-        </span>
-        <span
-          className={clsx(
-            "truncate text-right tabular text-xs desktop:text-sm",
-            pending ? "block" : state ? "hidden desktop:block" : "",
-            current ? "text-fg" : "text-fg-2",
-          )}
-        >
-          {pending ? (
-            <>
-              <Icon name="progress_activity" size={desktop ? 16 : 18} className="animate-spin" />
-              <span className="sr-only">Preparing</span>
-            </>
-          ) : (
-            lengthText
-          )}
-        </span>
-        <span className={clsx("items-center justify-end", state ? "flex" : "hidden desktop:flex")}>
-          {state === "played" && (
-            <>
-              <Icon name="check" size={desktop ? 18 : 20} className="text-fg-2" />
-              <span className="sr-only">Played</span>
-            </>
-          )}
-          {!pending && current && desktop && rowPercent != null && (
-            <span className="text-sm tabular text-on-selected">{rowPercent}%</span>
-          )}
-          {current && !desktop && playingHere && <span className="text-xs text-on-selected">Playing</span>}
-        </span>
-      </>
+  const primaryButton = (fullWidth: boolean) => (
+    <button
+      type="button"
+      disabled={notPlayable}
+      onClick={primaryAction}
+      className={clsx(
+        "tap inline-flex h-12 items-center justify-center gap-2 rounded-full bg-fg px-[18px] text-lg font-bold text-on-fg disabled:opacity-50",
+        fullWidth ? "w-full" : "whitespace-nowrap",
+      )}
+    >
+      {preparingHere ? (
+        <Icon name="progress_activity" size={20} className="animate-spin" />
+      ) : (
+        <Icon name={playingHere ? "Pause" : "Play"} size={20} />
+      )}
+      {actionLabel}
+    </button>
+  );
+
+  const bookMenu = (variant: "inline" | "header") => (
+    <BookMenu
+      variant={variant}
+      finished={finished}
+      pending={toggleFinished.isPending}
+      onToggleFinished={(value) => toggleFinished.mutate(value)}
+      onReset={() => setResetOpen(true)}
+      onNarrator={() => setNarratorOpen(true)}
+      onGoToAuthor={() => void navigate(authorHref)}
+    />
+  );
+
+  const cover = (width: string) => (
+    <span
+      role="img"
+      aria-label={coverLabel}
+      className={clsx("relative block aspect-[2/3] shrink-0 overflow-hidden rounded-lg shadow-(--shadow-cover)", width)}
+    >
+      <BookCover book={book} className="absolute inset-0 h-full w-full" />
+      <CoverProgressBadge percent={finished ? null : percent} finished={finished} />
+    </span>
+  );
+
+  const chapterList =
+    included.length === 0 ? (
+      <p className="py-4 text-md text-fg-2">
+        {data.chapters.length === 0
+          ? "No chapters yet. Processing will build them."
+          : "No chapters are set to narrate. Include chapters under Manage."}
+      </p>
+    ) : (
+      <ol className="flex flex-col gap-0.5">
+        {/* Excluded chapters have no row here at all — they are only
+            listed under Manage, where they are re-enabled. Included
+            ones are numbered 1..N in playback order. */}
+        {included.map((chapter, index) => (
+          <li key={chapter.id}>
+            <ChapterRow
+              chapter={chapter}
+              number={index + 1}
+              state={chapterState(chapter)}
+              percent={chapterPercent(chapter)}
+              seconds={chapterSeconds(chapter)}
+              onPlay={() => void playFrom(chapter.id)}
+            />
+          </li>
+        ))}
+      </ol>
     );
-  };
 
-  return (
-    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-5">
-      {!desktop && (
-        <div className="fixed top-[calc(env(safe-area-inset-top)+0.125rem)] right-2 z-30">
-          <BookMenu
-            finished={finished}
-            pending={toggleFinished.isPending}
-            onToggleFinished={(value) => toggleFinished.mutate(value)}
-            onReset={() => setResetOpen(true)}
-            variant="header"
-          />
+  const aboutPanel = (
+    <div className="flex max-w-[640px] flex-col gap-5 pt-2" lang={book.language}>
+      {book.description && <p className="text-md whitespace-pre-line leading-[1.55] text-fg">{book.description}</p>}
+      <dl className="grid grid-cols-[140px_minmax(0,1fr)] gap-x-4 gap-y-2.5">
+        {book.authors.length > 0 && (
+          <>
+            <dt className="text-md text-fg-2">Author</dt>
+            <dd className="text-md">
+              {book.authors.map((name, index) => (
+                <span key={name}>
+                  {index > 0 && ", "}
+                  <Link to={`/search?q=${encodeURIComponent(name)}`} className="font-semibold text-fg hover:underline">
+                    {name}
+                  </Link>
+                </span>
+              ))}
+            </dd>
+          </>
+        )}
+        {series && (
+          <>
+            <dt className="text-md text-fg-2">Series</dt>
+            <dd className="text-md">{series}</dd>
+          </>
+        )}
+        {book.genre && (
+          <>
+            <dt className="text-md text-fg-2">Genre</dt>
+            <dd className="text-md">{book.genre}</dd>
+          </>
+        )}
+        {book.publisher && (
+          <>
+            <dt className="text-md text-fg-2">Publisher</dt>
+            <dd className="text-md">{book.publisher}</dd>
+          </>
+        )}
+        {book.published_date && (
+          <>
+            <dt className="text-md text-fg-2">Published</dt>
+            <dd className="text-md">
+              {/* A bare year stays as written; a real date/timestamp is formatted. */}
+              {/^\d{4}-\d{2}/.test(book.published_date) && !Number.isNaN(Date.parse(book.published_date))
+                ? formatDate(book.published_date)
+                : book.published_date}
+            </dd>
+          </>
+        )}
+        <dt className="text-md text-fg-2">Language</dt>
+        <dd className="text-md">{languageName(book.language)}</dd>
+        {(length || data.chapters.length > 0) && (
+          <>
+            <dt className="text-md text-fg-2">Length</dt>
+            <dd className="text-md">{[length && `About ${length}`, `${included.length} chapters`].filter(Boolean).join(" · ")}</dd>
+          </>
+        )}
+        {voice && (
+          <>
+            <dt className="text-md text-fg-2">Narrator</dt>
+            <dd className="text-md">{voiceLabel({ id: voice, language: book.language, description: null, available: true })}</dd>
+          </>
+        )}
+        {(book.isbn13 ?? book.isbn10) && (
+          <>
+            <dt className="text-md text-fg-2">ISBN</dt>
+            <dd className="text-md">{book.isbn13 ?? book.isbn10}</dd>
+          </>
+        )}
+        <dt className="text-md text-fg-2">Added</dt>
+        <dd className="text-md">{formatDate(book.created_at)}</dd>
+      </dl>
+      {book.tags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {book.tags.map((tag) => (
+            <Link
+              key={tag}
+              to={`/search?q=${encodeURIComponent(tag)}`}
+              className="tap inline-flex h-[34px] items-center rounded-full bg-raised px-3.5 text-base text-fg no-underline hover:bg-border"
+            >
+              {tag}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const managePanel = (
+    <div className="flex max-w-[680px] flex-col pt-2">
+      <ManageRow
+        title="Details"
+        description="Title, author, description and other metadata. Fields you edited by hand are protected from automatic updates."
+      >
+        <Link to={`/books/${id}/edit`} className={outlinePill}>
+          <Icon name="Pencil" size={18} />
+          Edit details
+        </Link>
+        <button
+          type="button"
+          aria-expanded={findOpen}
+          onClick={() => {
+            setReviewItems(null);
+            setFindOpen((open) => !open);
+          }}
+          className={outlinePill}
+        >
+          <Icon name="Globe" size={18} />
+          Find metadata
+        </button>
+      </ManageRow>
+      {findOpen && (
+        <div className="border-t border-border py-4">
+          <FindMetadata book={book} initialItems={reviewItems ?? undefined} />
         </div>
       )}
 
-      <Link
-        to="/"
-        className={clsx("items-center gap-1 self-start text-sm text-fg-2 hover:text-fg", desktop ? "inline-flex min-h-8" : "hidden")}
-      >
-        <Icon name="chevron_left" size={20} /> Library
-      </Link>
+      <ManageRow title="Cover" description="Upload an image or paste a link, then crop to 2:3.">
+        <span className="relative block aspect-[2/3] w-11 shrink-0 overflow-hidden rounded-xs bg-raised">
+          <BookCover book={book} className="absolute inset-0 h-full w-full" />
+        </span>
+        <button type="button" onClick={() => setCoverOpen(true)} className={outlinePill}>
+          <Icon name="Image" size={18} />
+          Change cover
+        </button>
+      </ManageRow>
 
+      <section className="flex flex-col gap-1.5 border-t border-border py-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-lg font-bold">Chapters to narrate</span>
+          <span className="text-sm tabular text-fg-2">{included.length} of {data.chapters.length} on</span>
+        </div>
+        <p className="pb-1 text-base text-fg-2">Turn off front matter you don’t want read aloud.</p>
+        {/* Manage lists every chapter, excluded ones included, so it keeps
+            the original source numbering (chapter.idx + 1). */}
+        {(showAllChapters ? data.chapters : data.chapters.slice(0, 4)).map((chapter) => (
+          <div key={chapter.id} className="flex min-h-11 items-center justify-between gap-3">
+            <span className={clsx("min-w-0 flex-1 truncate text-md", chapter.excluded ? "text-fg-2" : "text-fg")}>
+              {chapter.idx + 1} · {chapter.title}
+            </span>
+            <span className="flex shrink-0 items-center gap-3.5">
+              <span className="text-sm tabular text-fg-2">{formatTime(chapterSeconds(chapter))}</span>
+              <Switch
+                label={`Narrate ${chapter.title}`}
+                checked={!chapter.excluded}
+                onChange={() => toggleChapter(chapter)}
+              />
+            </span>
+          </div>
+        ))}
+        {setChapter.isError && (
+          <p role="alert" className="text-sm text-danger">
+            {setChapter.error.message}
+          </p>
+        )}
+        {data.chapters.length > 4 && (
+          <button
+            type="button"
+            onClick={() => setShowAllChapters((value) => !value)}
+            className="tap self-start py-1.5 text-base font-semibold text-fg hover:underline"
+          >
+            {showAllChapters ? "Show less" : `Show all ${data.chapters.length}`}
+          </button>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2 border-t border-border py-4">
+        <span className="text-lg font-bold">Pronunciation</span>
+        <p className="text-base text-fg-2">How the narrator says names and words in this book.</p>
+        <PronunciationRules bookId={id} />
+      </section>
+
+      <ManageRow
+        title="Processing"
+        description={`${STATUS_LABELS[book.status] ?? book.status} · ${data.chapters.length} chapters. Reprocessing rebuilds chapters and clears generated audio; everyone’s progress is kept.`}
+      >
+        <button
+          type="button"
+          disabled={reprocess.isPending}
+          onClick={() =>
+            reprocess.mutate(undefined, {
+              onSuccess: () => queryClient.invalidateQueries({ queryKey: ["book", id] }),
+            })
+          }
+          className={outlinePill}
+        >
+          <Icon name="RefreshCw" size={18} className={reprocess.isPending ? "animate-spin" : undefined} />
+          Reprocess
+        </button>
+      </ManageRow>
+      {reprocess.isError && (
+        <p role="alert" className="border-t border-border py-2 text-sm text-danger">
+          {reprocess.error.message}
+        </p>
+      )}
+
+      <ManageRow title="Delete book" description="Removes the book, its audio and every listener’s progress. This can’t be undone.">
+        <button
+          type="button"
+          onClick={() => setDeleteOpen(true)}
+          className="tap inline-flex h-10 items-center gap-2 rounded-full border border-danger bg-transparent px-4 text-base font-bold text-danger hover:bg-raised"
+        >
+          <Icon name="Trash2" size={18} />
+          Delete book
+        </button>
+      </ManageRow>
+    </div>
+  );
+
+  const tabPanel = (
+    <div role="tabpanel" id="book-panel" aria-labelledby={`book-tab-${tab}`} tabIndex={-1}>
+      {tab === "Chapters" && chapterList}
+      {tab === "About" && aboutPanel}
+      {tab === "Manage" && canManage && managePanel}
+    </div>
+  );
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-5">
       {saved.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-divider bg-surface px-3 py-2">
-          <p className="text-sm text-fg-2">Online matches were found but not applied automatically.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+          <p className="text-md text-fg-2">Online matches were found but not applied automatically.</p>
           <button
             type="button"
             onClick={() => {
@@ -491,7 +699,7 @@ export function BookDetailPage() {
               setFindOpen(true);
               setTab("Manage");
             }}
-            className={outlineButton}
+            className={outlinePill}
           >
             Review metadata matches
           </button>
@@ -499,325 +707,97 @@ export function BookDetailPage() {
       )}
 
       {book.status === "failed" && book.error && (
-        <p role="alert" className="rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger">
+        <p role="alert" className="rounded-lg border border-danger bg-surface px-3 py-2 text-md text-danger">
           {book.error}
         </p>
       )}
 
-      <section className={clsx("flex flex-col gap-3", !desktop && "rounded-lg border border-divider bg-surface p-3")}>
-        <div className="flex items-end gap-3 desktop:gap-5">
-          <span
-            role="img"
-            aria-label={coverLabel}
-            className={clsx(
-              "relative shrink-0 overflow-hidden rounded-cover shadow-(--shadow-cover)",
-              desktop ? "h-[180px] w-[120px]" : "h-24 w-16",
-            )}
-          >
-            <BookCover book={book} className="h-full w-full" />
-            <CoverProgressBadge percent={percent} finished={finished} />
-          </span>
-          <div className="flex min-w-0 flex-col gap-1" lang={book.language}>
-            <h1 className={clsx("font-display font-bold tracking-[-0.01em]", desktop ? "text-xl leading-[1.2]" : "text-lg leading-[1.25]")}>
-              {book.title}
-            </h1>
-            <p className={clsx("min-w-0 truncate text-fg-2", desktop ? "text-md" : "text-sm")}>{book.authors.join(", ")}</p>
-            <p className={clsx("text-fg-2", desktop ? "text-sm" : "text-xs")}>{metaLine.filter(Boolean).join(" · ")}</p>
-            {book.status !== "ready" && (
-              <div className="pt-1">
-                <StatusBadge status={book.status} />
-              </div>
-            )}
-          </div>
+      {book.status !== "ready" && (
+        <div>
+          <StatusBadge status={book.status} />
         </div>
-        <div className="flex flex-col-reverse gap-3 desktop:flex-col">
-          <div className="flex items-center gap-2">
+      )}
+
+      {phone ? (
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-between">
             <button
               type="button"
-              disabled={notPlayable}
-              onClick={playingHere ? focusPlayerSurface : () => void playFrom(progress?.chapter_id ?? firstChapter?.id)}
-              className={clsx(
-                "tap inline-flex items-center justify-center gap-2 rounded-md font-semibold disabled:opacity-50",
-                desktop ? "h-9 px-3.5 text-base" : "h-11 flex-1 px-4 text-[16px] font-bold",
-                playingHere ? "bg-selected text-on-selected" : "bg-primary-gradient text-on-primary",
-              )}
+              aria-label="Back"
+              title="Back"
+              onClick={() => navigate(-1)}
+              className="tap grid size-11 place-items-center rounded-full text-fg hover:bg-raised"
             >
-              {preparingHere ? (
-                <Icon name="progress_activity" size={desktop ? 20 : 22} className="animate-spin" />
-              ) : (
-                <Icon name={playingHere ? "headphones" : "play_arrow"} size={desktop ? 20 : 22} />
-              )}
-              {actionLabel}
+              <Icon name="ArrowLeft" size={22} />
             </button>
-            <VoiceMenu
-              value={voice}
-              language={book.language}
-              error={update.isError ? update.error.message : null}
-              desktop={desktop}
-              onChange={(next) => update.mutate({ narrator_voice: next })}
-            />
-            {desktop && (
-              <BookMenu
-                finished={finished}
-                pending={toggleFinished.isPending}
-                onToggleFinished={(value) => toggleFinished.mutate(value)}
-                onReset={() => setResetOpen(true)}
-              />
-            )}
+            {bookMenu("header")}
           </div>
-          {progress != null && (
-            <div className="flex items-center gap-2.5 text-xs tabular text-fg-2">
-              <div className={clsx("h-1 rounded-xs bg-track", desktop ? "max-w-[320px] flex-1" : "flex-1")}>
-                <div className="h-full rounded-xs bg-progress" style={{ width: `${Math.min(100, Math.max(0, percent ?? 0))}%` }} />
-              </div>
-              <span className="whitespace-nowrap">{progressLine}</span>
+          <div className="flex flex-col items-center gap-4 text-center">
+            {cover("w-[180px]")}
+            <div className="flex flex-col gap-1.5" lang={book.language}>
+              <h1 className="font-display text-xl">{book.title}</h1>
+              <Link to={authorHref} className="text-md font-semibold text-fg no-underline hover:underline">
+                {book.authors.join(", ")}
+              </Link>
+              <p className="text-sm text-fg-2">{metaPhone}</p>
             </div>
-          )}
+          </div>
+          {primaryButton(true)}
+          <div className="flex flex-col gap-4">
+            <TabList tabs={tabs} active={tab} onSelect={setTab} />
+            {tabPanel}
+          </div>
         </div>
-      </section>
-
-      <div className="flex flex-col gap-3">
-        <TabList tabs={tabs} active={tab} onSelect={setTab} />
-        <div role="tabpanel" id="book-panel" aria-labelledby={`book-tab-${tab}`} tabIndex={-1}>
-          {tab === "Chapters" &&
-            (included.length === 0 ? (
-              <p className="py-4 text-sm text-fg-2">
-                {data.chapters.length === 0
-                  ? "No chapters yet. Processing will build them."
-                  : "No chapters are set to narrate. Include chapters under Manage."}
-              </p>
-            ) : (
-              <ol className="flex flex-col gap-0.5 pt-2">
-                {/* Excluded chapters have no row here at all — they are only
-                    listed under Manage, where they are re-enabled. Included
-                    ones are numbered 1..N in playback order. */}
-                {included.map((chapter, index) => {
-                  const state = chapterState(chapter);
-                  const rowClass = clsx(
-                    "tap grid w-full items-center gap-2.5 rounded-md px-2.5 text-left text-base",
-                    desktop
-                      ? "min-h-9 grid-cols-[32px_minmax(0,1fr)_4rem_3rem]"
-                      : "min-h-11 grid-cols-[20px_minmax(0,1fr)_auto]",
-                  );
-                  return (
-                    <li key={chapter.id}>
-                      <button
-                        type="button"
-                        onClick={() => void playFrom(chapter.id)}
-                        aria-current={state === "current" ? "true" : undefined}
-                        className={clsx(rowClass, state === "current" && desktop && "border border-divider bg-surface")}
-                      >
-                        {chapterRowCells(chapter, index + 1)}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            ))}
-
-          {tab === "About" && (
-            <div className="flex max-w-[640px] flex-col gap-5 pt-4" lang={book.language}>
-              {book.description && (
-                <div className="font-reading text-[16px] whitespace-pre-line leading-[1.6] text-reading">{book.description}</div>
-              )}
-              <dl className="grid grid-cols-[140px_minmax(0,1fr)] gap-x-4 gap-y-2.5">
-                {book.authors.length > 0 && (
-                  <>
-                    <dt className="text-sm text-fg-2">Author</dt>
-                    <dd className="text-base">
-                      {book.authors.map((author, index) => (
-                        <span key={author}>
-                          {index > 0 && ", "}
-                          <Link to={`/search?q=${encodeURIComponent(author)}`} className="text-accent-fg hover:text-fg">
-                            {author}
-                          </Link>
-                        </span>
-                      ))}
-                    </dd>
-                  </>
-                )}
-                {series && (
-                  <>
-                    <dt className="text-sm text-fg-2">Series</dt>
-                    <dd className="text-base">{series}</dd>
-                  </>
-                )}
-                {book.publisher && (
-                  <>
-                    <dt className="text-sm text-fg-2">Publisher</dt>
-                    <dd className="text-base">{book.publisher}</dd>
-                  </>
-                )}
-                {book.published_date && (
-                  <>
-                    <dt className="text-sm text-fg-2">Published</dt>
-                    <dd className="text-base">
-                      {/* A bare year stays as written; a real date/timestamp is formatted. */}
-                      {/^\d{4}-\d{2}/.test(book.published_date) && !Number.isNaN(Date.parse(book.published_date))
-                        ? formatDate(book.published_date)
-                        : book.published_date}
-                    </dd>
-                  </>
-                )}
-                <dt className="text-sm text-fg-2">Language</dt>
-                <dd className="text-base">{languageName(book.language)}</dd>
-                {(length || data.chapters.length > 0) && (
-                  <>
-                    <dt className="text-sm text-fg-2">Length</dt>
-                    <dd className="text-base">{[length && `About ${length}`, `${included.length} chapters`].filter(Boolean).join(" · ")}</dd>
-                  </>
-                )}
-                {voice && (
-                  <>
-                    <dt className="text-sm text-fg-2">Narrator</dt>
-                    <dd className="text-base">{voice}</dd>
-                  </>
-                )}
-                {(book.isbn13 ?? book.isbn10) && (
-                  <>
-                    <dt className="text-sm text-fg-2">ISBN</dt>
-                    <dd className="text-base">{book.isbn13 ?? book.isbn10}</dd>
-                  </>
-                )}
-                <dt className="text-sm text-fg-2">Added</dt>
-                <dd className="text-base">{formatDate(book.created_at)}</dd>
-              </dl>
-              {book.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {book.tags.map((tag) => (
-                    <Link
-                      key={tag}
-                      to={`/search?q=${encodeURIComponent(tag)}`}
-                      className="inline-flex h-7 items-center rounded-md bg-raised px-2.5 text-sm text-fg hover:bg-divider"
-                    >
-                      {tag}
-                    </Link>
-                  ))}
-                </div>
-              )}
+      ) : (
+        <div className="flex flex-wrap items-start gap-12 pt-2">
+          <div className="flex min-w-[260px] shrink grow-0 basis-[340px] flex-col gap-5">
+            {cover("w-full max-w-[300px]")}
+            <div className="flex flex-col gap-2" lang={book.language}>
+              <h1 className="font-display text-3xl">{book.title}</h1>
+              <Link to={authorHref} className="text-[17px] font-semibold text-fg no-underline hover:underline">
+                {book.authors.join(", ")}
+              </Link>
+              <p className="text-base text-fg-2">{metaDesktop}</p>
             </div>
-          )}
-
-          {tab === "Manage" && canManage && (
-            <div className="flex max-w-[680px] flex-col gap-3 pt-4">
-              <ManageCard title="Details">
-                <p className="text-sm text-fg-2">Fields you edited by hand are protected from automatic updates.</p>
-                <div className="flex flex-wrap gap-2">
-                  <Link to={`/books/${id}/edit`} className={outlineButton}>
-                    Edit details
-                  </Link>
-                  <button
-                    type="button"
-                    aria-expanded={findOpen}
-                    onClick={() => {
-                      setReviewItems(null);
-                      setFindOpen((open) => !open);
-                    }}
-                    className={outlineButton}
-                  >
-                    Find metadata
-                  </button>
-                </div>
-                {findOpen && <FindMetadata book={book} initialItems={reviewItems ?? undefined} />}
-              </ManageCard>
-
-              <ManageCard title="Chapters to narrate" aside={`${included.length} of ${data.chapters.length} included`}>
-                <p className="text-sm text-fg-2">Skip front and back matter you don’t want read aloud.</p>
-                <div className="flex flex-col">
-                  {/* Manage lists every chapter, excluded ones included, so it
-                      keeps the original source numbering (chapter.idx + 1). */}
-                  {(showAllChapters ? data.chapters : data.chapters.slice(0, 15)).map((chapter) => (
-                    <label key={chapter.id} className="tap flex items-center gap-2.5 text-base">
-                      <input
-                        type="checkbox"
-                        checked={!chapter.excluded}
-                        onChange={() => toggleChapter(chapter)}
-                        className="size-4 shrink-0 accent-progress"
-                      />
-                      <span className={clsx("min-w-0 flex-1 truncate", chapter.excluded ? "text-fg-2" : "text-fg")}>
-                        {chapter.idx + 1} · {chapter.title}
-                      </span>
-                      <span className="text-xs tabular text-fg-2">{formatTime(chapterSeconds(chapter))}</span>
-                    </label>
-                  ))}
-                </div>
-                {setChapter.isError && (
-                  <p role="alert" className="text-sm text-danger">
-                    {setChapter.error.message}
-                  </p>
-                )}
-                {data.chapters.length > 15 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllChapters((value) => !value)}
-                    className="self-start py-1.5 text-sm text-accent-fg hover:text-fg"
-                  >
-                    {showAllChapters ? "Show less" : `Show all ${data.chapters.length}`}
-                  </button>
-                )}
-              </ManageCard>
-
-              <ManageCard title="Pronunciation">
-                <p className="text-sm text-fg-2">Tell the narrator how to say names and words in this book.</p>
-                <PronunciationRules bookId={id} />
-              </ManageCard>
-
-              <ManageCard title="Processing">
-                <p className="flex items-center gap-2 text-base">
-                  {book.status === "ready" && <Icon name="check" size={18} className="text-success" />}
-                  {book.status === "failed" && <Icon name="error" size={18} className="text-danger" />}
-                  <span>
-                    {[STATUS_LABELS[book.status] ?? book.status, `${data.chapters.length} chapters`, `processed ${formatDate(book.updated_at)}`]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                </p>
-                <p className="text-sm text-fg-2">
-                  Reprocessing rebuilds chapters from the original file and clears this book’s generated audio. Everyone’s
-                  progress is kept.
-                </p>
-                <div>
-                  <button
-                    type="button"
-                    disabled={reprocess.isPending}
-                    onClick={() =>
-                      reprocess.mutate(undefined, {
-                        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["book", id] }),
-                      })
-                    }
-                    className={outlineButton}
-                  >
-                    Reprocess book
-                  </button>
-                </div>
-                {reprocess.isError && (
-                  <p role="alert" className="text-sm text-danger">
-                    {reprocess.error.message}
-                  </p>
-                )}
-              </ManageCard>
-
-              <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-danger p-4">
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <h2 className="text-md font-semibold">Delete book</h2>
-                  <p className="text-sm text-fg-2">Removes the book, its generated audio and every listener’s progress. This can’t be undone.</p>
-                </div>
+            {book.description && (
+              <p className={clsx("text-md leading-[1.55] text-fg-2", !expanded && "line-clamp-3")}>
+                <span className="whitespace-pre-line">{book.description}</span>{" "}
                 <button
                   type="button"
-                  onClick={() => setDeleteOpen(true)}
-                  className="tap inline-flex h-9 items-center rounded-md border border-danger px-3 text-base font-semibold text-danger hover:bg-raised"
+                  onClick={() => setExpanded((value) => !value)}
+                  className="font-semibold text-fg hover:underline"
                 >
-                  Delete book
+                  {expanded ? "Less" : "More"}
                 </button>
-              </section>
+              </p>
+            )}
+            {progress != null && (
+              <div className="flex flex-col gap-2">
+                <div aria-hidden className="h-1 rounded-full bg-border">
+                  <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, percent ?? 0)}%` }} />
+                </div>
+                <span className="text-sm tabular text-fg-2">
+                  {finished
+                    ? "Finished"
+                    : `${percent}% · ${formatLength((book.est_duration_s ?? 0) * (1 - (progress.percent ?? 0) / 100))} left`}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2.5">
+              {primaryButton(false)}
+              {bookMenu("inline")}
             </div>
-          )}
+          </div>
+          <div className="flex min-w-0 flex-[999_1_420px] flex-col gap-5">
+            <TabList tabs={tabs} active={tab} onSelect={setTab} />
+            {tabPanel}
+          </div>
         </div>
-      </div>
+      )}
 
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-30 flex justify-center px-4 desktop:bottom-8">
         {toast && (
-          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-divider bg-surface px-3 py-2 text-sm shadow-(--shadow-menu)">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-raised px-3 py-2 text-sm shadow-(--shadow-menu)">
             <span>{toast.message}</span>
             {toast.undo && (
               <button
@@ -826,7 +806,7 @@ export function BookDetailPage() {
                   setToast(null);
                   toggleFinished.mutate(false);
                 }}
-                className="font-semibold text-accent-fg"
+                className="font-bold text-fg"
               >
                 Undo
               </button>
@@ -837,7 +817,7 @@ export function BookDetailPage() {
 
       {resetOpen && (
         <ConfirmDialog
-          title="Reset listening progress"
+          title={`Reset your progress in ${book.title}?`}
           description="This cannot be undone."
           confirmLabel="Reset"
           busy={reset.isPending}
@@ -866,10 +846,20 @@ export function BookDetailPage() {
             remove.mutate(undefined, {
               onSuccess: () => {
                 queryClient.invalidateQueries({ queryKey: ["books"] });
-                navigate("/");
+                navigate("/library");
               },
             })
           }
+        />
+      )}
+      {coverOpen && <CoverDialog book={book} onClose={() => setCoverOpen(false)} />}
+      {narratorOpen && (
+        <NarratorVoiceDialog
+          value={book.narrator_voice}
+          language={book.language}
+          error={update.isError ? update.error.message : null}
+          onClose={() => setNarratorOpen(false)}
+          onSelect={(next) => update.mutate({ narrator_voice: next })}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import clsx from "clsx";
 import { useUploadCover, useSetCoverUrl } from "../api/metadata";
 import { Icon } from "./Icon";
 import type { Book } from "../api/types";
@@ -42,13 +43,14 @@ function cropToWebp(img: HTMLImageElement, zoom: number, pan: Pan): Promise<Blob
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/webp", 0.9));
 }
 
-const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
+const inputClass = "tap h-10 min-w-0 flex-1 rounded-full border border-border bg-raised px-4 text-md";
 const buttonClass =
-  "tap inline-flex h-9 items-center rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50";
+  "tap inline-flex h-10 items-center rounded-full border border-border bg-transparent px-4 text-base font-semibold text-fg hover:bg-raised disabled:opacity-50";
 const primaryButtonClass =
-  "tap inline-flex h-9 items-center rounded-md bg-primary-gradient px-4 text-base font-semibold text-on-primary disabled:opacity-50";
+  "tap inline-flex h-10 items-center rounded-full bg-fg px-4 text-base font-bold text-on-fg disabled:opacity-50";
 
-/** Screen 5 cover section: upload, paste URL, and a 2:3 canvas crop. */
+/** Change-cover dialog body (handoff "Manage → Cover"): upload, paste URL,
+ * and a 2:3 canvas crop. The dialog chrome (title, close) is the caller's. */
 export function CoverEditor({ book, className }: { book: Book; className?: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
@@ -113,13 +115,12 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
   const error = fileError ?? upload.error?.message ?? fromUrl.error?.message ?? null;
 
   return (
-    <div className={className}>
-      <h2 className="mb-2 text-md font-semibold">Cover</h2>
+    <div className={clsx("flex flex-col gap-3", className)}>
       <div className="flex flex-wrap items-start gap-4">
         {book.cover_url ? (
-          <img src={book.cover_url} alt="" className="aspect-[2/3] w-32 rounded-cover bg-raised object-cover" />
+          <img src={book.cover_url} alt="" className="aspect-[2/3] w-32 rounded-md bg-raised object-cover" />
         ) : (
-          <div className="grid aspect-[2/3] w-32 place-items-center rounded-cover border border-divider bg-raised text-sm text-fg-2">
+          <div className="grid aspect-[2/3] w-32 place-items-center rounded-md border border-border bg-raised text-sm text-fg-2">
             No cover
           </div>
         )}
@@ -165,7 +166,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
             width={VW}
             height={VH}
             aria-label="Crop area. Drag to move the image."
-            className="aspect-[2/3] w-60 touch-none rounded-cover bg-raised"
+            className="aspect-[2/3] w-60 touch-none rounded-md bg-raised"
             onPointerDown={(event) => {
               event.currentTarget.setPointerCapture(event.pointerId);
               drag.current = { x: event.clientX, y: event.clientY, pan };
@@ -228,7 +229,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
 
       {cropped && (
         <div className="mt-4 flex flex-wrap items-end gap-4">
-          <img src={cropped.url} alt="Cropped cover preview" className="aspect-[2/3] w-32 rounded-cover bg-raised object-cover" />
+          <img src={cropped.url} alt="Cropped cover preview" className="aspect-[2/3] w-32 rounded-md bg-raised object-cover" />
           <div className="flex gap-2">
             <button
               type="button"
@@ -267,7 +268,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
       )}
       {fromUrl.isSuccess && (
         <p role="status" className="mt-3 text-sm text-fg-2">
-          Cover updated from URL. <Link to={`/books/${book.id}`} className="text-accent-fg underline">View book</Link>
+          Cover updated from URL. <Link to={`/books/${book.id}`} className="text-fg underline">View book</Link>
         </p>
       )}
     </div>

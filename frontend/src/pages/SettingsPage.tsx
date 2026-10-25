@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import clsx from "clsx";
 import { useListeningSettings, useUpdateSettings } from "../api/settings";
 import {
   groupVoicesByLanguage,
@@ -10,6 +9,7 @@ import {
   type Voice,
 } from "../api/voices";
 import { Icon } from "../components/Icon";
+import { Switch } from "../components/Switch";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5] as const;
 const LANGUAGES = [
@@ -112,43 +112,6 @@ function SkipField({
         </p>
       )}
     </div>
-  );
-}
-
-/** 40×24 switch, progress color when on; 44 px touch area via `.tap`. */
-function Switch({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className="tap grid place-items-center rounded-md"
-    >
-      <span
-        aria-hidden
-        className={clsx(
-          "relative block h-6 w-10 rounded-cover transition-colors",
-          checked ? "bg-progress" : "bg-control-border",
-        )}
-      >
-        <span
-          className={clsx(
-            "absolute top-[3px] left-[3px] size-[18px] rounded-sm bg-on-primary shadow-sm transition-transform",
-            checked && "translate-x-4",
-          )}
-        />
-      </span>
-    </button>
   );
 }
 
