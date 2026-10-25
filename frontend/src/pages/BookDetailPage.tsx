@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useBook, useDeleteBook, useReprocessBook } from "../api/books";
 import { useMetadataCandidates, useUpdateBook } from "../api/metadata";
+import { continueQueryKey, markFinished, progressQueryKey, resetProgress, useBookProgress } from "../api/progress";
 import { useAuth } from "../auth/AuthProvider";
 import { BookCover } from "../components/BookCard";
 import { FindMetadata } from "../components/FindMetadata";
@@ -30,6 +31,17 @@ export function BookDetailPage() {
   const reprocess = useReprocessBook(id);
   const remove = useDeleteBook(id);
   const update = useUpdateBook(id);
+  const progressQuery = useBookProgress(id);
+  function invalidateProgress() {
+    queryClient.invalidateQueries({ queryKey: ["book", id] });
+    queryClient.invalidateQueries({ queryKey: progressQueryKey(id) });
+    queryClient.invalidateQueries({ queryKey: continueQueryKey });
+  }
+  const toggleFinished = useMutation({
+    mutationFn: (value: boolean) => markFinished(id, value),
+    onSuccess: invalidateProgress,
+  });
+  const reset = useMutation({ mutationFn: () => resetProgress(id), onSuccess: invalidateProgress });
   const [findOpen, setFindOpen] = useState(false);
   const [reviewItems, setReviewItems] = useState<Candidate[] | null>(null);
   const candidates = useMetadataCandidates(id);
@@ -70,8 +82,10 @@ export function BookDetailPage() {
   const series = book.series ? `${book.series}${book.series_index != null ? ` #${book.series_index}` : ""}` : null;
   const firstChapter = chapters[0];
   const notPlayable = book.status === "needs_ocr" || book.status === "failed" || !firstChapter;
-  const playHref = firstChapter ? `/player?book=${book.id}&chapter=${firstChapter.id}` : "";
-  // TODO(M5): show "Resume" with the saved position once progress lands.
+  const progress = progressQuery.data ?? data.progress;
+  const finished = Boolean(progress?.finished_at);
+  const resumeChapterId = progress?.chapter_id ?? firstChapter?.id;
+  const playHref = resumeChapterId ? `/player?book=${book.id}&chapter=${resumeChapterId}` : "";
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
@@ -84,6 +98,9 @@ export function BookDetailPage() {
             {series && <p className="text-sm text-muted">{series}</p>}
           </div>
           <StatusBadge status={book.status} />
+          {finished && (
+            <span className="rounded-pill bg-brand-violet/15 px-3 py-1 text-xs font-medium text-brand-violet">Finished</span>
+          )}
         </div>
 
         {book.status === "failed" && book.error && (
@@ -118,8 +135,16 @@ export function BookDetailPage() {
               className="inline-flex h-12 min-w-40 items-center justify-center gap-2 rounded-pill bg-brand-gradient px-6 font-display font-semibold text-white"
             >
               <Play size={20} strokeWidth={1.75} aria-hidden />
-              Play
+              {progress ? "Resume" : "Play"}
             </Link>
+          )}
+          {progress && (
+            <div className="flex w-full min-w-40 items-center gap-2 pt-1">
+              <div aria-hidden className="h-1.5 flex-1 overflow-hidden rounded-pill bg-line">
+                <div className="h-full rounded-pill bg-brand-gradient" style={{ width: `${Math.min(100, progress.percent)}%` }} />
+              </div>
+              <span className="text-xs tabular-nums text-muted">{Math.round(progress.percent)}%</span>
+            </div>
           )}
         </div>
 
@@ -157,6 +182,28 @@ export function BookDetailPage() {
           >
             Find metadata
           </button>
+        </div>
+
+        {/* Progress actions: per-user, shown to every signed-in user. */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => toggleFinished.mutate(!finished)}
+            disabled={toggleFinished.isPending}
+            className="min-h-11 rounded-pill border border-line bg-card px-4 text-sm font-medium disabled:opacity-50"
+          >
+            {finished ? "Mark unfinished" : "Mark finished"}
+          </button>
+          {progress && (
+            <button
+              type="button"
+              onClick={() => reset.mutate()}
+              disabled={reset.isPending}
+              className="min-h-11 rounded-pill border border-line bg-card px-4 text-sm font-medium disabled:opacity-50"
+            >
+              Reset progress
+            </button>
+          )}
         </div>
 
         {saved.length > 0 && (

@@ -5,7 +5,7 @@ import { vi } from "vitest";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Book, Chapter } from "../api/types";
+import type { Book, Chapter, Progress } from "../api/types";
 import type { AudioStatus, Segment } from "../api/audio";
 import { DEFAULT_SETTINGS, type ListeningSettings } from "../api/settings";
 import { PlayerProvider, type PlayerContextValue } from "../player/PlayerProvider";
@@ -61,15 +61,23 @@ export interface PlayerFixture {
   duration_s?: number;
   /** Override the listening settings the player reads (defaults apply). */
   settings?: Partial<ListeningSettings>;
+  /** The caller's saved progress on GET /books/{id} (null until set). */
+  progress?: Progress | null;
 }
 
 export interface InstalledFetch {
   prepareCalls: { segment_id: string; count: number; voice?: string }[];
+  /** Every PUT /progress body received, in order. */
+  saveCalls: Record<string, unknown>[];
+  /** Every PUT /progress/finished body received, in order. */
+  finishedCalls: { finished: boolean }[];
+  /** When true, progress PUTs answer 500 (the player must stay silent). */
+  saveFails: boolean;
 }
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -85,12 +93,36 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
   };
   const all = Object.values(byChapter).flat();
   const prepareCalls: InstalledFetch["prepareCalls"] = [];
+  const saveCalls: InstalledFetch["saveCalls"] = [];
+  const finishedCalls: InstalledFetch["finishedCalls"] = [];
+  const installed: InstalledFetch = { prepareCalls, saveCalls, finishedCalls, saveFails: false };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/me/settings")) {
         return jsonResponse({ settings: { ...DEFAULT_SETTINGS, ...fixture.settings } });
+      }
+      if (url.match(/\/progress\/finished$/) && init?.method === "PUT") {
+        finishedCalls.push(JSON.parse(String(init.body)) as { finished: boolean });
+        return jsonResponse({ progress: makeProgress({}) });
+      }
+      if (url.match(/\/books\/[^/]+\/progress$/)) {
+        if (init?.method === "PUT") {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+          saveCalls.push(body);
+          if (installed.saveFails) return jsonResponse({ error: { code: "nope", message: "nope" } }, 500);
+          return jsonResponse({
+            progress: makeProgress({
+              chapter_id: String(body.chapter_id),
+              segment_id: String(body.segment_id),
+              offset_s: Number(body.offset_s),
+              device_label: String(body.device_label),
+            }),
+            ahead_of_other_device: false,
+          });
+        }
+        return jsonResponse({ progress: fixture.progress ?? null });
       }
       if (url.includes("/audio/prepare")) {
         const body = JSON.parse(String(init?.body)) as { segment_id: string; count: number; voice?: string };
@@ -109,11 +141,25 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
       }
       const segments = url.match(/\/books\/[^/]+\/chapters\/([^/]+)\/segments$/);
       if (segments) return jsonResponse({ items: byChapter[segments[1]!] ?? [] });
-      if (url.match(/\/books\/[^/]+$/)) return jsonResponse({ book: makeBook(), chapters, progress: null });
+      if (url.match(/\/books\/[^/]+$/)) return jsonResponse({ book: makeBook(), chapters, progress: fixture.progress ?? null });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
-  return { prepareCalls };
+  return installed;
+}
+
+/** A saved progress row for fixtures; defaults sit in chapter one, segment 1. */
+export function makeProgress(overrides: Partial<Progress>): Progress {
+  return {
+    chapter_id: CH1,
+    segment_id: `${CH1}-seg1`,
+    offset_s: 7,
+    percent: 50,
+    device_label: "Linux a1b2",
+    updated_at: "2026-01-02T00:00:00Z",
+    finished_at: null,
+    ...overrides,
+  };
 }
 
 /** Stub play/pause and record which elements played. Call before rendering. */

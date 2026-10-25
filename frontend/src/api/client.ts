@@ -2,7 +2,7 @@
  * folio_csrf cookie on mutating requests; unwraps the {"error":{code,message}}
  * envelope into a thrown ApiError whose `message` is safe to show. */
 
-const API_BASE = "/api/v1";
+export const API_BASE = "/api/v1";
 
 export class ApiError extends Error {
   constructor(
