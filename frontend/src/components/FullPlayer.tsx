@@ -1,23 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
-import {
-  Check,
-  ChevronsLeft,
-  ChevronsRight,
-  FastForward,
-  Gauge,
-  Mic,
-  Moon,
-  Pause,
-  Play,
-  RotateCcw,
-  Type,
-  X,
-} from "lucide-react";
 import { SPEED_MAX, SPEED_MIN, formatTime, type SleepChoice } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
+import { Icon } from "./Icon";
 import { ReadAlong } from "./ReadAlong";
 import { ResumePrompt } from "./ResumePrompt";
 
@@ -37,9 +24,21 @@ function sleepLabel(choice: SleepChoice): string {
 }
 
 const secondaryButton =
-  "flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-pill px-2 text-xs font-medium text-muted hover:text-ink";
+  "tap inline-flex min-h-9 flex-col items-center justify-center gap-0.5 rounded-md px-2 text-xs font-medium text-fg-2 hover:bg-raised";
 const skipButton =
-  "flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-pill border border-line bg-card text-ink";
+  "tap grid size-11 shrink-0 place-items-center rounded-md border border-control-border bg-surface text-fg hover:bg-raised";
+const chapterButton =
+  "tap grid size-9 shrink-0 place-items-center rounded-md border border-control-border bg-surface text-fg hover:bg-raised disabled:opacity-40";
+
+/** `replay` with the interval drawn inside; mirrored for forward. */
+function SkipGlyph({ seconds, forward }: { seconds: number; forward?: boolean }) {
+  return (
+    <span aria-hidden className="relative inline-flex size-5 items-center justify-center">
+      <Icon name="replay" size={20} className={forward ? "-scale-x-100" : undefined} />
+      <span className="absolute inset-0 grid place-items-center pt-px text-[8px] font-bold leading-none">{seconds}</span>
+    </span>
+  );
+}
 
 /** Screen 6: full-screen player; on phones the read-along is the content and
  * the cover/controls collapse into a compact sticky header. */
@@ -87,17 +86,20 @@ export function FullPlayer({
   if (!player.book) {
     if (bookId) {
       return (
-        <div className="fixed inset-0 z-30 animate-pulse bg-page p-8" aria-busy="true">
-          <div className="mx-auto mt-16 aspect-[2/3] w-44 rounded-card bg-card" />
+        <div className="fixed inset-0 z-30 animate-pulse bg-bg p-8" aria-busy="true">
+          <div className="mx-auto mt-16 aspect-[2/3] w-44 rounded-lg bg-raised" />
         </div>
       );
     }
     return (
-      <div className="fixed inset-0 z-30 grid place-items-center bg-page p-6 text-center">
+      <div className="fixed inset-0 z-30 grid place-items-center bg-bg p-6 text-center">
         <div>
           <p className="font-display text-lg font-semibold">Nothing to play</p>
-          <p className="mt-1 text-sm text-muted">Pick a book from the library to start listening.</p>
-          <Link to="/" className="mt-4 inline-flex min-h-11 items-center rounded-pill bg-brand-gradient px-5 font-medium text-white">
+          <p className="mt-1 text-sm text-fg-2">Pick a book from the library to start listening.</p>
+          <Link
+            to="/"
+            className="tap mt-4 inline-flex h-9 items-center rounded-md bg-primary-gradient px-4 text-base font-semibold text-on-primary"
+          >
             Back to library
           </Link>
         </div>
@@ -114,18 +116,18 @@ export function FullPlayer({
   const cycleSpeed = () => player.setRate(player.rate >= SPEED_MAX ? SPEED_MIN : player.rate + 0.25);
 
   return (
-    <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-page">
+    <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-bg">
       <div className="mx-auto flex h-full w-full max-w-md flex-col px-6 pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-2xl lg:max-w-3xl lg:px-10">
         {/* Header + controls never scroll: only the page panel below does, so
             the reader can never slide over the chapter select or scrubber. */}
-        <div className="flex-none -mx-6 bg-page px-6 pb-2 pt-safe">
+        <div className="flex-none -mx-6 bg-bg px-6 pb-2 pt-safe">
           <button
             type="button"
             aria-label="Close player"
             onClick={onExit ?? (() => navigate(`/books/${book.id}`))}
-            className="grid h-11 w-11 place-items-center self-start rounded-pill text-muted hover:text-ink"
+            className="tap grid size-9 place-items-center self-start rounded-md text-fg-2 hover:bg-raised"
           >
-            <X size={22} strokeWidth={1.75} aria-hidden />
+            <Icon name="close" size={22} />
           </button>
 
           <div
@@ -135,13 +137,13 @@ export function FullPlayer({
             )}
           >
             {!readAlong && (
-              <div aria-hidden className="absolute -inset-6 rounded-full bg-brand-gradient opacity-30 blur-2xl" />
+              <div aria-hidden className="absolute -inset-6 rounded-full bg-cover-placeholder opacity-30 blur-2xl" />
             )}
-            <BookCover book={book} className="relative aspect-[2/3] w-full rounded-card shadow-lg" />
+            <BookCover book={book} className="relative aspect-[2/3] w-full rounded-cover shadow-lg" />
           </div>
 
-          <h1 className="text-center font-display text-2xl font-semibold">{player.chapter?.title}</h1>
-          <p className="mt-0.5 truncate text-center text-sm text-muted">
+          <h1 className="text-center font-display text-lg font-semibold">{player.chapter?.title}</h1>
+          <p className="mt-0.5 truncate text-center text-sm text-fg-2">
             {book.title}
             {book.authors[0] ? ` · ${book.authors[0]}` : ""}
           </p>
@@ -152,9 +154,9 @@ export function FullPlayer({
               aria-label="Previous chapter"
               disabled={chapterIdx <= 0}
               onClick={() => void player.stepChapter(-1)}
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-pill border border-line bg-card text-ink disabled:opacity-40"
+              className={chapterButton}
             >
-              <ChevronsLeft size={20} strokeWidth={1.75} aria-hidden />
+              <Icon name="skip_previous" size={20} />
             </button>
             <select
               aria-label="Chapter"
@@ -165,7 +167,7 @@ export function FullPlayer({
                   void player.goToChapter(chapterId).then(() => void player.play());
                 }
               }}
-              className="h-11 min-w-0 flex-1 rounded-card border border-line bg-card px-3 text-sm"
+              className="tap h-9 min-w-0 flex-1 rounded-md border border-control-border bg-surface px-3 text-base"
             >
               {player.chapters.map((chapter) => (
                 <option key={chapter.id} value={chapter.id}>
@@ -178,9 +180,9 @@ export function FullPlayer({
               aria-label="Next chapter"
               disabled={chapterIdx >= player.chapters.length - 1}
               onClick={() => void player.stepChapter(1)}
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-pill border border-line bg-card text-ink disabled:opacity-40"
+              className={chapterButton}
             >
-              <ChevronsRight size={20} strokeWidth={1.75} aria-hidden />
+              <Icon name="skip_next" size={20} />
             </button>
           </div>
 
@@ -192,7 +194,7 @@ export function FullPlayer({
 
           <div aria-live="polite" className="min-h-8 pt-2 text-center">
             {player.preparing && (
-              <p role="status" className="text-sm text-muted">
+              <p role="status" className="text-sm text-fg-2">
                 Preparing audio…
               </p>
             )}
@@ -215,9 +217,9 @@ export function FullPlayer({
               step={0.1}
               value={elapsed}
               onChange={(event) => player.seekChapter(Number(event.target.value))}
-              className="w-full accent-brand-blue"
+              className="w-full accent-progress"
             />
-            <div className="flex justify-between text-xs tabular-nums text-muted">
+            <div className="flex justify-between text-xs tabular text-fg-2">
               <span data-testid="player-elapsed">{formatTime(elapsed)}</span>
               <span>-{formatTime(remaining)}</span>
             </div>
@@ -230,18 +232,15 @@ export function FullPlayer({
               onClick={player.skipBack}
               className={skipButton}
             >
-              <RotateCcw size={20} strokeWidth={1.75} aria-hidden />
-              <span aria-hidden className="text-[10px] font-medium tabular-nums">
-                {player.settings.skip_back}
-              </span>
+              <SkipGlyph seconds={player.settings.skip_back} />
             </button>
             <button
               type="button"
               aria-label={player.playing ? "Pause" : "Play"}
               onClick={player.toggle}
-              className="grid h-16 w-16 place-items-center rounded-pill bg-brand-gradient text-white"
+              className="tap grid size-12 place-items-center rounded-full bg-primary-gradient text-on-primary"
             >
-              {player.playing ? <Pause size={28} strokeWidth={1.75} aria-hidden /> : <Play size={28} strokeWidth={1.75} aria-hidden />}
+              <Icon name={player.playing ? "pause" : "play_arrow"} size={26} />
             </button>
             <button
               type="button"
@@ -249,10 +248,7 @@ export function FullPlayer({
               onClick={player.skipForward}
               className={skipButton}
             >
-              <FastForward size={20} strokeWidth={1.75} aria-hidden />
-              <span aria-hidden className="text-[10px] font-medium tabular-nums">
-                {player.settings.skip_forward}
-              </span>
+              <SkipGlyph seconds={player.settings.skip_forward} forward />
             </button>
           </div>
 
@@ -263,7 +259,7 @@ export function FullPlayer({
               onClick={cycleSpeed}
               className={secondaryButton}
             >
-              <Gauge size={20} strokeWidth={1.75} aria-hidden />
+              <Icon name="speed" size={20} />
               <span>{player.rate}×</span>
             </button>
             <div className="relative">
@@ -274,7 +270,7 @@ export function FullPlayer({
                 onClick={() => setSleepOpen((open) => !open)}
                 className={secondaryButton}
               >
-                <Moon size={20} strokeWidth={1.75} aria-hidden />
+                <Icon name="bedtime" size={20} />
                 <span>{sleepLabel(player.sleep)}</span>
               </button>
               {sleepOpen && (
@@ -289,9 +285,9 @@ export function FullPlayer({
                   <div
                     role="menu"
                     aria-label="Sleep timer"
-                    className="absolute bottom-full left-1/2 z-20 mb-2 w-60 -translate-x-1/2 rounded-card border border-line bg-card p-1 shadow-lg"
+                    className="absolute bottom-full left-1/2 z-20 mb-2 w-60 -translate-x-1/2 rounded-lg border border-divider bg-surface p-1 shadow-(--shadow-menu)"
                   >
-                    <p className="px-3 pb-1 pt-2 text-xs text-muted">Playback stops after the selected time or at the end of the chapter.</p>
+                    <p className="px-3 pb-1 pt-2 text-xs text-fg-2">Playback stops after the selected time or at the end of the chapter.</p>
                     {SLEEP_OPTIONS.map((option) => (
                       <button
                         key={String(option.value)}
@@ -302,10 +298,10 @@ export function FullPlayer({
                           player.setSleep(option.value);
                           setSleepOpen(false);
                         }}
-                        className="flex min-h-11 w-full items-center gap-2 rounded-card px-3 py-2 text-left text-sm hover:bg-page"
+                        className="tap flex min-h-9 w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm hover:bg-raised"
                       >
                         <span className="w-5 shrink-0">
-                          {player.sleep === option.value && <Check size={16} strokeWidth={1.75} aria-hidden />}
+                          {player.sleep === option.value && <Icon name="check" size={16} />}
                         </span>
                         {option.label}
                       </button>
@@ -321,7 +317,7 @@ export function FullPlayer({
               onClick={() => setReadAlong((open) => !open)}
               className={secondaryButton}
             >
-              <Type size={20} strokeWidth={1.75} aria-hidden />
+              <Icon name="toc" size={20} />
               <span>Read along</span>
             </button>
             <button
@@ -330,7 +326,7 @@ export function FullPlayer({
               onClick={onChangeVoice ?? (() => navigate(`/books/${book.id}`))}
               className={secondaryButton}
             >
-              <Mic size={20} strokeWidth={1.75} aria-hidden />
+              <Icon name="record_voice_over" size={20} />
               <span>Voice</span>
             </button>
           </div>

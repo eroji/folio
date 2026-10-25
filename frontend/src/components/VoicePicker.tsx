@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Volume2 } from "lucide-react";
 import { groupVoicesByLanguage, previewVoice, useVoices } from "../api/voices";
+import { Icon } from "./Icon";
 
 interface VoicePickerProps {
   /** Saved voice id, or null when the user has not picked one yet. */
@@ -70,7 +70,7 @@ export function VoicePicker({ value, language, onChange }: VoicePickerProps) {
         value={selected}
         onChange={(event) => onChange(event.target.value)}
         disabled={empty}
-        className="min-h-11 max-w-full rounded-card border border-line bg-card px-3 text-sm"
+        className="tap h-9 max-w-full rounded-md border border-control-border bg-surface px-3 text-base"
       >
         {empty ? (
           <option value="">No voices available for this language</option>
@@ -89,9 +89,9 @@ export function VoicePicker({ value, language, onChange }: VoicePickerProps) {
           type="button"
           onClick={preview}
           disabled={!selected}
-          className="inline-flex min-h-11 items-center gap-2 rounded-pill border border-line bg-card px-4 text-sm font-medium disabled:opacity-50"
+          className="tap inline-flex h-9 items-center gap-1.5 rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50"
         >
-          <Volume2 size={18} strokeWidth={1.75} aria-hidden />
+          <Icon name="record_voice_over" size={18} />
           Preview
         </button>
       )}

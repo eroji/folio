@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
 import { useUploadCover, useSetCoverUrl } from "../api/metadata";
+import { Icon } from "./Icon";
 import type { Book } from "../api/types";
 
 const VW = 240;
@@ -42,9 +42,11 @@ function cropToWebp(img: HTMLImageElement, zoom: number, pan: Pan): Promise<Blob
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), "image/webp", 0.9));
 }
 
-const inputClass =
-  "min-h-11 w-full rounded-card border border-line bg-page px-3 text-sm";
-const buttonClass = "min-h-11 rounded-pill border border-line bg-card px-4 text-sm font-medium disabled:opacity-50";
+const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
+const buttonClass =
+  "tap inline-flex h-9 items-center rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50";
+const primaryButtonClass =
+  "tap inline-flex h-9 items-center rounded-md bg-primary-gradient px-4 text-base font-semibold text-on-primary disabled:opacity-50";
 
 /** Screen 5 cover section: upload, paste URL, and a 2:3 canvas crop. */
 export function CoverEditor({ book, className }: { book: Book; className?: string }) {
@@ -112,23 +114,23 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
 
   return (
     <div className={className}>
-      <h2 className="mb-2 font-display text-lg font-semibold">Cover</h2>
+      <h2 className="mb-2 text-md font-semibold">Cover</h2>
       <div className="flex flex-wrap items-start gap-4">
         {book.cover_url ? (
-          <img src={book.cover_url} alt="" className="aspect-[2/3] w-32 rounded-card bg-page object-cover" />
+          <img src={book.cover_url} alt="" className="aspect-[2/3] w-32 rounded-cover bg-raised object-cover" />
         ) : (
-          <div className="grid aspect-[2/3] w-32 place-items-center rounded-card border border-line bg-page text-xs text-muted">
+          <div className="grid aspect-[2/3] w-32 place-items-center rounded-cover border border-divider bg-raised text-sm text-fg-2">
             No cover
           </div>
         )}
 
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className="flex flex-col gap-1 text-base font-medium">
             Upload image
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              className="min-h-11 text-sm font-normal"
+              className="tap min-h-9 text-base font-normal"
               onChange={(event) => {
                 pickFile(event.target.files?.[0] ?? null);
                 event.target.value = "";
@@ -163,7 +165,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
             width={VW}
             height={VH}
             aria-label="Crop area. Drag to move the image."
-            className="aspect-[2/3] w-60 touch-none rounded-card bg-page"
+            className="aspect-[2/3] w-60 touch-none rounded-cover bg-raised"
             onPointerDown={(event) => {
               event.currentTarget.setPointerCapture(event.pointerId);
               drag.current = { x: event.clientX, y: event.clientY, pan };
@@ -187,7 +189,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
             }}
           />
           <div className="flex min-w-40 flex-1 flex-col gap-3">
-            <label className="flex flex-col gap-1 text-sm font-medium">
+            <label className="flex flex-col gap-1 text-base font-medium">
               Zoom
               <input
                 type="range"
@@ -200,6 +202,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
                   setZoom(next);
                   setPan((current) => clampPan(current, img, fitScale(img) * next));
                 }}
+                className="accent-progress"
               />
             </label>
             {file && (
@@ -209,7 +212,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
             )}
             <button
               type="button"
-              className="min-h-11 rounded-pill bg-brand-gradient px-4 text-sm font-semibold text-white disabled:opacity-50"
+              className={primaryButtonClass}
               disabled={upload.isPending}
               onClick={() => {
                 void cropToWebp(img, zoom, pan).then((blob) => {
@@ -225,11 +228,11 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
 
       {cropped && (
         <div className="mt-4 flex flex-wrap items-end gap-4">
-          <img src={cropped.url} alt="Cropped cover preview" className="aspect-[2/3] w-32 rounded-card bg-page object-cover" />
+          <img src={cropped.url} alt="Cropped cover preview" className="aspect-[2/3] w-32 rounded-cover bg-raised object-cover" />
           <div className="flex gap-2">
             <button
               type="button"
-              className="min-h-11 rounded-pill bg-brand-gradient px-4 text-sm font-semibold text-white disabled:opacity-50"
+              className={primaryButtonClass}
               disabled={upload.isPending}
               onClick={() =>
                 saveBlob(cropped.blob, "cover.webp", () => {
@@ -257,14 +260,14 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
       )}
 
       {error && (
-        <p role="alert" className="mt-3 flex items-center gap-2 rounded-card border border-danger/40 bg-page px-3 py-2 text-sm text-danger">
-          <AlertTriangle size={16} strokeWidth={1.75} aria-hidden />
+        <p role="alert" className="mt-3 flex items-center gap-2 rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger">
+          <Icon name="error" size={16} />
           {error}
         </p>
       )}
       {fromUrl.isSuccess && (
-        <p role="status" className="mt-3 text-sm text-muted">
-          Cover updated from URL. <Link to={`/books/${book.id}`} className="text-brand-blue underline">View book</Link>
+        <p role="status" className="mt-3 text-sm text-fg-2">
+          Cover updated from URL. <Link to={`/books/${book.id}`} className="text-accent-fg underline">View book</Link>
         </p>
       )}
     </div>

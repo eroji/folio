@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { useBook } from "../api/books";
 import { useUpdateBook, type BookPatch } from "../api/metadata";
 import { CoverEditor } from "../components/CoverEditor";
 import { EmptyState } from "../components/EmptyState";
+import { Icon } from "../components/Icon";
 import type { Book } from "../api/types";
 
 const LANGUAGES = [
@@ -16,7 +16,9 @@ const LANGUAGES = [
 ];
 const OTHER = "__other__";
 
-const inputClass = "min-h-11 w-full rounded-card border border-line bg-page px-3 text-sm";
+const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
+const buttonClass =
+  "tap inline-flex h-9 items-center gap-1.5 rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50";
 
 export function isbn10Valid(raw: string): boolean {
   const digits = raw.replace(/[-\s]/g, "");
@@ -101,7 +103,7 @@ export function buildPatch(form: Form, book: Book): BookPatch {
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="flex flex-col gap-1 text-sm font-medium">
+    <label className="flex flex-col gap-1 text-base font-medium">
       <span>{label}</span>
       {children}
     </label>
@@ -134,10 +136,10 @@ function OrderedList({
     next.splice(target, 0, item!);
     onChange(next);
   };
-  const iconButton = "grid h-11 w-11 shrink-0 place-items-center rounded-pill border border-line bg-card disabled:opacity-40";
+  const iconButton = "tap grid size-9 shrink-0 place-items-center rounded-md border border-control-border bg-surface text-fg hover:bg-raised disabled:opacity-40";
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-base font-medium">{label}</span>
       <ul className="flex flex-col gap-2">
         {items.map((item, index) => (
           <li key={index} className="flex items-center gap-1">
@@ -148,13 +150,13 @@ function OrderedList({
               className={inputClass}
             />
             <button type="button" aria-label={`Move ${label.toLowerCase()} ${index + 1} up`} disabled={index === 0} onClick={() => move(index, -1)} className={iconButton}>
-              <ChevronUp size={18} strokeWidth={1.75} aria-hidden />
+              <Icon name="chevron_left" size={18} className="-rotate-90" />
             </button>
             <button type="button" aria-label={`Move ${label.toLowerCase()} ${index + 1} down`} disabled={index === items.length - 1} onClick={() => move(index, 1)} className={iconButton}>
-              <ChevronDown size={18} strokeWidth={1.75} aria-hidden />
+              <Icon name="chevron_left" size={18} className="rotate-90" />
             </button>
             <button type="button" aria-label={`Remove ${label.toLowerCase()} ${index + 1}`} onClick={() => onChange(items.filter((_, i) => i !== index))} className={iconButton}>
-              <X size={18} strokeWidth={1.75} aria-hidden />
+              <Icon name="close" size={18} />
             </button>
           </li>
         ))}
@@ -173,8 +175,7 @@ function OrderedList({
           }}
           className={inputClass}
         />
-        <button type="button" onClick={add} className="inline-flex min-h-11 items-center gap-1 rounded-pill border border-line bg-card px-4 text-sm font-medium">
-          <Plus size={16} strokeWidth={1.75} aria-hidden />
+        <button type="button" onClick={add} className={buttonClass}>
           Add
         </button>
       </div>
@@ -208,15 +209,15 @@ function EditForm({ book }: { book: Book }) {
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="font-display text-2xl font-semibold">Edit metadata</h1>
+        <h1 className="font-display text-xl font-bold tracking-[-0.01em]">Edit metadata</h1>
         <div className="flex gap-2">
-          <Link to={`/books/${book.id}`} className="inline-flex min-h-11 items-center rounded-pill border border-line bg-card px-4 text-sm font-medium">
+          <Link to={`/books/${book.id}`} className={buttonClass}>
             Cancel
           </Link>
           <button
             type="submit"
             disabled={invalid || Object.keys(patch).length === 0 || update.isPending}
-            className="min-h-11 rounded-pill bg-brand-gradient px-5 text-sm font-semibold text-white disabled:opacity-50"
+            className="tap inline-flex h-9 items-center rounded-md bg-primary-gradient px-4 text-base font-semibold text-on-primary disabled:opacity-50"
           >
             Save
           </button>
@@ -224,8 +225,8 @@ function EditForm({ book }: { book: Book }) {
       </div>
 
       {update.error && (
-        <p role="alert" className="flex items-center gap-2 rounded-card border border-danger/40 bg-page px-3 py-2 text-sm text-danger">
-          <AlertTriangle size={16} strokeWidth={1.75} aria-hidden />
+        <p role="alert" className="flex items-center gap-2 rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger">
+          <Icon name="error" size={16} />
           {update.error.message}
         </p>
       )}
@@ -288,10 +289,10 @@ function EditForm({ book }: { book: Book }) {
       <OrderedList label="Tags" items={form.tags} onChange={(tags) => set("tags", tags)} placeholder="Add a tag" />
 
       <Field label="Description">
-        <textarea value={form.description} rows={6} onChange={(event) => set("description", event.target.value)} className={inputClass} />
+        <textarea value={form.description} rows={6} onChange={(event) => set("description", event.target.value)} className={`${inputClass} h-auto py-2`} />
       </Field>
 
-      <CoverEditor book={book} className="rounded-card border border-line bg-card p-4" />
+      <CoverEditor book={book} className="rounded-lg border border-divider bg-surface p-4" />
     </form>
   );
 }
@@ -304,11 +305,11 @@ export function EditBookPage() {
   if (error) {
     return (
       <EmptyState
-        icon={<AlertTriangle size={28} strokeWidth={1.75} aria-hidden />}
+        icon={<Icon name="error" size={24} />}
         title="Book not found"
         description={error.message}
         action={
-          <Link to="/" className="text-sm font-medium text-brand-blue underline">
+          <Link to="/" className="text-base font-medium text-accent-fg underline">
             Back to library
           </Link>
         }
@@ -318,8 +319,8 @@ export function EditBookPage() {
   if (isPending || !data) {
     return (
       <div className="animate-pulse space-y-4" aria-busy="true">
-        <div className="h-10 w-1/2 rounded bg-card" />
-        <div className="h-64 rounded-card bg-card" />
+        <div className="h-9 w-1/2 rounded-md bg-raised" />
+        <div className="h-64 rounded-lg bg-raised" />
       </div>
     );
   }

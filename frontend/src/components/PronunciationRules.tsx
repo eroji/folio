@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
 import {
   useAddPronunciationRule,
   useDeletePronunciationRule,
@@ -7,8 +6,9 @@ import {
   useUpdatePronunciationRule,
   type PronunciationRule,
 } from "../api/pronunciation";
+import { Icon } from "./Icon";
 
-const inputClass = "min-h-11 w-full min-w-24 rounded-card border border-line bg-page px-2 text-sm";
+const inputClass = "tap h-9 w-full min-w-24 rounded-md border border-control-border bg-surface px-2 text-base";
 
 interface Draft {
   match: string;
@@ -97,7 +97,7 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
     <div className="flex flex-col gap-2">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="text-left text-xs text-muted">
+          <tr className="text-left text-xs text-fg-2">
             <th scope="col" className="px-2 py-1 font-medium">Match</th>
             <th scope="col" className="px-2 py-1 font-medium">Say</th>
             <th scope="col" className="px-2 py-1 font-medium">Whole word</th>
@@ -109,16 +109,16 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
         <tbody>
           {isPending && (
             <tr>
-              <td colSpan={6} className="px-2 py-2 text-muted">Loading rules…</td>
+              <td colSpan={6} className="px-2 py-2 text-fg-2">Loading rules…</td>
             </tr>
           )}
           {!isPending && rules.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-2 py-2 text-muted">No rules yet.</td>
+              <td colSpan={6} className="px-2 py-2 text-fg-2">No rules yet.</td>
             </tr>
           )}
           {rules.map((rule, index) => (
-            <tr key={rule.id} className="border-t border-line">
+            <tr key={rule.id} className="border-t border-divider">
               <td className="px-1 py-1">
                 <input
                   aria-label={`Match ${index + 1}`}
@@ -143,7 +143,7 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
                   aria-label={`Whole word ${index + 1}`}
                   checked={rule.whole_word}
                   onChange={(event) => toggleFlag(rule, "whole_word", event.target.checked)}
-                  className="h-5 w-5"
+                  className="size-5 accent-progress"
                 />
               </td>
               <td className="px-2 py-1 text-center">
@@ -152,7 +152,7 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
                   aria-label={`After a number ${index + 1}`}
                   checked={rule.after_number}
                   onChange={(event) => toggleFlag(rule, "after_number", event.target.checked)}
-                  className="h-5 w-5"
+                  className="size-5 accent-progress"
                 />
               </td>
               <td className="px-2 py-1 text-center">
@@ -161,7 +161,7 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
                   aria-label={`Case-sensitive ${index + 1}`}
                   checked={rule.case_sensitive}
                   onChange={(event) => toggleFlag(rule, "case_sensitive", event.target.checked)}
-                  className="h-5 w-5"
+                  className="size-5 accent-progress"
                 />
               </td>
               <td className="px-1 py-1 text-right">
@@ -169,14 +169,14 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
                   type="button"
                   aria-label={`Remove rule ${index + 1}`}
                   onClick={() => removeRule(rule)}
-                  className="grid h-11 w-11 place-items-center rounded-pill text-muted hover:text-danger"
+                  className="tap grid size-9 place-items-center rounded-md text-fg-2 hover:bg-raised hover:text-danger"
                 >
-                  <X size={18} strokeWidth={1.75} aria-hidden />
+                  <Icon name="close" size={18} />
                 </button>
               </td>
             </tr>
           ))}
-          <tr className="border-t border-line bg-card">
+          <tr className="border-t border-divider bg-raised">
             <td className="px-1 py-1">
               <input
                 aria-label="New match"
@@ -202,7 +202,7 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
                   aria-label={`New rule ${field.replace(/_/g, " ")}`}
                   checked={draft[field]}
                   onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.checked }))}
-                  className="h-5 w-5"
+                  className="size-5 accent-progress"
                 />
               </td>
             ))}
@@ -211,9 +211,8 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
                 type="button"
                 onClick={addRule}
                 disabled={add.isPending}
-                className="inline-flex min-h-11 items-center gap-1 rounded-pill border border-line bg-card px-3 text-sm font-medium disabled:opacity-50"
+                className="tap inline-flex h-9 items-center rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50"
               >
-                <Plus size={16} strokeWidth={1.75} aria-hidden />
                 Add
               </button>
             </td>
@@ -221,7 +220,7 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
         </tbody>
       </table>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {saved && !error && <p aria-live="polite" className="text-sm text-muted">Saved</p>}
+      {saved && !error && <p aria-live="polite" className="text-sm text-fg-2">Saved</p>}
     </div>
   );
 }
