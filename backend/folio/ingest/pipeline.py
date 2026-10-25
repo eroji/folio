@@ -141,7 +141,7 @@ def _store_cover(settings: Settings, book: Book, cover: bytes | None) -> None:
     if not cover:
         return
     try:
-        book.cover_key = store_cover(settings, book.id, cover)
+        book.cover_key, book.cover_rgb = store_cover(settings, book.id, cover)
     except ApiError:
         pass  # an unsupported embedded cover leaves the book cover-less, never fails ingest
 

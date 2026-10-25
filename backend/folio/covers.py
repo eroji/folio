@@ -13,7 +13,7 @@ from typing import Literal
 from uuid import UUID
 
 import httpx
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageStat, UnidentifiedImageError
 
 from folio.config import Settings
 from folio.errors import ApiError
@@ -55,8 +55,12 @@ def _crop_to_2_3(image: Image.Image) -> Image.Image:
     return image
 
 
-def store_cover(settings: Settings, book_id: UUID, data: bytes) -> str:
-    """Validate, write ``covers/<id>/original.<ext>`` + WebP variants; return sha256 hex.
+def store_cover(settings: Settings, book_id: UUID, data: bytes) -> tuple[str, str]:
+    """Validate, write ``covers/<id>/original.<ext>`` + WebP variants.
+
+    Returns ``(sha256 hex, "R G B")``: the hex is what ``books.cover_key``
+    stores (it doubles as the ETag and ``?v=`` buster); the RGB is the average
+    of the resized cover, what ``books.cover_rgb`` stores for the page glow.
 
     Raises ``ApiError("cover_invalid", ...)`` and leaves any existing cover
     files untouched; nothing is written until the bytes decode cleanly.
@@ -84,7 +88,8 @@ def store_cover(settings: Settings, book_id: UUID, data: bytes) -> str:
     for stale in directory.glob("original.*"):
         if stale != original:
             stale.unlink()
-    return key
+    means = ImageStat.Stat(variants[200]).mean  # average of the resized cover
+    return key, f"{round(means[0])} {round(means[1])} {round(means[2])}"
 
 
 def _render(cropped: Image.Image, width: int) -> Image.Image:

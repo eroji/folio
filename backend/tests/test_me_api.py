@@ -193,3 +193,25 @@ async def test_finished_orders_newest_first_and_excludes_unfinished(
     ]
     assert continue_ids == [str(ongoing.id)]
     assert str(older.id) not in continue_ids
+
+
+async def test_theme_setting_is_gone(auth_client: httpx.AsyncClient, db: Session) -> None:
+    """Direction D is dark-only: stale theme rows are ignored, never returned."""
+    user = db.scalar(select(User).where(User.username == "testuser"))
+    assert user is not None
+    user.settings = {**user.settings, "theme": "dark"}
+    db.commit()
+
+    body = (await auth_client.get("/api/v1/me/settings")).json()
+    assert "theme" not in body["settings"]
+
+    # an old client still sending theme gets a 200 and the value is not stored
+    response = await auth_client.put(
+        "/api/v1/me/settings", json={"theme": "light"}, headers=csrf(auth_client)
+    )
+    assert response.status_code == 200, response.text
+    assert "theme" not in response.json()["settings"]
+
+    db.expire_all()
+    user = db.scalar(select(User).where(User.username == "testuser"))
+    assert user is not None and "theme" not in user.settings

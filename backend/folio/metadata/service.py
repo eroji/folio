@@ -9,6 +9,7 @@ grabs a cover when the book has none.
 
 import logging
 import math
+from collections.abc import Iterable
 from dataclasses import asdict
 from typing import Any
 
@@ -16,7 +17,7 @@ import bleach  # type: ignore[import-untyped]
 import httpx
 from sqlalchemy.orm import Session
 
-from folio.config import Settings
+from folio.config import GENRES, Settings
 from folio.covers import DOWNLOAD_TIMEOUT_S, MAX_REDIRECTS, download_cover, store_cover
 from folio.errors import ApiError
 from folio.metadata import Candidate, googlebooks, openlibrary
@@ -33,7 +34,7 @@ from folio.models import Book, MetadataCandidate
 logger = logging.getLogger(__name__)
 
 # Fields auto_fetch may write; cover_url is handled separately and subtitle /
-# narrator_voice have no provider source.
+# narrator_voice have no provider source. genre is derived from subjects below.
 AUTO_FIELDS = [
     "title",
     "authors",
@@ -46,10 +47,67 @@ AUTO_FIELDS = [
     "isbn10",
     "isbn13",
     "tags",
+    "genre",
 ]
 
 #: The only fields a client may ask the apply endpoint to write.
 EDITABLE_FIELDS = frozenset([*AUTO_FIELDS, "cover_url"])
+
+#: Lowercased subject strings that map onto a GENRES entry: every genre name
+#: itself plus the Open Library / Google Books subjects we recognize.
+_GENRE_ALIASES: dict[str, str] = {g.lower(): g for g in GENRES}
+_GENRE_ALIASES.update(
+    {
+        "classic": "Classics",
+        "fiction": "Literary fiction",
+        "literary": "Literary fiction",
+        "sci-fi": "Science fiction",
+        "science fiction and fantasy": "Science fiction",
+        "fantasy fiction": "Fantasy",
+        "detective and mystery stories": "Mystery & thriller",
+        "mystery fiction": "Mystery & thriller",
+        "thrillers": "Mystery & thriller",
+        "gothic": "Gothic & horror",
+        "gothic fiction": "Gothic & horror",
+        "horror tales": "Gothic & horror",
+        "love stories": "Romance",
+        "mythology": "Myth & epic",
+        "myths": "Myth & epic",
+        "epics": "Myth & epic",
+        "epic poems": "Myth & epic",
+        "poems": "Poetry",
+        "verse": "Poetry",
+        "plays": "Drama",
+        "autobiography": "Biography & memoir",
+        "memoirs": "Biography & memoir",
+        "biography and autobiography": "Biography & memoir",
+        "non-fiction": "Nonfiction",
+        "essays": "Nonfiction",
+        "juvenile fiction": "Children's",
+        "juvenile literature": "Children's",
+        "children's fiction": "Children's",
+        "children's stories": "Children's",
+        "fiction, japanese": "Japanese literature",
+        "japanese fiction": "Japanese literature",
+    }
+)
+# Longest first so "science fiction" wins over "fiction" inside a subject.
+_ALIASES_BY_LENGTH = sorted(_GENRE_ALIASES, key=lambda alias: (-len(alias), alias))
+
+
+def genre_from_subjects(subjects: Iterable[str]) -> str | None:
+    """Map the first recognizable subject to a genre from GENRES; else None."""
+    for subject in subjects:
+        text = subject.strip().lower()
+        if not text:
+            continue
+        if text in _GENRE_ALIASES:
+            return _GENRE_ALIASES[text]
+        for alias in _ALIASES_BY_LENGTH:
+            if alias in text:
+                return _GENRE_ALIASES[alias]
+    return None
+
 
 # Column widths for provider strings we write straight to the model.
 _LIMITS = {
@@ -86,6 +144,8 @@ def _field_value(candidate: Candidate, name: str) -> object | None:
         return bleach.clean(raw, tags=[], strip=True).strip() or None
     if name in ("authors", "tags"):
         return _clean_list(getattr(candidate, name))
+    if name == "genre":
+        return genre_from_subjects(candidate.tags)
     if name == "series_index":
         return _to_float(candidate.series_index)
     if name in ("isbn10", "isbn13"):
@@ -99,7 +159,7 @@ def _field_value(candidate: Candidate, name: str) -> object | None:
 def _apply_cover(settings: Settings, book: Book, url: str, client: httpx.Client) -> bool:
     """Download and store a provider cover; False (logged) on any failure."""
     try:
-        book.cover_key = store_cover(settings, book.id, download_cover(url, client))
+        book.cover_key, book.cover_rgb = store_cover(settings, book.id, download_cover(url, client))
         return True
     except ApiError as exc:
         logger.warning("online cover for book %s failed: %s", book.id, exc.message)

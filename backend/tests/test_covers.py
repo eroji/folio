@@ -84,7 +84,7 @@ def test_detect_image_type_reads_magic_bytes_only() -> None:
 def test_store_cover_writes_original_and_both_variants(settings: Settings) -> None:
     book_id = uuid4()
     data = _image_bytes("JPEG", (1000, 500))
-    key = covers.store_cover(settings, book_id, data)
+    key, _rgb = covers.store_cover(settings, book_id, data)
     assert key == hashlib.sha256(data).hexdigest()
     directory = cover_dir(settings, book_id)
     assert (directory / "original.jpeg").read_bytes() == data
@@ -95,10 +95,31 @@ def test_store_cover_writes_original_and_both_variants(settings: Settings) -> No
             assert image.size == (width, width * 3 // 2)
 
 
+def test_store_cover_returns_the_average_rgb(settings: Settings) -> None:
+    key, rgb = covers.store_cover(settings, uuid4(), _image_bytes("PNG", (400, 600), "tomato"))
+    assert len(key) == 64
+    assert rgb == "255 99 71"  # tomato, averaged over the resized cover
+
+
+async def test_cover_rgb_is_stored_and_returned_on_the_book(
+    admin_client: httpx.AsyncClient, db: Session
+) -> None:
+    book = _book(db)
+    response = await admin_client.post(
+        f"/api/v1/books/{book.id}/cover",
+        files={"file": ("c.png", _image_bytes("PNG", (400, 600), "seagreen"), "image/png")},
+        headers=_csrf(admin_client),
+    )
+    assert response.status_code == 200, response.text
+    db.expire_all()
+    body = (await admin_client.get(f"/api/v1/books/{book.id}")).json()["book"]
+    assert body["cover_rgb"] == "46 139 87"  # seagreen
+
+
 def test_store_cover_replaces_the_previous_cover(settings: Settings) -> None:
     book_id = uuid4()
     covers.store_cover(settings, book_id, _image_bytes("PNG"))
-    key = covers.store_cover(settings, book_id, _image_bytes("WEBP"))
+    key, _rgb = covers.store_cover(settings, book_id, _image_bytes("WEBP"))
     names = sorted(p.name for p in cover_dir(settings, book_id).iterdir())
     assert names == ["cover-200.webp", "cover-600.webp", "original.webp"]
     assert key == hashlib.sha256(_image_bytes("WEBP")).hexdigest()

@@ -33,6 +33,7 @@ from folio.storage import book_dir, cover_dir, ensure_dirs, original_path
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
 PAGE_SIZE = 24
+GROUP_BOOKS = 12  # books returned per group when listing with group=
 CHUNK_SIZE = 1024 * 1024
 _EXT_RE = re.compile(r"[a-z0-9]{1,8}")
 _LANG_RE = re.compile(r"[a-z]{2,3}(-[A-Za-z0-9]{2,8})*")  # BCP-47-ish
@@ -57,8 +58,10 @@ class BookPublic(BaseModel):
     isbn10: str | None
     isbn13: str | None
     tags: list[str]
+    genre: str | None = None
     narrator_voice: str | None
     cover_url: str | None = None
+    cover_rgb: str | None = None
     status: str
     error: str | None
     total_chars: int
@@ -104,6 +107,7 @@ class BookPatch(BaseModel):
     isbn10: str | None = Field(default=None, max_length=17)
     isbn13: str | None = Field(default=None, max_length=13)
     tags: list[str] | None = None
+    genre: str | None = Field(default=None, max_length=80)
     narrator_voice: str | None = Field(default=None, max_length=64)
 
 
@@ -165,6 +169,8 @@ def _patch_values(patch: BookPatch) -> dict[str, object | None]:
     for name in ("subtitle", "series", "publisher", "published_date", "narrator_voice"):
         if name in provided:
             values[name] = _clean_str(getattr(patch, name))
+    if "genre" in provided:
+        values["genre"] = _clean_str(patch.genre)
     if "description" in provided:
         # Plain text for M3 (see DECISIONS): all markup stripped, never rendered raw.
         raw = patch.description
@@ -291,6 +297,43 @@ def upload_books(
     return results
 
 
+def _group_key(book: Book, group: str) -> tuple[str | None, str]:
+    """(key, label) for one book under a group-by mode."""
+    if group == "genre":
+        return book.genre, book.genre or "No genre yet"
+    if group == "author":
+        author = book.authors[0] if book.authors else None
+        return author, author or "Unknown author"
+    if group == "language":
+        return book.language, book.language
+    return book.status, book.status
+
+
+def _grouped(books: list[Book], group: str, user: User) -> list[dict[str, Any]]:
+    """Bucket books by group, largest-first for genre ("No genre yet" last),
+    by label otherwise (unknown last); each group carries its first GROUP_BOOKS."""
+    buckets: dict[str | None, list[Book]] = {}
+    for book in books:
+        buckets.setdefault(_group_key(book, group)[0], []).append(book)
+
+    def sort_key(item: tuple[str | None, list[Book]]) -> tuple[bool, object]:
+        key, book_list = item
+        label = _group_key(book_list[0], group)[1]
+        if group == "genre":
+            return (key is None, (-len(book_list), label))
+        return (key is None, label.lower())
+
+    return [
+        {
+            "key": key,
+            "label": _group_key(book_list[0], group)[1],
+            "count": len(book_list),
+            "books": [_public(b, user) for b in book_list[:GROUP_BOOKS]],
+        }
+        for key, book_list in sorted(buckets.items(), key=sort_key)
+    ]
+
+
 @router.get("")
 def list_books(
     user: Annotated[User, Depends(get_current_user)],
@@ -298,6 +341,8 @@ def list_books(
     q: str | None = None,
     sort: Literal["recent", "title", "author", "progress"] = "recent",
     status: str | None = None,
+    genre: str | None = None,
+    group: Literal["genre", "author", "language", "status", "none"] | None = None,
     page: int = Query(1, ge=1),
 ) -> dict[str, Any]:
     stmt = select(Book)
@@ -309,19 +354,26 @@ def list_books(
         )
     if status:
         stmt = stmt.where(Book.status == status)
+    if genre:
+        stmt = stmt.where(Book.genre.is_(None) if genre == "none" else Book.genre == genre)
     if sort == "progress":
         # One progress row per (user, book), so the outer join cannot duplicate
         # rows; books this user never opened sort last.
         stmt = stmt.outerjoin(
             Progress, (Progress.book_id == Book.id) & (Progress.user_id == user.id)
         )
-    count_stmt = select(func.count()).select_from(stmt.subquery())
     order = {
         "title": func.lower(Book.title),
         # First author; empty arrays sort last (Postgres ASC default).
         "author": Book.authors[1],
         "progress": Progress.updated_at.desc().nulls_last(),
     }.get(sort, Book.created_at.desc())
+    if group is not None and group != "none":
+        # Grouped listing ignores paging: shelves show the first GROUP_BOOKS
+        # per group and "See all" falls back to the flat, paged list.
+        all_books = list(db.scalars(stmt.order_by(order, Book.id)))
+        return {"groups": _grouped(all_books, group, user)}
+    count_stmt = select(func.count()).select_from(stmt.subquery())
     books = db.scalars(
         stmt.order_by(order, Book.id).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
     )
