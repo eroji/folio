@@ -11,7 +11,7 @@ Status legend: `todo` · `in progress` · `blocked` · `done (reviews pending)` 
 | 1 | Skeleton and auth | **accepted** | AD user in user group logs in; outsider refused; admin sees Admin menu | 144 backend / 9 web tests + 3 Playwright e2e green; `scripts/acceptance.sh` M1 checks pass |
 | 2 | Upload and ingestion | **accepted** | Each fixture reaches its expected status; duplicates detected | All 7 fixtures verified on the compose stack; duplicate, DRM, search, segments verified |
 | 3 | Metadata and covers | **accepted** | ISBN EPUB gets the right cover automatically; manual edit survives a re-fetch | 235 backend tests + 23 web tests + 5 Playwright; live Open Library search returns candidates; edit→reprocess verified on the stack |
-| 4 | TTS and player | in progress | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | core + player + voices UI merged (13 files / 51 web tests); audio API queue in flight |
+| 4 | TTS and player | **done (device checks pending)** | Cached playback crosses a chapter boundary with < 1 s gap; lock-screen controls work on iOS Safari + Android Chrome | 311 backend / 51 web tests + 7 Playwright; live synthesis, Range 206, Media Session, voices, cache clear all verified. Real-device gap + lock-screen still manual. |
 | 5 | Progress and settings | todo | Phone → desktop resumes within 3 s of the stop point | — |
 | 6 | PWA and polish | todo | Installs to a phone home screen; Lighthouse accessibility ≥ 90 | — |
 
@@ -127,12 +127,22 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 | 2026-10-24 | **T-B merged** (`d989d18` + lead fix `a6658d9`): Open Library + Google Books (429-safe), ISBN/0.9 matching, candidates + migration 0003, pipeline auto-fetch. Lead fixes: apply-field whitelist (a client could send `fields:["id"]`), explicit applies now lock their fields while staying re-appliable. |
 | 2026-10-24 | **M3 accepted on the compose stack.** `scripts/acceptance.sh`: edit → reprocess preserves the title; cover upload produces 200/600 WebP; a rejected cover URL leaves the cover intact; live Open Library search returns a candidate. Playwright 5/5 at 390×844, including the test-mode sign-in panel added for local use. 235 backend / 23 web tests green. |
 
+| 2026-10-24 | **M4 wave 1 merged:** TTS core (`080b436`): client with 1/4/16 s retries and opus→mp3 fallback, live voice discovery (five engine voices verified), cache keys shared across speeds, LRU eviction that skips busy/recent files, voice selection incl. `zh-TW`→`zh`, migration 0004. Player (`merged`): two-element gapless handoff, chapter auto-advance, Media Session, sleep timer, mini player. Voices UI: per-language picker with preview, narrator override, Settings page, Play/Resume. |
+| 2026-10-24 | **Read-along upgraded per product request:** full chapter rendered, spoken position mapped to a character offset, active sentence + paragraph highlighted, throttled center auto-scroll (manual scroll pauses 5 s, reduced-motion aware), tap-to-seek; tested. |
+| 2026-10-24 | Audio API/queue (Task B) dispatched: `segment_audio` SKIP LOCKED queue, prepare/stream(Range)/retry, voices + preview, admin cache clear and a real TTS health probe. |
+| 2026-10-24 | **T-B merged** (`6fb6e3f`): prepare/stream/retry, voices + preview, admin cache clear, real TTS health (`tts: ok`), worker claims TTS before ingest. Live smoke: 3 segments ready in ~6 s, 39.8 s Opus, `Range` → 206 with `Content-Range`. |
+| 2026-10-24 | **M4 accepted (device checks pending).** Found and fixed a self-amplifying SSE loop: `prepare` notified on every idempotent call, each `audio` frame re-triggered `prepare` in the player and flooded the browser (`ERR_INSUFFICIENT_RESOURCES`). Fix: notify only on real status transitions + a single in-flight prepare + frame filtering. Added a regression test. Playwright 7/7; acceptance covers voices/preview/prepare/Range/cache-clear/health; Media Session metadata and handlers verified in Chromium. |
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
 - **Online metadata is best-effort**: Google Books rate-limits to HTTP 429 without `GOOGLE_BOOKS_API_KEY`, so Open Library is the effective primary source. Provider failures are logged and skipped, never fail ingestion.
 - **ISBN auto-apply** is proven deterministically with mocked providers; the live check exercises search, not an ISBN-bearing fixture. A real ISBN EPUB will auto-apply in normal use.
 - **Applied metadata locks its fields** (by design), so a later "Find metadata" apply of the same field is an explicit override — the UI's apply path honours that; automatic fetches do not.
+- **M4 device checks**: the "< 1 s cached gap" and lock-screen controls on iOS Safari / Android Chrome are not machine-verifiable here. The two-element handoff, chapter auto-advance and Media Session metadata/handlers are covered by tests and a Chromium check; the phone check is manual.
+- **TTS concurrency is 1 per worker process** (the spec's `TTS_CONCURRENCY=2` is a ceiling). Two worker containers would exceed it — add a DB/Redis semaphore before scaling out.
+- **Crash recovery**: a row left `generating` by a killed worker stays claimed; a startup sweep should reset stale `generating` rows (not implemented).
+- **Chapter title lead-ins** are not synthesized (optional `lead_in` in the prepare contract); the player speaks segment text only.
 - **Uploader-only actions in the UI**: the API enforces "admin or uploader", but the book payload deliberately hides `uploaded_by`, so the UI shows Reprocess/Delete to admins only. Revisit in M5 with a `can_edit` flag.
 - **LDAP outage → generic 401**: transport failures are indistinguishable from bad passwords by design (no directory-internals leak). Operators see `reason=ldap_error` in logs.
 - **500-page ingest budget (< 60 s)** is not measured: fixtures are small. Measure with a real book before the performance sign-off in M6.

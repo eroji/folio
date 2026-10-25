@@ -76,6 +76,10 @@ def prepare(
     # ponytail: concurrent prepares of the same (segment, voice) can race the
     # unique index and surface a 500; re-select on IntegrityError if it bites.
     window: list[tuple[Segment, SegmentAudio]] = []
+    # Only a real status transition is worth an SSE frame. Preparing is polled
+    # every second by every listener; notifying on idempotent calls makes the
+    # player re-prepare on each frame and floods the browser.
+    changed: list[tuple[Segment, SegmentAudio, bool]] = []
     for offset, segment in enumerate(segments[start : start + count + 1]):
         key = cache_key(
             settings.tts_model, voice, settings.tts_format, normalize_speech_text(segment.text)
@@ -89,6 +93,8 @@ def prepare(
             )
         )
         priority = PRIORITY_NOW if offset == 0 else PRIORITY_LOOKAHEAD
+        created = row is None
+        before = row.status if row is not None else None
         if row is None:
             row = SegmentAudio(segment_id=segment.id, voice=voice, priority=priority)
             session.add(row)
@@ -100,10 +106,13 @@ def prepare(
             row.cache_key, row.status, row.error = None, "queued", None  # file was cleared
         # generating keeps its claim; failed waits for retry()
         window.append((segment, row))
+        after = row.status if not created else "queued"
+        changed.append((segment, row, created or after != before))
 
     session.commit()
-    for segment, row in window:
-        _notify(session, str(book.id), segment.id, row.status)
+    for segment, row, is_change in changed:
+        if is_change:
+            _notify(session, str(book.id), segment.id, row.status)
     return window
 
 

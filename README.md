@@ -4,7 +4,9 @@ Folio is a self-hosted, mobile-first web app that turns uploaded ebooks — EPUB
 
 Users sign in with their existing LDAP / Active Directory account; Folio stores no passwords and maps roles (`admin` / `user`) from directory group membership. Everything runs as two containers built from one image — an API (which also serves the built React PWA) and a background worker — plus PostgreSQL 16 and a single `/data` volume, deployed with Docker Compose behind nginx. No Redis, no hosted model: the job queue lives in the `jobs` table and Folio is only a client of the TTS API.
 
-Delivered so far: **M1** (compose stack, schema + migrations, LDAP auth, roles), **M2** (upload → ingest pipeline, chapters/segments, SSE status), and **M3** (online metadata from Open Library/Google Books, editable fields that survive re-ingest, cover upload/URL/crop with 600 px and 200 px WebP variants). The TTS player (M4), progress and settings (M5), and PWA polish + admin tools (M6) are **roadmap**. Live status per milestone: [`docs/MILESTONES.md`](docs/MILESTONES.md).
+Delivered so far: **M1** (compose stack, schema + migrations, LDAP auth, roles), **M2** (upload → ingest pipeline, chapters/segments, SSE status), **M3** (online metadata from Open Library/Google Books, editable fields that survive re-ingest, cover upload/URL/crop with 600 px and 200 px WebP variants), and **M4** (on-demand TTS through a verified OpenAI-compatible backend, disk cache, gapless two-element player, mini player, line-level read-along with auto-scroll, Media Session, voice picker with previews). Progress persistence (M5) and PWA polish + admin tools (M6) are **roadmap**. Live status per milestone: [`docs/MILESTONES.md`](docs/MILESTONES.md).
+
+Audio needs a TTS backend: set `TTS_BASE_URL` (and `TTS_DEFAULT_VOICE` if you don't want the config default). The verified homelab engine and its contract are documented in [`docs/TTS.md`](docs/TTS.md).
 
 ## Architecture
 

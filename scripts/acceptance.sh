@@ -125,6 +125,39 @@ after=$(curl -sS -b "$TMP/admin.jar" -o /dev/null -w '%{http_code}' "$API/books/
 [[ "$before" == "$after" && "$after" == "200" ]] || fail "a rejected URL disturbed the existing cover"
 echo "PASS: cover upload, 200/600 WebP variants, rejected URL leaves the cover intact"
 
+echo "== M4: voices, synthesis, streaming, cache =="
+voices=$(curl -fsS -b "$TMP/user.jar" "$API/voices")
+echo "$voices" | grep -q '"ashley-en"' || fail "engine voices are missing ashley-en"
+preview_code=$(curl -sS -b "$TMP/user.jar" -H "X-CSRF-Token: $(csrf_of "$TMP/user.jar")" \
+  -H 'Content-Type: application/json' -d '{"voice":"ashley-en","text":"Hello."}' \
+  -o "$TMP/preview.opus" -w '%{http_code}' "$API/voices/preview")
+[[ "$preview_code" == "200" ]] || fail "voice preview returned $preview_code"
+echo "PASS: voices listed and preview synthesized"
+
+chapter_id=$(curl -fsS -b "$TMP/user.jar" "$API/books/$dup" | json 'd["chapters"][0]["id"]')
+seg_id=$(curl -fsS -b "$TMP/user.jar" "$API/books/$dup/chapters/$chapter_id/segments" | json 'd["items"][0]["id"]')
+csrf=$(csrf_of "$TMP/user.jar")
+for i in $(seq 1 60); do
+  prep=$(curl -fsS -b "$TMP/user.jar" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+    -d "{\"segment_id\":\"$seg_id\",\"count\":1}" "$API/books/$dup/audio/prepare")
+  status=$(echo "$prep" | json 'd["items"][0]["status"]')
+  [[ "$status" == "ready" ]] && break
+  sleep 1
+done
+[[ "$status" == "ready" ]] || fail "audio segment never became ready (last=$status)"
+url=$(echo "$prep" | json 'd["items"][0]["url"]')
+range_code=$(curl -sS -b "$TMP/user.jar" -H 'Range: bytes=0-1023' -o "$TMP/chunk" -w '%{http_code}' "$BASE$url")
+[[ "$range_code" == "206" ]] || fail "audio Range request returned $range_code, expected 206"
+file -b --mime-type "$TMP/chunk" | grep -q "audio/" || file "$TMP/chunk" | grep -q "Ogg"
+echo "PASS: prepare → ready, Range streaming (206)"
+
+health=$(curl -fsS -b "$TMP/admin.jar" "$API/admin/health")
+echo "$health" | grep -q '"tts": *"ok"' || echo "NOTE: TTS health is not ok: $health"
+clear_code=$(curl -sS -b "$TMP/admin.jar" -H "X-CSRF-Token: $(csrf_of "$TMP/admin.jar")" \
+  -H 'Content-Type: application/json' -d '{}' -o "$TMP/clear.json" -w '%{http_code}' "$API/admin/cache/clear")
+[[ "$clear_code" == "200" ]] || fail "cache clear returned $clear_code"
+echo "PASS: admin health and cache clear"
+
 echo "== M3: online metadata search (live Open Library; optional) =="
 items=$(curl -fsS -b "$TMP/admin.jar" "$API/books/$dup/metadata/search?isbn=9780140328721")
 count=$(echo "$items" | json 'len(d.get("items", []))')

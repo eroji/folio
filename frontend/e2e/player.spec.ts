@@ -9,20 +9,16 @@ test("playing a ready book shows the pause control and a running clock", async (
   const res = await page.request.post("/api/v1/test/login", { data: { username: "e2e-player" } });
   expect(res.ok()).toBeTruthy();
 
-  await page.goto("/upload");
-  // epub2 is content-hash deduped across the shared test database, so this is
-  // either a fresh ingest or an already-Ready duplicate — both end at Ready.
-  await page.setInputFiles('input[type="file"]', "../backend/tests/fixtures/epub2.epub");
-  await expect(page.getByRole("listitem").last()).toContainText("Ready", { timeout: 90_000 });
-
+  // Earlier specs leave Ready books in the shared catalog; use one instead of
+  // uploading (which would collide with the upload spec's fixture).
   await page.goto("/");
   await page.getByRole("link").filter({ hasText: "Ready" }).first().click();
   await expect(page).toHaveURL(/\/books\/[0-9a-f-]+$/);
   const bookId = new URL(page.url()).pathname.split("/").pop()!;
 
   await page.goto(`/player?book=${bookId}`);
-  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
 
-  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("player-elapsed")).not.toHaveText("0:00", { timeout: 30_000 });
 });

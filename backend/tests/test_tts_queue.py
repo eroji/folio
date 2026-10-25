@@ -341,3 +341,21 @@ def test_worker_loop_claims_tts_rows_before_ingest_jobs(
     assert row is not None and row.status == "ready"
     db.refresh(ingest)
     assert ingest.status == "queued"  # the ingest job waits for the next iteration
+
+
+def test_prepare_notifies_only_when_the_window_changes(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Idempotent prepares must not emit SSE frames: the player re-prepares on
+    every audio frame, so notifying unchanged state is a request flood."""
+    book = _book(db)
+    segments = _segments(db, book)
+    frames: list[dict[str, Any]] = []
+    monkeypatch.setattr(queue_module, "notify", lambda _db, payload: frames.append(payload))
+
+    prepare(db, settings, book, segments[0].id, count=1)
+    assert frames  # the first prepare queues the window
+    frames.clear()
+
+    prepare(db, settings, book, segments[0].id, count=1)
+    assert frames == []  # nothing changed, nothing announced

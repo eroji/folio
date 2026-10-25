@@ -146,15 +146,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   /** prepare for the current segment + lookahead, merge statuses, retry the pump. */
+  const toppingUp = useRef(false);
   async function topUp() {
     const segment = s.segments[s.index];
     if (!s.book || !segment) return;
+    // Polling and SSE frames can ask for the same window at the same time;
+    // one in-flight prepare is enough and dozens would exhaust the browser.
+    if (toppingUp.current) return;
+    toppingUp.current = true;
     try {
       const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD);
       s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
       preloadNext();
     } catch (error) {
       fail(error instanceof Error ? error.message : "Could not reach the server.");
+    } finally {
+      toppingUp.current = false;
     }
     pump();
     bump();
@@ -356,8 +363,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (typeof EventSource === "undefined") return;
     // ponytail: second EventSource (useEvents owns the first); consolidate if connection count ever matters.
     const source = new EventSource("/api/v1/events");
-    source.addEventListener("audio", () => {
-      if (s.book) void fns.current.topUp();
+    source.addEventListener("audio", (event) => {
+      if (!s.book) return;
+      try {
+        const frame = JSON.parse((event as MessageEvent<string>).data) as {
+          book_id?: string | null;
+          segment_id?: string;
+        };
+        // Ignore other books and segments outside the current window.
+        if (frame.book_id && frame.book_id !== s.book.id) return;
+        if (frame.segment_id && !s.status[frame.segment_id]) return;
+      } catch {
+        return;
+      }
+      void fns.current.topUp();
     });
     return () => source.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- s is a stable ref; handler reads through fns
