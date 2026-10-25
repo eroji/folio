@@ -1,32 +1,10 @@
-import { act, render, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PlayerProvider, TTS_LOOKAHEAD, type PlayerContextValue } from "./PlayerProvider";
-import { usePlayer } from "./usePlayer";
+import type { PlayerContextValue } from "./PlayerProvider";
+import { TTS_LOOKAHEAD } from "./PlayerProvider";
 import { installMockEventSource } from "../test/eventsource";
-import { BOOK_ID, CH1, CH2, installPlayerFetch, makeSegments, stubMedia } from "../test/player";
+import { BOOK_ID, CH1, CH2, installPlayerFetch, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import type { AudioStatus } from "../api/audio";
-
-let current: PlayerContextValue | undefined;
-function Probe() {
-  current = usePlayer();
-  return null;
-}
-
-function setup() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/player"]}>
-        <PlayerProvider>
-          <Probe />
-        </PlayerProvider>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-  return () => current!;
-}
 
 let prepareCalls: { segment_id: string; count: number }[] = [];
 let played: HTMLMediaElement[] = [];
@@ -55,7 +33,7 @@ async function loadAndPlay(getPlayer: () => PlayerContextValue) {
 
 describe("PlayerProvider", () => {
   it("prepares the current segment plus TTS_LOOKAHEAD and starts playback", async () => {
-    const getPlayer = setup();
+    const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     expect(prepareCalls.some((call) => call.segment_id === `${CH1}-seg0` && call.count === TTS_LOOKAHEAD)).toBe(true);
     expect(getPlayer().elements[0].src).toContain(`${CH1}-seg0`);
@@ -63,7 +41,7 @@ describe("PlayerProvider", () => {
   });
 
   it("hands off to the second element on ended without reloading the source", async () => {
-    const getPlayer = setup();
+    const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     const [a, b] = getPlayer().elements;
     expect(b.src).toContain(`${CH1}-seg1`); // preloaded by lookahead
@@ -78,7 +56,7 @@ describe("PlayerProvider", () => {
 
   it("auto-advances to the next chapter when the chapter ends", async () => {
     installPlayerFetch({ segmentsByChapter: { [CH1]: makeSegments(CH1, 1), [CH2]: makeSegments(CH2, 1) } });
-    const getPlayer = setup();
+    const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     act(() => {
       getPlayer().elements[0].dispatchEvent(new Event("ended"));
@@ -90,7 +68,7 @@ describe("PlayerProvider", () => {
   });
 
   it("applies playback speed to both elements and clamps to 0.75–2.5", () => {
-    const getPlayer = setup();
+    const getPlayer = renderPlayer();
     const [a, b] = getPlayer().elements;
     getPlayer().setRate(1.25);
     expect([a.playbackRate, b.playbackRate]).toEqual([1.25, 1.25]);
@@ -102,7 +80,7 @@ describe("PlayerProvider", () => {
 
   it("pauses when the minute-based sleep timer elapses", async () => {
     vi.useFakeTimers();
-    const getPlayer = setup();
+    const getPlayer = renderPlayer();
     await act(async () => {
       await getPlayer().load(BOOK_ID);
       getPlayer().toggle();
@@ -119,7 +97,7 @@ describe("PlayerProvider", () => {
   });
 
   it("stops at the chapter end with the end-of-chapter sleep timer", async () => {
-    const getPlayer = setup();
+    const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     act(() => {
       getPlayer().setSleep("chapter");
@@ -139,7 +117,7 @@ describe("PlayerProvider", () => {
     vi.useFakeTimers();
     const fixture: { statuses: Record<string, AudioStatus> } = { statuses: { [`${CH1}-seg0`]: "generating" } };
     installPlayerFetch(fixture);
-    const getPlayer = setup();
+    const getPlayer = renderPlayer();
     await act(async () => {
       await getPlayer().load(BOOK_ID);
     });

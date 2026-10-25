@@ -1,8 +1,14 @@
 /** Shared fixtures for the player tests: fake book/chapter/segment endpoints
  * plus HTMLMediaElement play/pause stubs (jsdom has no audio backend). */
+import { render } from "@testing-library/react";
 import { vi } from "vitest";
+import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Book, Chapter } from "../api/types";
 import type { AudioStatus, Segment } from "../api/audio";
+import { PlayerProvider, type PlayerContextValue } from "../player/PlayerProvider";
+import { usePlayer } from "../player/usePlayer";
 
 export const BOOK_ID = "11111111-1111-1111-1111-111111111111";
 export const CH1 = "c1111111-1111-1111-1111-111111111111";
@@ -34,14 +40,16 @@ export function makeBook(): Book {
   };
 }
 
+/** Segments with contiguous char ranges and unique sentence text per segment. */
 export function makeSegments(chapterId: string, count: number): Segment[] {
-  return Array.from({ length: count }, (_, i) => ({
-    id: `${chapterId}-seg${i}`,
-    idx: i,
-    text: `Sentence one of ${chapterId}-seg${i}. Sentence two here. Sentence three ends.`,
-    char_start: i * 200,
-    char_end: (i + 1) * 200,
-  }));
+  let cursor = 0;
+  return Array.from({ length: count }, (_, i) => {
+    const id = `${chapterId}-seg${i}`;
+    const text = `One ${id} here. Two ${id} here. Three ${id} here.`;
+    const segment = { id, idx: i, text, char_start: cursor, char_end: cursor + text.length };
+    cursor += text.length;
+    return segment;
+  });
 }
 
 export interface PlayerFixture {
@@ -81,8 +89,10 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
       if (url.includes("/audio/prepare")) {
         const body = JSON.parse(String(init?.body)) as { segment_id: string; count: number };
         prepareCalls.push(body);
+        const from = Math.max(0, all.findIndex((segment) => segment.id === body.segment_id));
         return jsonResponse({
-          items: all.map((segment) => ({
+          // Like the backend: the requested segment plus the next `count` ones.
+          items: all.slice(from, from + body.count).map((segment) => ({
             segment_id: segment.id,
             status: fixture.statuses?.[segment.id] ?? "ready",
             cache_key: segment.id,
@@ -109,4 +119,26 @@ export function stubMedia(): { played: HTMLMediaElement[] } {
   });
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   return { played };
+}
+
+let current: PlayerContextValue | undefined;
+function Probe() {
+  current = usePlayer();
+  return null;
+}
+
+/** Mount the provider at /player with a probe; returns a getter for the live context. */
+export function renderPlayer(extra?: ReactNode): () => PlayerContextValue {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/player"]}>
+        <PlayerProvider>
+          <Probe />
+          {extra}
+        </PlayerProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return () => current!;
 }

@@ -85,8 +85,6 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
   const duration = player.chapterDuration;
   const elapsed = Math.min(player.chapterElapsed, duration);
   const remaining = Math.max(0, duration - elapsed);
-  const segmentDuration = player.segment ? player.status[player.segment.id]?.duration_s ?? 0 : 0;
-  const fraction = segmentDuration > 0 ? Math.min(1, player.time / segmentDuration) : 0;
 
   const cycleSpeed = () => player.setRate(player.rate >= SPEED_MAX ? SPEED_MIN : player.rate + 0.25);
   const cycleSleep = () => player.setSleep(SLEEP_STEPS[(SLEEP_STEPS.indexOf(player.sleep) + 1) % SLEEP_STEPS.length] ?? null);
@@ -201,7 +199,7 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
           </button>
         </div>
 
-        {readAlong && player.segment && <ReadAlong text={player.segment.text} fraction={fraction} className="mt-6" />}
+        {readAlong && <ReadAlong className="mt-6" />}
       </div>
 
       {sheetOpen && (

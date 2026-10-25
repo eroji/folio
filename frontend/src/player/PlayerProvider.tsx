@@ -39,6 +39,7 @@ export interface PlayerContextValue {
   pause: () => void;
   toggle: () => void;
   seekChapter: (seconds: number) => void;
+  seekSegment: (index: number, offsetSeconds: number) => void;
   skip: (deltaSeconds: number) => void;
   stepChapter: (delta: number) => Promise<void>;
   goToChapter: (chapterId: string) => void;
@@ -251,6 +252,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     else void play();
   }
 
+  /** Seek to a segment + offset within it; prepares first when unknown. */
+  function seekSegment(index: number, offsetSeconds: number) {
+    if (index < 0 || index >= s.segments.length) return;
+    s.index = index;
+    s.offset = Math.max(0, offsetSeconds);
+    s.time = s.offset;
+    // Prepare the target first so the UI shows "Preparing audio…" instead of silence.
+    if (currentItem()?.status === "ready") pump();
+    else void topUp();
+    bump();
+  }
+
   function seekChapter(seconds: number) {
     const total = chapterTotal();
     if (total <= 0) return;
@@ -259,17 +272,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     for (let i = 0; i < s.segments.length; i += 1) {
       const d = durationOf(s.segments[i]);
       if (target < acc + d || i === s.segments.length - 1) {
-        s.index = i;
-        s.offset = target - acc;
-        s.time = target - acc;
-        break;
+        seekSegment(i, target - acc);
+        return;
       }
       acc += d;
     }
-    // Prepare the target first so the UI shows "Preparing audio…" instead of silence.
-    if (currentItem()?.status === "ready") pump();
-    else void topUp();
-    bump();
   }
 
   function skip(deltaSeconds: number) {
@@ -433,6 +440,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     pause,
     toggle,
     seekChapter,
+    seekSegment,
     skip,
     stepChapter,
     goToChapter,
