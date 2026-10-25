@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any
@@ -84,6 +85,21 @@ async def vclient(db: Session, tts_handler: _Handlers) -> AsyncIterator[httpx.As
 
 def csrf(client: httpx.AsyncClient) -> dict[str, str]:
     return {"X-CSRF-Token": client.cookies.get("folio_csrf", "")}
+
+
+def test_default_samples_are_pure_target_language(settings: Settings) -> None:
+    # A Latin word in a non-English sample gets read in English (demo finding).
+    cases = {
+        "ashley-ja": r"[\u3040-\u30ff\u4e00-\u9fff]",  # kana or han
+        "ashley-kr": r"[\uac00-\ud7af]",  # hangul syllables
+        "ashley-zh": r"[\u4e00-\u9fff]",  # han
+    }
+    for voice, script in cases.items():
+        text = voices_module._default_sample(voice, settings)
+        assert re.search(script, text), f"{voice}: {text!r}"
+        assert not re.search(r"[A-Za-z]", text), f"{voice}: {text!r}"
+    assert voices_module._default_sample("ashley-zh-TW", settings) == voices_module._SAMPLES["zh"]
+    assert voices_module._default_sample("tts", settings) == voices_module._SAMPLES["en"]
 
 
 async def test_voices_list_parses_the_real_engine_shape(

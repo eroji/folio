@@ -44,7 +44,7 @@ def _ordered_segments(session: Session, book: Book) -> list[Segment]:
         session.scalars(
             select(Segment)
             .join(Chapter, Segment.chapter_id == Chapter.id)
-            .where(Chapter.book_id == book.id)
+            .where(Chapter.book_id == book.id, Chapter.excluded.is_(False))
             .order_by(Chapter.idx, Segment.idx)
         )
     )

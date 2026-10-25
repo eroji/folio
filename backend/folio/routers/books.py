@@ -74,6 +74,7 @@ class ChapterPublic(BaseModel):
     idx: int
     title: str
     char_count: int
+    excluded: bool
 
 
 def _public(book: Book) -> BookPublic:
@@ -102,6 +103,12 @@ class BookPatch(BaseModel):
     isbn13: str | None = Field(default=None, max_length=13)
     tags: list[str] | None = None
     narrator_voice: str | None = Field(default=None, max_length=64)
+
+
+class ChapterPatch(BaseModel):
+    """PATCH /books/{id}/chapters/{cid} body: the exclusion toggle."""
+
+    excluded: bool
 
 
 def _fail() -> NoReturn:
@@ -327,6 +334,8 @@ def get_book(
     db: Annotated[DbSession, Depends(get_session)],
 ) -> dict[str, Any]:
     book = _get_book(db, book_id)
+    # All chapters, excluded ones included with their flag: the UI lists them
+    # under an "Excluded chapters" disclosure so the owner can re-enable them.
     chapters = db.scalars(
         select(Chapter).where(Chapter.book_id == book.id).order_by(Chapter.idx)
     ).all()
@@ -398,6 +407,39 @@ def reprocess_book(
     return {"job_id": str(job.id)}
 
 
+@router.patch("/{book_id}/chapters/{chapter_id}")
+def patch_chapter(
+    request: Request,
+    book_id: UUID,
+    chapter_id: UUID,
+    body: ChapterPatch,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_session)],
+) -> dict[str, Any]:
+    """Exclude or re-include one chapter; totals follow suit so the progress
+    percent stays measured against what actually plays."""
+    require_csrf(request, request.state.session_row)
+    book = _get_book(db, book_id)
+    if not can_edit_book(user, book):
+        raise ApiError("forbidden", "You can only edit books you uploaded.", 403)
+    chapter = db.get(Chapter, chapter_id)
+    if chapter is None or chapter.book_id != book.id:
+        raise ApiError("not_found", "Chapter not found.", 404)
+    chapter.excluded = body.excluded
+    total = (
+        db.scalar(
+            select(func.coalesce(func.sum(Chapter.char_count), 0)).where(
+                Chapter.book_id == book.id, Chapter.excluded.is_(False)
+            )
+        )
+        or 0
+    )
+    book.total_chars = total
+    book.est_duration_s = total / get_settings().tts_chars_per_second
+    db.commit()
+    return {"chapter": ChapterPublic.model_validate(chapter).model_dump(mode="json")}
+
+
 @router.get("/{book_id}/chapters/{chapter_id}/segments")
 def chapter_segments(
     book_id: UUID,
@@ -406,7 +448,7 @@ def chapter_segments(
     db: Annotated[DbSession, Depends(get_session)],
 ) -> dict[str, Any]:
     chapter = db.get(Chapter, chapter_id)
-    if chapter is None or chapter.book_id != book_id:
+    if chapter is None or chapter.book_id != book_id or chapter.excluded:
         raise ApiError("not_found", "Chapter not found.", 404)
     segments = db.scalars(
         select(Segment).where(Segment.chapter_id == chapter.id).order_by(Segment.idx)

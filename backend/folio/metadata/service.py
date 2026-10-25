@@ -106,6 +106,19 @@ def _apply_cover(settings: Settings, book: Book, url: str, client: httpx.Client)
         return False
 
 
+def _fetch_cover(
+    settings: Settings, book: Book, url: str, client: httpx.Client | None = None
+) -> bool:
+    """Fetch a provider cover; uses ``client`` when given (auto_fetch), else a
+    throwaway one (the apply endpoint has no client of its own)."""
+    if client is not None:
+        return _apply_cover(settings, book, url, client)
+    with httpx.Client(
+        timeout=DOWNLOAD_TIMEOUT_S, follow_redirects=True, max_redirects=MAX_REDIRECTS
+    ) as own:
+        return _apply_cover(settings, book, url, own)
+
+
 def _dedupe(candidates: list[Candidate]) -> list[Candidate]:
     """Keep the best candidate per ISBN, else per normalized title + first author."""
     best: dict[Any, Candidate] = {}
@@ -137,6 +150,7 @@ def apply_candidate(
     fields: list[str],
     settings: Settings,
     respect_locks: bool = True,
+    client: httpx.Client | None = None,
 ) -> list[str]:
     """Write only the requested, editable fields; return the names applied.
 
@@ -147,9 +161,11 @@ def apply_candidate(
 
     Descriptions are sanitized to plain text; a requested ``cover_url`` is
     fetched and stored (a failed download is logged, not raised, so the rest of
-    the apply still lands).
+    the apply still lands). A candidate cover is also fetched automatically
+    when the book has none, even if the client did not ask for the field.
     """
     applied: list[str] = []
+    cover_requested = "cover_url" in fields
     for name in fields:
         if name not in EDITABLE_FIELDS:
             continue
@@ -158,17 +174,21 @@ def apply_candidate(
         if name == "cover_url":
             if not candidate.cover_url:
                 continue
-            with httpx.Client(
-                timeout=DOWNLOAD_TIMEOUT_S, follow_redirects=True, max_redirects=MAX_REDIRECTS
-            ) as client:
-                if _apply_cover(settings, book, candidate.cover_url, client):
-                    applied.append("cover_url")
+            if _fetch_cover(settings, book, candidate.cover_url, client):
+                applied.append("cover_url")
             continue
         value = _field_value(candidate, name)
         if value is None:
             continue
         setattr(book, name, value)
         applied.append(name)
+    if (
+        not cover_requested
+        and book.cover_key is None
+        and candidate.cover_url
+        and _fetch_cover(settings, book, candidate.cover_url, client)
+    ):
+        applied.append("cover_url")
     session.commit()
     return applied
 
@@ -191,7 +211,7 @@ def auto_fetch(session: Session, settings: Settings, book: Book, client: httpx.C
     auto = [candidate for candidate in candidates if decide_match(book, candidate) == "auto"]
     if auto:
         target = max(auto, key=lambda c: (isbn_match(book, c), c.score))
-        apply_candidate(session, book, target, AUTO_FIELDS, settings)
+        apply_candidate(session, book, target, AUTO_FIELDS, settings, client=client)
     else:
         for candidate in candidates:
             session.add(
