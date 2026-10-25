@@ -43,10 +43,8 @@ function SkipGlyph({ seconds, forward }: { seconds: number; forward?: boolean })
 /** Screen 6: full-screen player; on phones the read-along is the content and
  * the cover/controls collapse into a compact sticky header. */
 export function FullPlayer({
-  onChangeVoice,
   onExit,
 }: {
-  onChangeVoice?: () => void;
   /** Focus mode: return to the page instead of navigating to the book. */
   onExit?: () => void;
 }) {
@@ -319,15 +317,6 @@ export function FullPlayer({
             >
               <Icon name="toc" size={20} />
               <span>Read along</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Voice"
-              onClick={onChangeVoice ?? (() => navigate(`/books/${book.id}`))}
-              className={secondaryButton}
-            >
-              <Icon name="record_voice_over" size={20} />
-              <span>Voice</span>
             </button>
           </div>
         </div>
