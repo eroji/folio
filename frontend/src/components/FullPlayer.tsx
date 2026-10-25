@@ -257,7 +257,7 @@ export function FullPlayer({
               onClick={cycleSpeed}
               className={secondaryButton}
             >
-              <Icon name="speed" size={20} />
+              <Icon name="speed" size={18} />
               <span>{player.rate}×</span>
             </button>
             <div className="relative">
@@ -268,7 +268,7 @@ export function FullPlayer({
                 onClick={() => setSleepOpen((open) => !open)}
                 className={secondaryButton}
               >
-                <Icon name="bedtime" size={20} />
+                <Icon name="bedtime" size={18} />
                 <span>{sleepLabel(player.sleep)}</span>
               </button>
               {sleepOpen && (

@@ -281,7 +281,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex w-full max-w-[720px] flex-col gap-4">
+    <div className="flex w-full flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2 pb-1">
         <h1 className="font-display text-xl font-bold tracking-[-0.01em]">Settings</h1>
         <span role="status" className="inline-flex items-center gap-1 text-sm text-fg-2">

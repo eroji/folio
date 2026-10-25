@@ -206,7 +206,10 @@ Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Imp
 - Updated handoff package applied: **brand refresh** (new mark, wordmarks, favicons/PWA icons/manifest) and the fully designed **Settings** page (720px cards, segmented theme, sec inputs, switches, aligned voice rows with play/stop preview, save-on-change).
 - Voice display names persisted and renameable in Admin; `ashley-en` renders as **Ashley** (no collision suffix — each voice row is already language-scoped).
 - Remaining duplicate voice controls removed from the phone full player too.
-- Final counts: 414 backend / 195 web / 9 Playwright; Lighthouse 100 on settings as well.
+- Final counts: 415 backend / 195 web / 9 Playwright; Lighthouse 100 on settings as well.
+- Completion percent now recomputes for every saved progress row when a chapter is excluded/re-included, so hidden chapters are not counted.
+- Player secondary icons (speed, sleep) use the same size as the rest of the transport row.
+- Settings expands to the full page area when the player is closed/collapsed and follows the 50/50 split when the panel is open (deviation from the handoff's fixed 720px, requested in testing).
 
 ## Known gaps carried into M3+
 

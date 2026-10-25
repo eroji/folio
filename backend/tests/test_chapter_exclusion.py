@@ -209,3 +209,21 @@ async def test_totals_and_percent_recompute_on_toggle(
     assert detail["book"]["total_chars"] == 3 * CHARS
     progress = await _put_progress(auth_client, book, chapters[2], last_segment)
     assert progress["progress"]["percent"] == 200 / 300 * 100
+
+
+async def test_saved_progress_percent_recomputes_when_a_chapter_is_excluded(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    """Excluding an earlier chapter changes the denominator; saved percentages
+    must follow without waiting for the listener to move again."""
+    book = _seed(db, uploaded_by=_testuser(db).id)
+    chapters = _chapters(db, book)
+    last = _segments_of(db, book, chapters[2])[0]
+
+    before = await _put_progress(auth_client, book, chapters[2], last)
+    assert round(before["progress"]["percent"], 1) == 66.7  # 200 of 300 chars
+
+    assert (await _toggle(auth_client, book.id, chapters[0].id, True)).status_code == 200
+
+    stored = (await auth_client.get(f"/api/v1/books/{book.id}/progress")).json()
+    assert round(stored["progress"]["percent"], 1) == 50.0  # 100 of 200 chars

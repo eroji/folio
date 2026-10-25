@@ -54,7 +54,7 @@ function SleepButton() {
         onClick={() => setOpen((value) => !value)}
         className={quietButton}
       >
-        <Icon name="bedtime" size={22} />
+        <Icon name="bedtime" size={18} />
       </button>
       {open && (
         <>
@@ -271,7 +271,7 @@ export function FocusMode({ onExit }: { onExit: () => void }) {
               onClick={() => player.setRate(player.rate >= SPEED_MAX ? SPEED_MIN : player.rate + 0.25)}
               className={quietButton}
             >
-              <Icon name="speed" size={22} />
+              <Icon name="speed" size={18} />
             </button>
             <span aria-hidden className="w-4" />
             <button

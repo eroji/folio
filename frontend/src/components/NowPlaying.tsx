@@ -185,7 +185,7 @@ function SleepButton() {
         onClick={() => setOpen((value) => !value)}
         className={quietButton}
       >
-        <Icon name="bedtime" size={20} />
+        <Icon name="bedtime" size={18} />
         {until !== null && (
           <span className="absolute -top-1 right-0 rounded-sm bg-raised px-1 text-[9px] font-semibold tabular text-fg-2">
             {formatTime(Math.max(0, Math.round((until - now) / 1000)))}
@@ -305,7 +305,7 @@ function Panel({ collapsed, onToggleCollapse, onFocus }: SurfacesProps) {
           onClick={() => player.setRate(player.rate >= SPEED_MAX ? SPEED_MIN : player.rate + 0.25)}
           className={quietButton}
         >
-          <Icon name="speed" size={20} />
+          <Icon name="speed" size={18} />
         </button>
         <button
           type="button"
