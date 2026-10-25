@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Folio">
+<title>Folio</title>
+<rect width="512" height="512" rx="115.2" fill="#FFFFFF"/>
+<svg x="116.77" y="99.84" width="278.46" height="317.44" viewBox="13 0 500 570">
+<defs>
+<linearGradient id="bgl" x1="25" y1="0" x2="228" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1F7EF6"/><stop offset="1" stop-color="#2F7AF7"/></linearGradient>
+<linearGradient id="bgr" x1="228" y1="0" x2="500" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5E6FF8"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient>
+<linearGradient id="bgs" x1="128" y1="190" x2="385" y2="10" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8EA2F9"/><stop offset="1" stop-color="#86A0FA"/></linearGradient>
+</defs>
+<path d="M128 147 L350 24 Q385 5 385 45 L385 100 L230 190 Z" fill="url(#bgs)"/>
+<path d="M25 205 Q25 155 72.5 170.5 L228 222 L228 555 L78.8 481.5 Q25 455 25 395 Z" fill="url(#bgl)"/>
+<path d="M228 222 L455.5 130 Q500 112 500 160 L500 350 Q500 400 456.5 424.8 L228 555 Z" fill="url(#bgr)"/>
+<polygon points="226,299 351,363 226,436" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="26" stroke-linejoin="round"/>
+</svg>
+</svg>
