@@ -4,17 +4,12 @@ import clsx from "clsx";
 import { useAuth } from "../auth/AuthProvider";
 import type { ThemeChoice } from "../hooks/useTheme";
 import { Icon } from "./Icon";
+import { ThemeSwitch } from "./ThemeSwitch";
 
 /** Where the trigger lives; decides trigger look and menu anchoring.
  * rail: avatar at the rail bottom (popover to the right), header: ⋯ in the
  * phone header (popover below), sheet: "You" tab (bottom sheet). */
 export type AccountPlacement = "rail" | "header" | "sheet";
-
-const THEMES: { value: ThemeChoice; label: string }[] = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
 
 const row =
   "flex min-h-8 items-center gap-2 rounded-md px-2 pr-3 text-left text-base whitespace-nowrap hover:bg-raised";
@@ -114,29 +109,11 @@ export function AccountMenu({
           <Icon name="admin_panel_settings" size={18} /> Admin
         </Link>
       )}
-      <div role="group" aria-label="Theme" className="flex min-h-9 items-center justify-between gap-4 py-1 pl-2 pr-1">
+      <div className="flex min-h-9 items-center justify-between gap-4 py-1 pl-2 pr-1">
         <span className="flex items-center gap-2 text-base">
           <Icon name="contrast" size={18} /> Theme
         </span>
-        <span className="flex gap-0.5 rounded-md bg-raised p-0.5">
-          {THEMES.map((theme) => (
-            <button
-              key={theme.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={choice === theme.value}
-              onClick={() => onSelectTheme(theme.value)}
-              className={clsx(
-                "h-6 rounded-sm px-2 text-xs",
-                choice === theme.value
-                  ? "bg-surface font-semibold text-fg shadow-sm"
-                  : "font-medium text-fg-2",
-              )}
-            >
-              {theme.label}
-            </button>
-          ))}
-        </span>
+        <ThemeSwitch choice={choice} onSelect={onSelectTheme} role="menuitemradio" />
       </div>
       <div aria-hidden className="my-1 h-px bg-divider" />
       <button type="button" role="menuitem" className={row} onClick={signOut}>

@@ -75,21 +75,30 @@ const COALESCE_MS = 400;
 
 /** Optimistic, coalesced writes: every change updates the cache and the
  * localStorage mirror immediately and merges into one debounced PUT of just
- * the changed keys. A failed PUT keeps the optimistic value (it is mirrored
- * locally) and surfaces `error` so the page can say so. */
+ * the changed keys. A failed PUT reverts the cache to the pre-patch value
+ * and surfaces `error` so the page can say so; offline the GET fallback
+ * still reads the localStorage mirror. */
 export function useUpdateSettings() {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<SettingsSaveStatus>("idle");
   const buffer = useRef<Partial<ListeningSettings>>({});
   const timer = useRef<number | null>(null);
+  /** Cache value from before the first unsaved patch; restores it when a PUT
+   * fails so the controls revert to the server's truth. */
+  const snapshot = useRef<ListeningSettings | null>(null);
   const mutation = useMutation({
     mutationFn: (patch: Partial<ListeningSettings>) =>
       api.put<{ settings: Partial<ListeningSettings> }>("/me/settings", patch),
     onSuccess: (data) => {
+      snapshot.current = null;
       queryClient.setQueryData(settingsQueryKey, { ...DEFAULT_SETTINGS, ...data.settings });
       setStatus("saved");
     },
-    onError: () => setStatus("error"),
+    onError: () => {
+      if (snapshot.current) queryClient.setQueryData(settingsQueryKey, snapshot.current);
+      snapshot.current = null;
+      setStatus("error");
+    },
   });
   const send = useRef(mutation.mutate);
   send.current = mutation.mutate;
@@ -107,6 +116,7 @@ export function useUpdateSettings() {
   const update = useCallback(
     (patch: Partial<ListeningSettings>) => {
       const current = queryClient.getQueryData<ListeningSettings>(settingsQueryKey) ?? DEFAULT_SETTINGS;
+      snapshot.current ??= current;
       queryClient.setQueryData(settingsQueryKey, { ...current, ...patch }); // optimistic
       mirror(patch);
       buffer.current = { ...buffer.current, ...patch };

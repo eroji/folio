@@ -20,6 +20,7 @@ import Person from "@material-symbols/svg-400/rounded/person.svg?react";
 import PlayArrow from "@material-symbols/svg-400/rounded/play_arrow.svg?react";
 import ProgressActivity from "@material-symbols/svg-400/rounded/progress_activity.svg?react";
 import RecordVoiceOver from "@material-symbols/svg-400/rounded/record_voice_over.svg?react";
+import Refresh from "@material-symbols/svg-400/rounded/refresh.svg?react";
 import Replay from "@material-symbols/svg-400/rounded/replay.svg?react";
 import RestartAlt from "@material-symbols/svg-400/rounded/restart_alt.svg?react";
 import Search from "@material-symbols/svg-400/rounded/search.svg?react";
@@ -27,6 +28,7 @@ import Settings from "@material-symbols/svg-400/rounded/settings.svg?react";
 import SkipNext from "@material-symbols/svg-400/rounded/skip_next.svg?react";
 import SkipPrevious from "@material-symbols/svg-400/rounded/skip_previous.svg?react";
 import Speed from "@material-symbols/svg-400/rounded/speed.svg?react";
+import Stop from "@material-symbols/svg-400/rounded/stop.svg?react";
 import TaskAlt from "@material-symbols/svg-400/rounded/task_alt.svg?react";
 import Toc from "@material-symbols/svg-400/rounded/toc.svg?react";
 import Upload from "@material-symbols/svg-400/rounded/upload.svg?react";
@@ -61,6 +63,7 @@ const ICONS = {
   play_arrow: PlayArrow,
   progress_activity: ProgressActivity,
   record_voice_over: RecordVoiceOver,
+  refresh: Refresh,
   replay: Replay,
   restart_alt: RestartAlt,
   search: Search,
@@ -68,6 +71,7 @@ const ICONS = {
   skip_next: SkipNext,
   skip_previous: SkipPrevious,
   speed: Speed,
+  stop: Stop,
   task_alt: TaskAlt,
   toc: Toc,
   upload: Upload,
