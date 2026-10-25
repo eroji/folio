@@ -5,6 +5,7 @@ import { createContext, useEffect, useMemo, useReducer, useRef, type ReactNode }
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { fetchBookDetail, fetchSegments, prepareAudio, type PreparedSegment, type Segment } from "../api/audio";
+import { useListeningSettings, type ListeningSettings } from "../api/settings";
 import type { Book, Chapter } from "../api/types";
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
@@ -31,6 +32,8 @@ export interface PlayerContextValue {
   time: number;
   rate: number;
   sleep: SleepChoice;
+  /** The user's synced listening settings (speed drives `rate`). */
+  settings: ListeningSettings;
   chapterElapsed: number;
   chapterDuration: number;
   elements: readonly [HTMLAudioElement, HTMLAudioElement];
@@ -41,6 +44,9 @@ export interface PlayerContextValue {
   seekChapter: (seconds: number) => void;
   seekSegment: (index: number, offsetSeconds: number) => void;
   skip: (deltaSeconds: number) => void;
+  /** Skip by the user's configured back/forward intervals. */
+  skipBack: () => void;
+  skipForward: () => void;
   stepChapter: (delta: number) => Promise<void>;
   goToChapter: (chapterId: string) => void;
   setRate: (rate: number) => void;
@@ -72,6 +78,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const { settings } = useListeningSettings();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
@@ -155,7 +164,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (toppingUp.current) return;
     toppingUp.current = true;
     try {
-      const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD);
+      const voice = settingsRef.current.voices[s.book.language];
+      const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, voice);
       s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
       preloadNext();
     } catch (error) {
@@ -211,7 +221,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   async function advanceChapter() {
-    if (!s.intent || s.chapterIdx + 1 >= s.chapters.length) {
+    if (!s.intent || !settingsRef.current.auto_next || s.chapterIdx + 1 >= s.chapters.length) {
       s.intent = false;
       s.playing = false;
       s.preparing = false;
@@ -290,6 +300,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     seekChapter(elapsed() + deltaSeconds);
   }
 
+  function skipBack() {
+    skip(-settingsRef.current.skip_back);
+  }
+
+  function skipForward() {
+    skip(settingsRef.current.skip_forward);
+  }
+
   async function stepChapter(delta: number) {
     const idx = Math.min(Math.max(0, s.chapterIdx + delta), s.chapters.length - 1);
     if (idx !== s.chapterIdx) await openChapter(idx, s.intent);
@@ -325,8 +343,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   // Latest closures for the stable effects below (state lives in `s`, not closures).
-  const fns = useRef({ topUp, play, pause, skip, stepChapter, handleEnded });
-  fns.current = { topUp, play, pause, skip, stepChapter, handleEnded };
+  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded });
+  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded };
+
+  // Sync the saved default speed into the player; the speed button can still
+  // override it until the next time the setting itself changes.
+  useEffect(() => {
+    const rate = Math.min(SPEED_MAX, Math.max(SPEED_MIN, settings.speed));
+    if (s.rate === rate) return;
+    s.rate = rate;
+    for (const element of els) element.playbackRate = rate;
+    bump();
+  }, [settings.speed, els, s]);
 
   useEffect(() => {
     const onEnded = (event: Event) => {
@@ -388,8 +416,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const handlers: [string, () => void][] = [
       ["play", () => void fns.current.play()],
       ["pause", () => fns.current.pause()],
-      ["seekbackward", () => fns.current.skip(-15)],
-      ["seekforward", () => fns.current.skip(30)],
+      ["seekbackward", () => fns.current.skipBack()],
+      ["seekforward", () => fns.current.skipForward()],
       ["previoustrack", () => void fns.current.stepChapter(-1)],
       ["nexttrack", () => void fns.current.stepChapter(1)],
     ];
@@ -451,6 +479,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     time: s.time,
     rate: s.rate,
     sleep: s.sleep,
+    settings,
     chapterElapsed: elapsed(),
     chapterDuration: chapterTotal(),
     elements: els,
@@ -461,6 +490,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     seekChapter,
     seekSegment,
     skip,
+    skipBack,
+    skipForward,
     stepChapter,
     goToChapter,
     setRate,

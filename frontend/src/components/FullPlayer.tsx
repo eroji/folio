@@ -51,9 +51,9 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
         event.preventDefault();
         p.current.toggle();
       } else if (event.key === "ArrowRight") {
-        p.current.skip(15);
+        p.current.skipForward();
       } else if (event.key === "ArrowLeft") {
-        p.current.skip(-15);
+        p.current.skipBack();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -143,7 +143,12 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-8">
-          <button type="button" aria-label="Back 15 seconds" onClick={() => player.skip(-15)} className={skipButton}>
+          <button
+            type="button"
+            aria-label={`Back ${player.settings.skip_back} seconds`}
+            onClick={player.skipBack}
+            className={skipButton}
+          >
             <RotateCcw size={22} strokeWidth={1.75} aria-hidden />
           </button>
           <button
@@ -154,7 +159,12 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
           >
             {player.playing ? <Pause size={28} strokeWidth={1.75} aria-hidden /> : <Play size={28} strokeWidth={1.75} aria-hidden />}
           </button>
-          <button type="button" aria-label="Forward 30 seconds" onClick={() => player.skip(30)} className={skipButton}>
+          <button
+            type="button"
+            aria-label={`Forward ${player.settings.skip_forward} seconds`}
+            onClick={player.skipForward}
+            className={skipButton}
+          >
             <FastForward size={22} strokeWidth={1.75} aria-hidden />
           </button>
         </div>

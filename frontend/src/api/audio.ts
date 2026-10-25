@@ -37,8 +37,17 @@ export interface Segment {
   char_end: number;
 }
 
-export function prepareAudio(bookId: string, segmentId: string, count: number): Promise<PrepareResponse> {
-  return api.post<PrepareResponse>(`/books/${bookId}/audio/prepare`, { segment_id: segmentId, count });
+export function prepareAudio(
+  bookId: string,
+  segmentId: string,
+  count: number,
+  voice?: string,
+): Promise<PrepareResponse> {
+  return api.post<PrepareResponse>(`/books/${bookId}/audio/prepare`, {
+    segment_id: segmentId,
+    count,
+    ...(voice ? { voice } : {}),
+  });
 }
 
 export function segmentsForChapter(bookId: string, chapterId: string): Promise<{ items: Segment[] }> {

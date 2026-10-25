@@ -7,6 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Book, Chapter } from "../api/types";
 import type { AudioStatus, Segment } from "../api/audio";
+import { DEFAULT_SETTINGS, type ListeningSettings } from "../api/settings";
 import { PlayerProvider, type PlayerContextValue } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 
@@ -58,10 +59,12 @@ export interface PlayerFixture {
   /** segment_id → status override; everything else is "ready". */
   statuses?: Record<string, AudioStatus>;
   duration_s?: number;
+  /** Override the listening settings the player reads (defaults apply). */
+  settings?: Partial<ListeningSettings>;
 }
 
 export interface InstalledFetch {
-  prepareCalls: { segment_id: string; count: number }[];
+  prepareCalls: { segment_id: string; count: number; voice?: string }[];
 }
 
 function jsonResponse(body: unknown): Response {
@@ -86,8 +89,11 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/me/settings")) {
+        return jsonResponse({ settings: { ...DEFAULT_SETTINGS, ...fixture.settings } });
+      }
       if (url.includes("/audio/prepare")) {
-        const body = JSON.parse(String(init?.body)) as { segment_id: string; count: number };
+        const body = JSON.parse(String(init?.body)) as { segment_id: string; count: number; voice?: string };
         prepareCalls.push(body);
         const from = Math.max(0, all.findIndex((segment) => segment.id === body.segment_id));
         return jsonResponse({
