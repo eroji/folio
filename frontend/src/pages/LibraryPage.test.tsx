@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,14 +32,16 @@ function makeBook(overrides: Partial<Book> = {}): Book {
   };
 }
 
-function mockList(items: Book[], continueItems: unknown[] = []) {
+function mockList(items: Book[], continueItems: unknown[] = [], finishedItems: unknown[] = []) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       const body = url.includes("/me/continue")
         ? { items: continueItems }
-        : { items, total: items.length, page: 1, page_size: 24 };
+        : url.includes("/me/finished")
+          ? { items: finishedItems }
+          : { items, total: items.length, page: 1, page_size: 24 };
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -139,5 +141,44 @@ describe("LibraryPage", () => {
     renderLibrary();
     const row = await screen.findByRole("region", { name: "Continue listening" });
     expect(within(row).getByText("Finished")).toBeTruthy();
+  });
+
+  it("shows a collapsible Finished section from /me/finished", async () => {
+    mockList([makeBook()], [], [
+      {
+        book: makeBook({ id: "33333333-3333-3333-3333-333333333333", title: "Snow Crash" }),
+        progress: {
+          chapter_id: "c1",
+          segment_id: "s1",
+          offset_s: 0,
+          percent: 100,
+          device_label: "Linux a1b2",
+          updated_at: "2026-01-02T00:00:00Z",
+          finished_at: "2026-01-03T00:00:00Z",
+        },
+      },
+    ]);
+    renderLibrary();
+    const section = await screen.findByRole("region", { name: "Finished" });
+    expect(within(section).getByText("Finished (1)")).toBeTruthy();
+    expect(within(section).getByRole("link", { name: /Snow Crash/ })).toBeTruthy();
+  });
+
+  it("hides the Finished section when /me/finished is empty", async () => {
+    mockList([makeBook()]);
+    renderLibrary();
+    await screen.findByRole("link", { name: /Dune/ });
+    expect(screen.queryByRole("region", { name: "Finished" })).toBeNull();
+  });
+
+  it("refetches with sort=progress when Progress is chosen", async () => {
+    mockList([makeBook()]);
+    renderLibrary();
+    await screen.findByRole("link", { name: /Dune/ });
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort by" }), { target: { value: "progress" } });
+    await vi.waitFor(() => {
+      const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes("sort=progress"));
+      expect(call).toBeTruthy();
+    });
   });
 });

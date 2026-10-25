@@ -133,9 +133,9 @@ export function BookDetailPage() {
   const notPlayable = book.status === "needs_ocr" || book.status === "failed" || !firstChapter;
   const progress = progressQuery.data ?? data.progress;
   const finished = Boolean(progress?.finished_at);
-  // TODO(M5): the spec also allows the uploader; the Book payload does not expose
-  // uploaded_by, so until it does only admins see the panel and Reprocess/Delete.
-  const canManage = user?.role === "admin";
+  // can_edit is server-computed (admin or uploader, plan M6 A4); payloads
+  // predating it fall back to admin-only. The server enforces either way.
+  const canManage = book.can_edit ?? user?.role === "admin";
   const resumeChapterId = progress?.chapter_id ?? firstChapter?.id;
   const playHref = resumeChapterId ? `/player?book=${book.id}&chapter=${resumeChapterId}` : "";
   const percent = progress ? Math.round(progress.percent) : null;
@@ -148,10 +148,10 @@ export function BookDetailPage() {
     navigate(`/player?book=${book.id}&chapter=${nextId}`);
   }
 
-  const chapterRow = (chapter: Chapter, index: number) => (
+  const chapterRow = (chapter: Chapter) => (
     <li key={chapter.id} className="flex min-h-11 items-center gap-3 px-4 py-1">
       <span className="flex min-w-0 flex-1 items-baseline gap-2 text-sm">
-        <span className="tabular-nums text-muted">{index + 1}</span>
+        <span className="tabular-nums text-muted">{chapter.idx + 1}</span>
         <span className="truncate">{chapter.title}</span>
       </span>
       <span className="shrink-0 text-xs tabular-nums text-muted">{chapter.char_count.toLocaleString()} chars</span>
@@ -226,9 +226,9 @@ export function BookDetailPage() {
               onChange={(event) => goToChapter(event.target.value)}
               className="min-h-11 min-w-0 flex-1 rounded-card border border-line bg-card px-3 text-sm"
             >
-              {included.map((chapter, index) => (
+              {included.map((chapter) => (
                 <option key={chapter.id} value={chapter.id}>
-                  {index + 1} · {chapter.title} · {chapter.char_count.toLocaleString()} chars
+                  {chapter.idx + 1} · {chapter.title} · {chapter.char_count.toLocaleString()} chars
                 </option>
               ))}
             </select>
@@ -276,12 +276,14 @@ export function BookDetailPage() {
         {/* Quiet actions row: Edit + Find metadata inline, everything else in a
             more menu. The server enforces uploader-or-admin; a 403 surfaces inline. */}
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to={`/books/${id}/edit`}
-            className="inline-flex min-h-11 items-center rounded-pill border border-line bg-card px-4 text-sm font-medium"
-          >
-            Edit
-          </Link>
+          {canManage && (
+            <Link
+              to={`/books/${id}/edit`}
+              className="inline-flex min-h-11 items-center rounded-pill border border-line bg-card px-4 text-sm font-medium"
+            >
+              Edit
+            </Link>
+          )}
           <button
             type="button"
             aria-expanded={findOpen}
@@ -413,7 +415,7 @@ export function BookDetailPage() {
                 <div className="flex flex-col gap-1">
                   <h3 className="font-display font-semibold">Chapters</h3>
                   <ol className="divide-y divide-line rounded-card border border-line">
-                    {included.map((chapter, index) => chapterRow(chapter, index))}
+                    {included.map((chapter) => chapterRow(chapter))}
                   </ol>
                   {setChapter.isError && (
                     <p role="alert" className="text-sm text-danger">
@@ -438,7 +440,7 @@ export function BookDetailPage() {
                       </button>
                       {excludedOpen && (
                         <ol className="divide-y divide-line rounded-card border border-line">
-                          {excludedChapters.map((chapter, index) => chapterRow(chapter, index))}
+                          {excludedChapters.map((chapter) => chapterRow(chapter))}
                         </ol>
                       )}
                     </div>

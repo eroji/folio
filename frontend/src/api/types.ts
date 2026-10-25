@@ -35,6 +35,9 @@ export interface Book {
   cover_url: string | null;
   status: BookStatus;
   error: string | null;
+  /** Server-computed: the caller is an admin or uploaded this book. Absent on
+   * payloads predating M6 — fall back to `role === "admin"`. */
+  can_edit?: boolean;
   total_chars: number;
   est_duration_s: number | null;
   created_at: string;

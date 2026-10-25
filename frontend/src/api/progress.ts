@@ -77,6 +77,16 @@ export function useContinueListening(limit = 10) {
   });
 }
 
+export const finishedQueryKey = ["finished"] as const;
+
+/** Finished shelf: GET /me/finished, finished_at desc (plan M6 Task A3). */
+export function useFinishedListening(limit = 12) {
+  return useQuery({
+    queryKey: [...finishedQueryKey, limit],
+    queryFn: () => api.get<{ items: ContinueItem[] }>(`/me/finished?limit=${limit}`),
+  });
+}
+
 const DEVICE_KEY = "folio-device";
 
 /** Stable per-browser label: readable platform + 4-char id, max 64 chars. */

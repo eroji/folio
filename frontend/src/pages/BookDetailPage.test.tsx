@@ -13,7 +13,7 @@ import type { Book, Candidate, Chapter, Progress, Role } from "../api/types";
 
 const ID = "11111111-1111-1111-1111-111111111111";
 
-function makeBook(): Book {
+function makeBook(overrides: Partial<Book> = {}): Book {
   return {
     id: ID,
     title: "Dune",
@@ -36,6 +36,7 @@ function makeBook(): Book {
     est_duration_s: 600,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
+    ...overrides,
   };
 }
 
@@ -57,8 +58,8 @@ const CANDIDATE: Candidate = {
 };
 
 const CHAPTERS: Chapter[] = [
-  { id: "c1", idx: 1, title: "One Way", char_count: 500 },
-  { id: "c2", idx: 2, title: "The Other", char_count: 500 },
+  { id: "c1", idx: 0, title: "One Way", char_count: 500 },
+  { id: "c2", idx: 1, title: "The Other", char_count: 500 },
 ];
 
 function makeRule(overrides: Partial<PronunciationRule> = {}): PronunciationRule {
@@ -218,7 +219,6 @@ describe("BookDetailPage", () => {
   it("shows the review banner when saved candidates exist and opens the panel preloaded", async () => {
     renderDetail();
     const review = await screen.findByRole("button", { name: "Review metadata matches" });
-    expect(screen.getByRole("link", { name: "Edit" }).getAttribute("href")).toBe(`/books/${ID}/edit`);
 
     fireEvent.click(review);
     expect(await screen.findByRole("button", { name: "Apply selected" })).toBeTruthy();
@@ -228,7 +228,7 @@ describe("BookDetailPage", () => {
   it("hides the banner when there are no candidates", async () => {
     candidates = [];
     renderDetail();
-    expect(await screen.findByRole("link", { name: "Edit" })).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "Play" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Review metadata matches" })).toBeNull();
   });
 
@@ -311,7 +311,7 @@ describe("BookDetailPage", () => {
 
   it("hides the Book settings panel from non-admins", async () => {
     renderDetail();
-    await screen.findByRole("link", { name: "Edit" });
+    await screen.findByRole("link", { name: "Play" });
     expect(screen.queryByRole("button", { name: /Book settings/ })).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
   });
@@ -455,5 +455,35 @@ describe("BookDetailPage", () => {
     });
     expect(localStorage.getItem(`folio-pos-${ID}`)).toBeNull();
     expect(await screen.findByText(`at /player?book=${ID}&chapter=c1`)).toBeTruthy();
+  });
+
+  it("shows Edit, Book settings, Reprocess and Delete to the uploader via can_edit", async () => {
+    book = makeBook({ can_edit: true }); // role stays "user"
+    renderDetail();
+    expect((await screen.findByRole("link", { name: "Edit" })).getAttribute("href")).toBe(`/books/${ID}/edit`);
+    await openSettings();
+    expect(await screen.findByRole("switch", { name: "Include One Way in playback" })).toBeTruthy();
+    await openMore();
+    expect(await screen.findByRole("menuitem", { name: "Reprocess" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+  });
+
+  it("hides Edit, Book settings, Reprocess and Delete when can_edit is false", async () => {
+    book = makeBook({ can_edit: false });
+    renderDetail();
+    await screen.findByRole("link", { name: "Play" });
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Book settings/ })).toBeNull();
+    await openMore();
+    expect(await screen.findByRole("menuitem", { name: "Mark finished" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Reprocess" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
+  });
+
+  it("numbers chapters by idx + 1 in the picker", async () => {
+    renderDetail();
+    const select = await screen.findByRole("combobox", { name: "Chapters" });
+    expect(within(select).getByRole("option", { name: "1 · One Way · 500 chars" })).toBeTruthy();
+    expect(within(select).getByRole("option", { name: "2 · The Other · 500 chars" })).toBeTruthy();
   });
 });
