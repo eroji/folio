@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1E2235" />
+    <title>Folio — offline</title>
+    <style>
+      /* Brand tokens inlined from src/styles/tokens.css; no JS bundles here. */
+      :root {
+        color-scheme: light dark;
+        --page: #f6f7fb;
+        --card: #ffffff;
+        --ink: #1e2235;
+        --muted: #5b6275;
+        --line: #e2e5ef;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page: #12141f;
+          --card: #1e2235;
+          --ink: #f7f8fc;
+          --muted: #a3a9ba;
+          --line: #2b3049;
+        }
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background: var(--page);
+        color: var(--ink);
+        font: 16px/1.5 ui-sans-serif, system-ui, sans-serif;
+        padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+      }
+      main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        max-width: 360px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      button {
+        margin-top: 8px;
+        min-height: 48px;
+        padding: 0 28px;
+        border: 0;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #2381f7 0%, #8b5cf6 100%);
+        color: #fff;
+        font: 600 16px/1 ui-sans-serif, system-ui, sans-serif;
+        cursor: pointer;
+      }
+      button:focus-visible {
+        outline: 2px solid #2381f7;
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg width="64" height="64" viewBox="0 0 256 256" role="img" aria-label="Folio">
+        <defs>
+          <linearGradient id="leftPage" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#2E8BFF" />
+            <stop offset="1" stop-color="#2167E8" />
+          </linearGradient>
+          <linearGradient id="rightPage" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#795CFF" />
+            <stop offset="1" stop-color="#6045E8" />
+          </linearGradient>
+          <linearGradient id="topPage" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#AAB5FF" />
+            <stop offset="1" stop-color="#7D8AFF" />
+          </linearGradient>
+        </defs>
+        <path d="M89 40 174 13c8-3 15 3 15 11v31l-69 29-31-19Z" fill="url(#topPage)" />
+        <path d="M39 77c0-10 9-16 18-12l63 30v119l-66-32c-10-5-15-11-15-22Z" fill="url(#leftPage)" />
+        <path d="m120 95 67-32c11-5 22 2 22 14v83c0 10-5 17-14 22l-75 32Z" fill="url(#rightPage)" />
+        <path d="M120 95v119" fill="none" stroke="#FFFFFF" stroke-opacity=".24" stroke-width="3" />
+        <path d="M111 111c0-5 5-8 10-5l43 25c5 3 5 9 0 12l-43 25c-5 3-10 0-10-5Z" fill="#FFFFFF" />
+      </svg>
+      <h1>You're offline</h1>
+      <p>Folio couldn't reach the server. Cached books and covers still work; everything else waits for a connection.</p>
+      <button type="button" onclick="location.reload()">Retry</button>
+    </main>
+  </body>
+</html>

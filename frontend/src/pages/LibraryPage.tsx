@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Library } from "lucide-react";
+import clsx from "clsx";
 import { useBooks, type BookSort } from "../api/books";
-import { useContinueListening } from "../api/progress";
+import { useContinueListening, useFinishedListening } from "../api/progress";
 import { BookCard, BookCover } from "../components/BookCard";
 import { EmptyState } from "../components/EmptyState";
 import type { Book, BookStatus, Progress } from "../api/types";
@@ -11,6 +12,7 @@ const SORTS: { value: BookSort; label: string }[] = [
   { value: "recent", label: "Most recent" },
   { value: "title", label: "Title" },
   { value: "author", label: "Author" },
+  { value: "progress", label: "Progress" },
 ];
 
 const STATUSES: { value: BookStatus; label: string }[] = [
@@ -55,6 +57,26 @@ function ContinueRow() {
     </section>
   );
 }
+
+/** Collapsible Finished shelf from GET /me/finished; hidden while empty. */
+function FinishedSection() {
+  const { data } = useFinishedListening(12);
+  const items = data?.items ?? [];
+  if (items.length === 0) return null;
+  return (
+    <section aria-label="Finished" className="flex flex-col gap-2">
+      <details>
+        <summary className="min-h-11 font-display text-lg font-semibold">Finished ({items.length})</summary>
+        <div className={clsx(GRID, "pt-2")}>
+          {items.map(({ book }) => (
+            <BookCard key={book.id} book={book} />
+          ))}
+        </div>
+      </details>
+    </section>
+  );
+}
+
 export function LibraryPage() {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
@@ -180,6 +202,8 @@ export function LibraryPage() {
           </button>
         </div>
       )}
+
+      <FinishedSection />
     </div>
   );
 }
