@@ -33,7 +33,8 @@ function formatTime(seconds: number): string {
 
 const secondaryButton =
   "flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-pill px-2 text-xs font-medium text-muted hover:text-ink";
-const skipButton = "grid h-12 w-12 place-items-center rounded-pill border border-line bg-card text-ink";
+const skipButton =
+  "flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-pill border border-line bg-card text-ink";
 
 /** Screen 6: full-screen player; on phones the read-along is the content and
  * the cover/controls collapse into a compact sticky header. */
@@ -102,7 +103,7 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
 
   return (
     <div className="fixed inset-0 z-30 overflow-y-auto bg-page">
-      <div className="mx-auto flex min-h-full w-full max-w-md flex-col px-6 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+      <div className="mx-auto flex min-h-full w-full max-w-md flex-col px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] md:max-w-2xl lg:max-w-3xl lg:px-10">
         <div className="sticky top-0 z-10 -mx-6 bg-page/95 px-6 pb-2 pt-safe backdrop-blur">
           <button
             type="button"
@@ -113,7 +114,12 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
             <X size={22} strokeWidth={1.75} aria-hidden />
           </button>
 
-          <div className={clsx("relative mx-auto max-w-full", readAlong ? "my-2 w-16" : "my-8 w-52")}>
+          <div
+            className={clsx(
+              "relative mx-auto max-w-full",
+              readAlong ? "my-2 w-16 lg:w-24" : "my-8 w-52 lg:w-64",
+            )}
+          >
             {!readAlong && (
               <div aria-hidden className="absolute -inset-6 rounded-full bg-brand-gradient opacity-30 blur-2xl" />
             )}
@@ -172,7 +178,10 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
               onClick={player.skipBack}
               className={skipButton}
             >
-              <RotateCcw size={22} strokeWidth={1.75} aria-hidden />
+              <RotateCcw size={20} strokeWidth={1.75} aria-hidden />
+              <span aria-hidden className="text-[10px] font-medium tabular-nums">
+                {player.settings.skip_back}
+              </span>
             </button>
             <button
               type="button"
@@ -188,7 +197,10 @@ export function FullPlayer({ onChangeVoice }: { onChangeVoice?: () => void }) {
               onClick={player.skipForward}
               className={skipButton}
             >
-              <FastForward size={22} strokeWidth={1.75} aria-hidden />
+              <FastForward size={20} strokeWidth={1.75} aria-hidden />
+              <span aria-hidden className="text-[10px] font-medium tabular-nums">
+                {player.settings.skip_forward}
+              </span>
             </button>
           </div>
 

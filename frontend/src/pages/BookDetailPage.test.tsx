@@ -211,7 +211,7 @@ describe("BookDetailPage", () => {
   it("pins Play in a sticky bottom action bar", async () => {
     renderDetail();
     const bar = await screen.findByTestId("book-actions");
-    expect(bar.className).toContain("sticky");
+    expect(bar.className).toContain("fixed");
     expect(within(bar).getByRole("link", { name: "Play" })).toBeTruthy();
   });
 

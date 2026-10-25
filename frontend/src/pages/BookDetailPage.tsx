@@ -162,7 +162,7 @@ export function BookDetailPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 pb-28">
       <div className="flex flex-col gap-6 md:flex-row">
         <BookCover book={book} className="aspect-[2/3] w-40 shrink-0 self-center rounded-card md:w-56" />
         <div className="flex min-w-0 flex-1 flex-col gap-3">
@@ -362,14 +362,15 @@ export function BookDetailPage() {
       <div
         data-testid="book-actions"
         className={clsx(
-          // The bottom offset already clears the nav plus the safe area.
-          "sticky z-10 -mx-4 border-t border-line bg-page/95 px-4 pt-3 backdrop-blur",
+          // Fixed to the viewport (sticky only pins inside its parent, which is
+          // shorter than the screen on desktop). Offsets clear nav + mini player.
+          "fixed inset-x-0 z-20 border-t border-line bg-page px-4 pb-3 pt-3 shadow-[0_-8px_24px_-16px_rgba(0,0,0,0.35)]",
           player.book
             ? "bottom-[calc(7rem+env(safe-area-inset-bottom))]"
             : "bottom-[calc(3.5rem+env(safe-area-inset-bottom))]",
         )}
       >
-        <div className="mx-auto flex max-w-md flex-col items-stretch gap-1">
+        <div className="mx-auto flex max-w-md flex-col items-stretch gap-1 md:max-w-5xl md:flex-row md:items-center md:gap-4">
           {notPlayable ? (
             <button
               type="button"
@@ -381,14 +382,14 @@ export function BookDetailPage() {
           ) : (
             <Link
               to={playHref}
-              className="inline-flex h-14 items-center justify-center gap-2 rounded-pill bg-brand-gradient px-6 font-display font-semibold text-white"
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-pill bg-brand-gradient px-6 font-display font-semibold text-white md:ml-auto md:w-72 md:shrink-0"
             >
               <Play size={20} strokeWidth={1.75} aria-hidden />
               {percent != null ? `Resume ${percent}%` : "Play"}
             </Link>
           )}
           {progress && (
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 md:flex-1 md:pt-0">
               <div aria-hidden className="h-1.5 flex-1 overflow-hidden rounded-pill bg-line">
                 <div className="h-full rounded-pill bg-brand-gradient" style={{ width: `${Math.min(100, progress.percent)}%` }} />
               </div>
