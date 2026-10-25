@@ -1,0 +1,206 @@
+/*
+ * Folio design tokens — Direction C "Companion"
+ * Drop-in replacement for frontend/src/styles/tokens.css (Tailwind 4, CSS-first).
+ *
+ * Theme: <html data-theme="light|dark">. When the user's setting is "System",
+ * set data-theme from prefers-color-scheme at startup and on change.
+ * Contrast ratios in comments are WCAG 2.x against the surface named.
+ */
+
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/* Fonts (self-hosted via Fontsource; no CDN at runtime)               */
+/*   npm i @fontsource-variable/plus-jakarta-sans @fontsource-variable/newsreader
+ *   import them once in main.tsx:
+ *     import "@fontsource-variable/plus-jakarta-sans";
+ *     import "@fontsource-variable/newsreader";
+ * CJK faces are NOT bundled: system fonts first, Noto as last resort.  */
+/* ------------------------------------------------------------------ */
+
+@theme {
+  /* Type */
+  --font-ui: "Plus Jakarta Sans Variable", system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans Variable", system-ui, sans-serif;
+  --font-reading: "Newsreader Variable", Georgia, serif;
+
+  --text-2xs: 0.6875rem;  /* 11px  tab labels, badges */
+  --text-xs: 0.75rem;     /* 12px  timestamps, meta */
+  --text-sm: 0.8125rem;   /* 13px  secondary text */
+  --text-base: 0.875rem;  /* 14px  body, rows, buttons */
+  --text-md: 0.9375rem;   /* 15px  emphasised body, panel titles */
+  --text-lg: 1.125rem;    /* 18px  phone book title */
+  --text-xl: 1.625rem;    /* 26px  desktop book title */
+  --text-read: 1.0625rem; /* 17px  read-along (user can scale) */
+
+  /* Radius — only these five values exist in the UI */
+  --radius-xs: 1px;   /* progress bars, sheet handle */
+  --radius-sm: 3px;   /* small covers, cover badge */
+  --radius-cover: 4px;/* covers */
+  --radius-md: 6px;   /* buttons, rows, inputs, icon-button hover */
+  --radius-lg: 8px;   /* cards, panels, menus, sheet top corners */
+  /* rounded-full (999px) ONLY for: avatar, play/pause */
+
+  /* Spacing: Tailwind's default 4px scale. Common values: 4 6 8 10 12 14 20 28 */
+
+  /* Brand (fixed, never themed) */
+  --color-brand-blue: #2381F7;
+  --color-brand-violet: #8B5CF6;
+  --color-brand-tint: #8EA2F9;
+  --color-brand-ink: #1E2235;
+  /* Strong pair for fills that carry white text (4.78:1 / 5.1:1) */
+  --color-brand-blue-strong: #1A6FE0;
+  --color-brand-violet-strong: #7C4DEB;
+
+}
+
+/* Semantic colors read runtime variables, so they must be declared inline */
+@theme inline {
+  /* Semantic colors — map Tailwind utilities to the runtime variables below.
+     Use: bg-bg, bg-surface, text-fg, text-fg-2, border-divider, etc. */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-divider: var(--divider);
+  --color-control-border: var(--control-border);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-accent-fg: var(--accent-text);
+  --color-selected: var(--selected);
+  --color-on-selected: var(--on-selected);
+  --color-on-primary: var(--on-primary);
+  --color-progress: var(--progress);
+  --color-track: var(--track);
+  --color-paper: var(--paper);
+  --color-paper-border: var(--paper-border);
+  --color-reading: var(--reading-fg);
+  --color-highlight: var(--highlight);
+  --color-avatar: var(--avatar-bg);
+  --color-on-avatar: var(--avatar-fg);
+  --color-grabber: var(--grabber);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F6F7FB;
+  --surface: #FFFFFF;
+  --raised: #EEF1F7;          /* hover, menus */
+  --divider: #E3E6EF;         /* lines only, never a control's only edge */
+  --control-border: #7E8599;  /* 3.4:1 on bg */
+  --fg: #1E2235;            /* 14.7:1 */
+  --fg-2: #5B6275;          /* 5.7:1 */
+  --accent-text: #1559B5;     /* links, active tab label: 6.3:1 */
+  --selected: #EEF1FD;
+  --on-selected: #1559B5;     /* 6.0:1 on selected */
+  --on-primary: #FFFFFF;
+  --progress: #2381F7;        /* non-text, 3.8:1 */
+  --track: #E3E6EF;
+  --paper: #FDFCF9;
+  --paper-border: #E8E4DA;
+  --reading-fg: #2A2D3A;    /* 13.3:1 */
+  --highlight: #DDE3FD;       /* current sentence, text stays --text */
+  --avatar-bg: #1E2235;
+  --avatar-fg: #FFFFFF;
+  --grabber: #C9CEDC;
+  --success: #1C7A4A;         /* 5.3:1 */
+  --warning: #9A5800;         /* 5.6:1 */
+  --danger: #C2362B;          /* 5.5:1 */
+  --shadow-menu: 0 8px 24px rgba(30, 34, 53, 0.16);
+  --shadow-cover: 0 8px 24px rgba(30, 34, 53, 0.16);
+  --shadow-sheet: 0 -6px 20px rgba(30, 34, 53, 0.10);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12141F;
+  --surface: #1A1D2B;
+  --raised: #232738;
+  --divider: #2C3145;
+  --control-border: #6B7289;  /* 3.5:1 */
+  --fg: #EDEFF5;            /* 15.9:1 */
+  --fg-2: #A3A9BA;          /* 7.8:1 */
+  --accent-text: #8EA2F9;     /* 7.6:1 */
+  --selected: #252B4D;
+  --on-selected: #B4C1FB;     /* 7.8:1 */
+  --on-primary: #FFFFFF;
+  --progress: #5B8DF9;        /* 5.3:1 */
+  --track: #2C3145;
+  --paper: #171A24;
+  --paper-border: #262A38;
+  --reading-fg: #D9DCE6;    /* 12.7:1 */
+  --highlight: #2E3666;
+  --avatar-bg: #8EA2F9;
+  --avatar-fg: #12141F;       /* 7.6:1 */
+  --grabber: #4A5068;
+  --success: #4CC38A;
+  --warning: #F0B44C;
+  --danger: #F2777A;
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-cover: 0 8px 24px rgba(0, 0, 0, 0.40);
+  --shadow-sheet: 0 -6px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* The one gradient. Primary action (Resume/Play, play/pause) and the logo only. */
+.bg-primary-gradient {
+  background-image: linear-gradient(135deg, var(--color-brand-blue-strong), var(--color-brand-violet-strong));
+  color: var(--on-primary);
+}
+/* Placeholder cover when a book has no cover image */
+.bg-cover-placeholder {
+  background-image: linear-gradient(160deg, var(--color-brand-blue), var(--color-brand-violet));
+}
+
+html {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+.font-reading { font-optical-sizing: auto; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ */
+/* CJK: set lang="ja|ko|zh|zh-TW" from the book's language on the book */
+/* title, metadata and read-along root.                                */
+/* ------------------------------------------------------------------ */
+:lang(ja) { font-family: var(--font-ui), "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", system-ui, sans-serif; }
+:lang(ko) { font-family: var(--font-ui), "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif; word-break: keep-all; }
+:lang(zh) { font-family: var(--font-ui), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; }
+:lang(zh-TW), :lang(zh-Hant) { font-family: var(--font-ui), "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif; }
+.font-reading:lang(ja) { font-family: var(--font-reading), "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif; line-height: 1.9; line-break: strict; }
+.font-reading:lang(ko) { font-family: var(--font-reading), "AppleMyungjo", "Batang", "Noto Serif KR", serif; line-height: 1.9; word-break: keep-all; }
+.font-reading:lang(zh) { font-family: var(--font-reading), "Songti SC", "SimSun", "Noto Serif SC", serif; line-height: 1.9; line-break: strict; }
+.font-reading:lang(zh-TW), .font-reading:lang(zh-Hant) { font-family: var(--font-reading), "Songti TC", "PMingLiU", "Noto Serif TC", serif; line-height: 1.9; line-break: strict; }
+
+/* ------------------------------------------------------------------ */
+/* Density: compact with a mouse, 44px targets on touch                */
+/* Desktop controls are authored at 36px (h-9). This restores 44px on  */
+/* any coarse pointer (phones, tablets, touch laptops).                 */
+/* ------------------------------------------------------------------ */
+@media (pointer: coarse) {
+  .tap { min-height: 44px; min-width: 44px; }
+}
+
+/* Focus: visible everywhere, both themes */
+:focus-visible {
+  outline: 2px solid var(--progress);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Visually hidden text for screen readers (e.g. "Played" behind a check icon) */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

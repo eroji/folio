@@ -177,6 +177,21 @@ Milestones 1 and 2 only. Metadata (M3), TTS/player (M4), progress/settings (M5),
 
 **Status: accepted 2026-10-25.** Service worker caches shell + covers and never `/api/v1/audio` (verified in Cache Storage after playback); offline navigation falls back to a branded page. Admin retry/cache stats/TTS latency, Finished shelf, `sort=progress`, and `can_edit` all live. Lighthouse accessibility: **login 100 · library 100 · book 100 · player 100** (after fixing low-contrast `<summary>` text and three icon-button name mismatches). Metrics at `/metrics` expose templated paths only (no IDs).
 
+## UI redesign — Direction C "Companion" (post-M6)
+
+Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Implemented in six phases, each reviewed before the next.
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Foundations: tokens (with temporary aliases), Plus Jakarta Sans + Newsreader, theme resolution, Material Symbols `<Icon>` pipeline | in progress |
+| 2 | Desktop icon rail + account menu; phone header/tab bar; remove old top nav | planned |
+| 3 | Now Playing panel (desktop) + sheet (phone) bound to the single player; collapse/expand, focus mode | planned |
+| 4 | Book page: hero, progress badge, primary-action states, ⋯ menu + toast, Chapters/About/Manage tabs | planned |
+| 5 | Restyle undesigned screens with the new tokens/components (structure unchanged) | planned |
+| 6 | Remove lucide, unused styles; update DESIGN.md and DECISIONS.md | planned |
+
+**Notes:** the reference HTML uses `data-theme` on `<html>`; the app now resolves System at runtime. Filled icon variants are not shipped in `@material-symbols/svg-400` (rounded/outlined only) — play/pause/skip are visually filled already. Lighthouse runs must be done outside the repo (an earlier run dumped a Chrome profile into it; ignored now).
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
