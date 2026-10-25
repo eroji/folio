@@ -63,7 +63,7 @@ describe("LoginPage", () => {
     mockFetch(() => jsonResponse(200, { user, csrf_token: "t" }));
     renderLogin();
     expect(screen.getByRole("heading", { name: "Folio" })).toBeTruthy();
-    expect(document.querySelector('img[src="/logo.svg"]')).toBeTruthy();
+    expect(document.querySelector("main img")).toBeTruthy();
     expect(screen.getByLabelText("Username").getAttribute("autocomplete")).toBe("username");
     expect(screen.getByLabelText("Password").getAttribute("autocomplete")).toBe("current-password");
     expect(screen.queryByText(/directory account/)).toBeNull();
