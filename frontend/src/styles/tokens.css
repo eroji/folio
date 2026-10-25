@@ -216,23 +216,3 @@ html {
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-/* Temporary aliases for screens restyled in Phase 5. */
-:root {
-  --page: var(--bg);
-  --card: var(--surface);
-  --ink: var(--fg);
-  --muted: var(--fg-2);
-  --line: var(--divider);
-  --font-sans: var(--font-ui);
-  --brand-gradient: linear-gradient(135deg, var(--color-brand-blue), var(--color-brand-violet));
-}
-@theme inline {
-  --color-page: var(--bg);
-  --color-card: var(--surface);
-  --color-ink: var(--fg);
-  --color-muted: var(--fg-2);
-  --color-line: var(--divider);
-  --radius-card: 12px;
-  --radius-pill: 999px;
-}
-.bg-brand-gradient { background-image: var(--brand-gradient); }

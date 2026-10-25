@@ -11,7 +11,7 @@ export interface ResumePromptProps {
 
 export function ResumePrompt({ device, chapter, time, onContinue, onStartHere }: ResumePromptProps) {
   return (
-    <div role="dialog" aria-label="Continue where you left off" className="rounded-card border border-line bg-page p-4">
+    <div role="dialog" aria-label="Continue where you left off" className="rounded-lg border border-divider bg-surface p-4">
       <p className="text-sm">
         Continue from {chapter}, {time} on {device}?
       </p>
@@ -19,14 +19,14 @@ export function ResumePrompt({ device, chapter, time, onContinue, onStartHere }:
         <button
           type="button"
           onClick={onContinue}
-          className="min-h-11 flex-1 rounded-pill bg-brand-gradient px-4 text-sm font-semibold text-white"
+          className="min-h-11 flex-1 rounded-md bg-primary-gradient px-4 text-sm font-semibold text-on-primary"
         >
           Continue
         </button>
         <button
           type="button"
           onClick={onStartHere}
-          className="min-h-11 flex-1 rounded-pill border border-line bg-card px-4 text-sm font-medium"
+          className="min-h-11 flex-1 rounded-md border border-control-border bg-surface px-4 text-sm font-medium hover:bg-raised"
         >
           Start here
         </button>

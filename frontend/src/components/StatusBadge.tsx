@@ -14,8 +14,8 @@ export function StatusBadge({ status }: { status: BookStatus | "queued" }) {
   return (
     <span
       className={clsx(
-        "shrink-0 rounded-pill border border-line bg-page px-2 py-0.5 text-xs font-medium",
-        status === "failed" ? "border-danger/40 text-danger" : status === "ready" ? "text-ink" : "text-muted",
+        "shrink-0 rounded-md border border-divider bg-bg px-2 py-0.5 text-xs font-medium",
+        status === "failed" ? "border-danger/40 text-danger" : status === "ready" ? "text-fg" : "text-fg-2",
       )}
     >
       {LABELS[status]}
