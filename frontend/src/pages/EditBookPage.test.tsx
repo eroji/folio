@@ -118,4 +118,21 @@ describe("EditBookPage", () => {
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
     expect(patches).toHaveLength(0);
   });
+
+  it("PATCHes a genre chosen from the configured list", async () => {
+    renderEdit();
+    fireEvent.change(await screen.findByLabelText("Genre"), { target: { value: "Science fiction" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ genre: "Science fiction" });
+  });
+
+  it("PATCHes free text typed under Other… genres", async () => {
+    renderEdit();
+    fireEvent.change(await screen.findByLabelText("Genre"), { target: { value: "__other__" } });
+    fireEvent.change(screen.getByLabelText("New genre"), { target: { value: "Nautical history" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ genre: "Nautical history" });
+  });
 });

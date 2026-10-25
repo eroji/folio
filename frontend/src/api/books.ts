@@ -2,9 +2,17 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, csrfToken } from "./client";
-import type { BookDetailResponse, BookListResponse, Chapter, UploadResult } from "./types";
+import type {
+  Book,
+  BookDetailResponse,
+  BookListResponse,
+  Chapter,
+  Progress,
+  UploadResult,
+} from "./types";
 
 export type BookSort = "recent" | "title" | "author" | "progress";
+export type BookGroup = "genre" | "author" | "language" | "status" | "none";
 
 /** "English" for "en", "Chinese, Traditional"… for a book's language code. */
 export function languageName(code: string): string {
@@ -15,24 +23,109 @@ export function languageName(code: string): string {
   }
 }
 
+/** The language's own name — "日本語" for "ja" (the references' chip labels). */
+export function nativeLanguageName(code: string): string {
+  try {
+    return new Intl.DisplayNames([code], { type: "language" }).of(code.split("-")[0]!) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** "4 h 12 m" / "36 m" — the handoff's length and time-left shape. */
+export function formatLength(seconds: number): string {
+  const minutes = Math.max(0, Math.round(seconds / 60));
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} m` : `${minutes} m`;
+}
+
 export interface BookListParams {
   q?: string;
   sort?: BookSort;
   status?: string;
+  genre?: string;
   page?: number;
 }
 
-export function useBooks(params: BookListParams) {
+/** One shelf of the grouped GET /books response (handoff §5.1); books carries
+ * the first 12 of the group, "See all" pages through the flat listing. */
+export interface BookGroupShelf {
+  key: string | null;
+  label: string;
+  count: number;
+  books: Book[];
+}
+
+function bookListUrl(params: BookListParams & { group?: BookGroup }): string {
+  const search = new URLSearchParams();
+  for (const key of ["q", "sort", "status", "genre", "group"] as const) {
+    const value = params[key];
+    if (value) search.set(key, value);
+  }
+  if (params.page && params.page > 1) search.set("page", String(params.page));
+  const qs = search.toString();
+  return `/books${qs ? `?${qs}` : ""}`;
+}
+
+export function useBooks(params: BookListParams, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["books", params],
+    queryFn: () => api.get<BookListResponse>(bookListUrl(params)),
+    enabled: options.enabled ?? true,
+  });
+}
+
+/** Grouped listing: {groups: [{key, label, count, books}]} with the first 12
+ * books per group (the API ignores paging in this mode). */
+export function useBookGroups(params: BookListParams & { group: BookGroup }, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["books", params],
+    queryFn: () => api.get<{ groups: BookGroupShelf[] }>(bookListUrl(params)),
+    enabled: options.enabled ?? true,
+  });
+}
+
+/** Body of GET /me/home (handoff §5.3): the three Home shelves. */
+export interface HomeChapter {
+  id: string;
+  idx: number;
+  title: string;
+  duration_s?: number;
+}
+
+export interface HomeContinueItem {
+  book: Book;
+  progress: Progress;
+  chapter: HomeChapter | null;
+  time_left_s: number;
+}
+
+export interface HomeNextItem {
+  book: Book;
+  chapter: HomeChapter;
+}
+
+export interface HomeResponse {
+  continue: HomeContinueItem[];
+  next_chapters: HomeNextItem[];
+  recent: Book[];
+}
+
+export interface HomeFilters {
+  status?: "in_progress" | "not_started" | "finished";
+  language?: string;
+  maxMinutes?: number;
+}
+
+export function useHome(filters: HomeFilters) {
+  return useQuery({
+    queryKey: ["home", filters],
     queryFn: () => {
       const search = new URLSearchParams();
-      if (params.q) search.set("q", params.q);
-      if (params.sort) search.set("sort", params.sort);
-      if (params.status) search.set("status", params.status);
-      if (params.page && params.page > 1) search.set("page", String(params.page));
+      if (filters.status) search.set("status", filters.status);
+      if (filters.language) search.set("language", filters.language);
+      if (filters.maxMinutes) search.set("max_minutes", String(filters.maxMinutes));
       const qs = search.toString();
-      return api.get<BookListResponse>(`/books${qs ? `?${qs}` : ""}`);
+      return api.get<HomeResponse>(`/me/home${qs ? `?${qs}` : ""}`);
     },
   });
 }

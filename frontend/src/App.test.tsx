@@ -49,12 +49,16 @@ function mockFetch(): void {
         };
       } else if (url.pathname.includes("/me/continue") || url.pathname.includes("/me/finished")) {
         body = { items: [] };
+      } else if (url.pathname.includes("/me/home")) {
+        body = { continue: [], next_chapters: [], recent: [makeBook()] };
       } else if (url.pathname.includes("/me/settings")) {
         body = { settings: DEFAULT_SETTINGS };
       } else if (url.pathname.includes("/books")) {
         const q = url.searchParams.get("q");
         const matched = q ? [] : [makeBook()];
-        body = { items: matched, total: matched.length, page: 1, page_size: 24 };
+        body = url.searchParams.get("group")
+          ? { groups: [{ key: "Science fiction", label: "Science fiction", count: matched.length, books: matched }] }
+          : { items: matched, total: matched.length, page: 1, page_size: 24 };
       } else {
         body = {};
       }
@@ -90,13 +94,16 @@ afterEach(() => {
 });
 
 describe("routes", () => {
-  it('renders the library at "/" and "/library"', async () => {
-    for (const entry of ["/", "/library"]) {
-      renderApp(entry);
-      await screen.findByRole("heading", { name: "Library" });
-      expect(await screen.findByRole("link", { name: /Dune/ })).toBeTruthy();
-      vi.mocked(fetch).mockClear();
-    }
+  it('renders Home shelves at "/"', async () => {
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Recently added" })).toBeTruthy();
+    expect(await screen.findByRole("link", { name: /Dune/ })).toBeTruthy();
+  });
+
+  it('renders the grouped library at "/library"', async () => {
+    renderApp("/library");
+    await screen.findByRole("heading", { name: "Library" });
+    expect(await screen.findByRole("region", { name: "Science fiction" })).toBeTruthy();
   });
 
   it('redirects "/library?q=…" to "/search?q=…"', async () => {

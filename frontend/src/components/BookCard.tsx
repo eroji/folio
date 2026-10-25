@@ -49,20 +49,10 @@ const STATUS_LINES: Partial<
     { label: string; icon: IconName; tone: string; spin?: boolean }
   >
 > = {
-  uploading: {
-    label: "Processing…",
-    icon: "progress_activity",
-    tone: "text-fg-2",
-    spin: true,
-  },
-  processing: {
-    label: "Processing…",
-    icon: "progress_activity",
-    tone: "text-fg-2",
-    spin: true,
-  },
-  needs_ocr: { label: "Needs OCR", icon: "warning", tone: "text-warning" },
-  failed: { label: "Couldn't process", icon: "error", tone: "text-danger" },
+  uploading: { label: "Processing…", icon: "RefreshCw", tone: "text-fg-2", spin: true },
+  processing: { label: "Processing…", icon: "RefreshCw", tone: "text-fg-2", spin: true },
+  needs_ocr: { label: "Needs OCR", icon: "TriangleAlert", tone: "text-warning" },
+  failed: { label: "Couldn't process", icon: "TriangleAlert", tone: "text-danger" },
 };
 
 /** Progress state appended to a card's visible text (handoff "Cover progress badge"). */

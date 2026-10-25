@@ -19,6 +19,7 @@ export type BookPatch = Partial<
     | "isbn10"
     | "isbn13"
     | "tags"
+    | "genre"
     | "narrator_voice"
   >
 >;
