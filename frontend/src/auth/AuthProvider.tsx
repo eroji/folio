@@ -62,8 +62,8 @@ export function RequireAuth() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-5xl animate-pulse space-y-3 p-4" aria-busy="true">
-        <div className="h-12 rounded-card bg-card" />
-        <div className="h-64 rounded-card bg-card" />
+        <div className="h-12 rounded-lg bg-surface" />
+        <div className="h-64 rounded-lg bg-surface" />
       </div>
     );
   }
