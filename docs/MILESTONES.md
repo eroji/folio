@@ -211,7 +211,7 @@ Handoff: `docs/ui-handoff/HANDOFF.md` + `reference/*.html` + drop-in tokens. Imp
 - Player secondary icons (speed, sleep) use the same size as the rest of the transport row.
 - Settings expands to the full page area when the player is closed/collapsed and follows the 50/50 split when the panel is open (deviation from the handoff's fixed 720px, requested in testing).
 
-## UI redesign — Direction D "Ribbon" (replaces Direction C)
+## UI redesign — Direction D "Ribbon" (replaces Direction C) — **complete**
 
 Handoff: `docs/ui-handoff/HANDOFF.md` (the old `folio-ui-handoff` is superseded). Dark-only, amber accent, labelled sidebar, bottom player bar + expanded `/player`, Home `/`, Library `/library`, Search `/search`, book two-column layout, Genre field.
 
@@ -223,9 +223,9 @@ Handoff: `docs/ui-handoff/HANDOFF.md` (the old `folio-ui-handoff` is superseded)
 | 4 | Book page two-column, ⋮ menu + narrator dialog | **done** — 202 web tests |
 | 5 | Home/Library shelves, Genre data, group API | **done** — 211 web tests, 455 backend |
 | 6 | Search, Upload, Settings, Sign in | **done** — 215 web tests; e2e 9/9 |
-| 7 | Restyle remaining, clean up, rewrite DESIGN.md | in progress |
+| 7 | Restyle remaining, clean up, rewrite DESIGN.md | **done** — 207 web tests, 9 e2e, Lightning 100 on six screens |
 
-Backend §5 merged: genre + cover colour (migration 0009), grouped books, `/me/home`, `/search`; 455 backend tests.
+Backend §5 merged: genre + cover colour (migration 0009), grouped books, `/me/home`, `/search`; 455 backend tests. All seven phases shipped; final: 455 backend / 207 web / 9 Playwright, acceptance all-pass, Lighthouse 100 on login/home/library/book/player/settings. Screenshots `docs/screenshots/d-*.png`.
 
 ## Known gaps carried into M3+
 
