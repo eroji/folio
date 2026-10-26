@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -99,7 +99,9 @@ describe("routes", () => {
   it('renders Home shelves at "/"', async () => {
     renderApp("/");
     expect(await screen.findByRole("heading", { name: "Recently added" })).toBeTruthy();
-    expect(await screen.findByRole("link", { name: /Dune/ })).toBeTruthy();
+    // Scoped: the genre shelves below link to the same books.
+    const recent = screen.getByRole("region", { name: "Recently added" });
+    expect(within(recent).getByRole("link", { name: /Dune/ })).toBeTruthy();
   });
 
   it('renders the grouped library at "/library"', async () => {
