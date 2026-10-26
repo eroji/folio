@@ -99,7 +99,7 @@ export function FontSizeButtons({ controls }: { controls: ReadAlongControls }) {
         disabled={controls.fontStep === 0}
         className={button}
       >
-        <Icon name="Minus" size={18} />
+        <Icon name="TextDecrease" size={18} />
       </button>
       <button
         type="button"
@@ -109,7 +109,7 @@ export function FontSizeButtons({ controls }: { controls: ReadAlongControls }) {
         disabled={controls.fontStep === FONT_SCALES.length - 1}
         className={button}
       >
-        <Icon name="Plus" size={18} />
+        <Icon name="TextIncrease" size={18} />
       </button>
     </>
   );

@@ -485,6 +485,15 @@ describe("BookDetailPage", () => {
     expect(screen.getByRole("tab", { name: "Chapters" }).getAttribute("aria-selected")).toBe("true");
   });
 
+  it("scrolls the chapters list internally instead of growing the page", async () => {
+    renderDetail();
+    await screen.findByRole("tab", { name: "Chapters" });
+    const list = document.querySelector("#book-panel ol")!;
+    expect(list.className).toContain("max-h-[60vh]");
+    expect(list.className).toContain("scroll-thin");
+    expect(list.className).toContain("overflow-y-auto");
+  });
+
   it("marks chapters before the saved position as played and the saved one as current", async () => {
     progress = makeProgress({ percent: 75, chapter_id: "c2", segment_id: "s4" });
     renderDetail();

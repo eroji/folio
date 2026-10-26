@@ -1,5 +1,7 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import TextDecrease from "@material-symbols/svg-400/rounded/text_decrease.svg?react";
+import TextIncrease from "@material-symbols/svg-400/rounded/text_increase.svg?react";
 import { installMockEventSource } from "../test/eventsource";
 import { BOOK_ID, CH1, installPlayerFetch, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import type { PlayerContextValue } from "../player/usePlayer";
@@ -271,6 +273,16 @@ describe("ReadAlong", () => {
     renderPlayer(<ReadAlong />);
     expect(screen.getByRole("button", { name: "Increase font size (size 1 of 3)" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Decrease font size (size 1 of 3)" })).toBeTruthy();
+  });
+
+  it("uses the text_decrease / text_increase glyphs, not plus and minus", () => {
+    const glyphPath = (Glyph: typeof TextIncrease) =>
+      render(<Glyph />).container.querySelector("path")!.getAttribute("d");
+    renderPlayer(<ReadAlong />);
+    const dec = screen.getByRole("button", { name: /^Decrease font size/ });
+    const inc = screen.getByRole("button", { name: /^Increase font size/ });
+    expect(dec.querySelector("path")?.getAttribute("d")).toBe(glyphPath(TextDecrease));
+    expect(inc.querySelector("path")?.getAttribute("d")).toBe(glyphPath(TextIncrease));
   });
 
   it("restores the persisted text size on mount", () => {

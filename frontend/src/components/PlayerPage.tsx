@@ -171,7 +171,7 @@ function DesktopPlayer({ book }: { book: Book }) {
   const [tab, setTab] = useState<PanelTab>("read");
   const chapterNumber = player.chapters.findIndex((chapter) => chapter.id === player.chapter?.id) + 1;
   return (
-    <div className="mx-auto grid w-full max-w-[1080px] grid-cols-1 items-start gap-12 pt-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+    <div className="mx-auto grid h-full min-h-0 w-full max-w-[1080px] grid-cols-1 gap-12 overflow-hidden pt-6 lg:grid-cols-[340px_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col items-center gap-6">
         <span className="relative block aspect-[2/3] w-full max-w-[300px] self-start overflow-hidden rounded-xl shadow-(--shadow-cover)">
           <BookCover book={book} className="absolute inset-0 h-full w-full" />
@@ -192,14 +192,15 @@ function DesktopPlayer({ book }: { book: Book }) {
           </div>
         )}
       </div>
-      <div className="flex min-w-0 max-w-[620px] flex-col gap-4">
+      <div className="flex min-h-0 min-w-0 max-w-[620px] flex-col gap-4">
         <PlayerTabs tab={tab} onSelect={setTab} />
+        {/* Exactly one scroll container per tab: the read-along panel scrolls
+            inside ReadAlong; the other tabs scroll here. Never the document. */}
         <div
           role="tabpanel"
           id={`player-panel-${tab}`}
           aria-labelledby={`player-tab-${tab}`}
-          className="scroll-thin flex min-h-0 flex-col overflow-y-auto"
-          style={{ height: "min(560px, 60vh)" }}
+          className={clsx("min-h-0 flex-1", tab === "read" ? "flex flex-col overflow-hidden" : "scroll-thin overflow-y-auto")}
         >
           {tab === "read" && <ReadAlong className="min-h-0 flex-1" />}
           {tab === "next" && <UpNext />}
