@@ -5,7 +5,7 @@
  * per-book override. Selecting a voice PATCHes the book and closes. */
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { previewVoice, useVoices, voiceLabel } from "../api/voices";
+import { previewVoice, useVoices, voiceLabel, voiceOnServer } from "../api/voices";
 import { languageName } from "../api/books";
 import { Icon } from "./Icon";
 
@@ -123,7 +123,7 @@ export function NarratorVoiceDialog({
                 <button
                   type="button"
                   aria-pressed={voice.id === value}
-                  disabled={!voice.available}
+                  disabled={!voiceOnServer(voice)}
                   onClick={() => {
                     close();
                     if (voice.id !== value) onSelect(voice.id);
@@ -139,7 +139,7 @@ export function NarratorVoiceDialog({
                     className={clsx("shrink-0", voice.id === value ? "text-accent" : "invisible")}
                   />
                   <span className="min-w-0 truncate">{voiceLabel(voice)}</span>
-                  {!voice.available && <span className="text-sm text-fg-2">(no longer available)</span>}
+                  {!voiceOnServer(voice) && <span className="text-sm text-fg-2">(no longer available)</span>}
                 </button>
                 <button
                   type="button"

@@ -1,20 +1,21 @@
 /** Typed calls + queries for the M4 voice endpoints (plan Task D contract).
  * Types live here rather than in api/types.ts because only this surface uses voices. */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, api, csrfToken } from "./client";
 
 export interface Voice {
   id: string;
-  language: string | null;
-  description: string | null;
-  available: boolean;
+  /** Detected or manually overridden base language; null = undetected. */
+  language?: string | null;
+  description?: string | null;
+  /** Older payloads; new servers send `on_server`. Use voiceOnServer(). */
+  available?: boolean;
   /** Admin override or name derived from the id ("ashley-en" -> "Ashley"). */
   display_name?: string | null;
-  /** Fields the backend adds with the voices redesign; optional so this
-   * compiles before the merge. `on_server` supersedes `available`. */
-  on_server?: boolean;
   is_default?: boolean;
   books_count?: number;
+  on_server?: boolean;
+  /** True when the language was set manually (shows the Unassign pill). */
   language_overridden?: boolean;
 }
 
@@ -24,14 +25,27 @@ export interface VoicesResponse {
   defaults?: Record<string, string | null>;
 }
 
-/** Whether the engine can still speak this voice. */
-export function voiceOnServer(voice: Voice): boolean {
-  return voice.on_server ?? voice.available;
-}
-
 /** "zh-TW" / "zh_Hans" / "zh" -> "zh"; lower-case base of a language tag. */
 export function baseLanguage(code: string): string {
   return code.split(/[-_]/)[0]!.toLowerCase();
+}
+
+/** Body of PATCH /admin/voices/{id}. */
+export type VoicePatch = { display_name?: string | null; language_override?: string | null };
+
+/** Whether the TTS server still lists this voice (`on_server`, older `available`). */
+export function voiceOnServer(voice: Voice): boolean {
+  return voice.on_server ?? voice.available ?? true;
+}
+
+/** Base language group of a voice: the server's `language` field, else the
+ * id suffix (-en, -ja, -ko/-kr, -zh); -kr folds into ko, all Chinese
+ * variants into zh. Null when undetectable (Unassigned). */
+export function voiceLanguage(voice: Voice): string | null {
+  const raw = voice.language ?? voice.id.match(/-(en|ja|ko|kr|zh)(?:-[a-z]{2})?$/i)?.[1];
+  if (!raw) return null;
+  const base = raw.split(/[-_]/)[0]!.toLowerCase();
+  return base === "kr" ? "ko" : base;
 }
 
 /** Human label for a voice: `display_name` when present, else the id without
@@ -106,4 +120,57 @@ export async function previewVoice(voice: string): Promise<string> {
     throw new ApiError(code, message, response.status);
   }
   return URL.createObjectURL(await response.blob());
+}
+
+/** Apply an updater to the cached voice list under both query keys. */
+function patchVoicesCache(queryClient: QueryClient, update: (data: VoicesResponse) => VoicesResponse) {
+  for (const refresh of [false, true]) {
+    queryClient.setQueryData<VoicesResponse>(voicesQueryKey(refresh), (old) => (old ? update(old) : old));
+  }
+}
+
+/** PATCH /admin/voices/{id}: display name and/or manual language override.
+ * The returned item is merged into the cache so rows move groups at once. */
+export function useUpdateVoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: string } & VoicePatch) =>
+      api.patch<{ item?: Voice }>(`/admin/voices/${encodeURIComponent(id)}`, patch),
+    onSuccess: (data) => {
+      const item = data?.item;
+      if (item) {
+        patchVoicesCache(queryClient, (old) => ({
+          ...old,
+          items: old.items.map((voice) => (voice.id === item.id ? { ...voice, ...item } : voice)),
+        }));
+      }
+      queryClient.invalidateQueries({ queryKey: ["voices"] });
+    },
+  });
+}
+
+/** PUT /admin/voices/defaults: the server-wide default for one language. */
+export function useSetVoiceDefault() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ language, voiceId }: { language: string; voiceId: string }) =>
+      api.put<{ defaults?: Record<string, string> }>("/admin/voices/defaults", { language, voice_id: voiceId }),
+    onSuccess: (data, { language, voiceId }) => {
+      const defaults = { ...data?.defaults, [language]: voiceId };
+      patchVoicesCache(queryClient, (old) => ({ ...old, defaults: { ...old.defaults, ...defaults } }));
+      queryClient.invalidateQueries({ queryKey: ["voices"] });
+    },
+  });
+}
+
+/** DELETE /admin/voices/{id} (204): drop a voice the server no longer has. */
+export function useDeleteVoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/admin/voices/${encodeURIComponent(id)}`),
+    onSuccess: (_result, id) => {
+      patchVoicesCache(queryClient, (old) => ({ ...old, items: old.items.filter((voice) => voice.id !== id) }));
+      queryClient.invalidateQueries({ queryKey: ["voices"] });
+    },
+  });
 }
