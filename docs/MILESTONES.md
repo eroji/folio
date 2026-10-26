@@ -227,6 +227,17 @@ Handoff: `docs/ui-handoff/HANDOFF.md` (the old `folio-ui-handoff` is superseded)
 
 Backend §5 merged: genre + cover colour (migration 0009), grouped books, `/me/home`, `/search`; 455 backend tests. All seven phases shipped; final: 455 backend / 207 web / 9 Playwright, acceptance all-pass, Lighthouse 100 on login/home/library/book/player/settings. Screenshots `docs/screenshots/d-*.png`.
 
+### Direction D follow-ups (2026-10-25)
+
+- Settings: smaller heading, real Playback/Voices tabs.
+- Admin: section tabs (Jobs/Cache/Users/Voice names) in the same centered column as Settings.
+- Home: genre shelves; next-chapter and continue numbering now count only included chapters; proper 2:3 covers.
+- Player: deterministic resume (fixed a stale-index 16% start after exclusions), initial read-along follow, rAF-synced highlight, explicit A−/A+, larger viewport-scaled text, identical column split, styled internal scrollbar.
+- Covers: percent overlay restored alongside the accent bar; finished check kept.
+- Book page: played rows show a check instead of duration, “Resume” without a chapter number, “Narrator voice”.
+- Icons: transparent fills; **Material Symbols trial** replaces lucide (easy to revert; filled transport glyphs look chunkier).
+- Final: **458 backend / 235 web / 9 Playwright**, acceptance all-pass. Lighthouse was 100 before the icon swap and was not re-run.
+
 ## Known gaps carried into M3+
 
 - **`sort=progress`** falls back to recent until M5 adds the progress table.
