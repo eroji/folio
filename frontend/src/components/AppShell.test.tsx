@@ -143,7 +143,7 @@ describe("AppShell", () => {
     expect(within(navs()[0]!).getByRole("link", { name: "Library" })).toBeTruthy();
   });
 
-  it("renders the collapsed rail with a tiny label under every icon and keeps the logo in the sidebar", async () => {
+  it("renders the collapsed rail with a tiny label under every icon and no logo", async () => {
     localStorage.setItem("folio-sidebar-collapsed", "true");
     renderShell();
     await boot();
@@ -154,17 +154,16 @@ describe("AppShell", () => {
       expect(label.className).toContain("text-2xs");
       expect(label.className).not.toContain("hidden");
     }
-    expect(within(sidebar).getByRole("link", { name: "Folio home" })).toBeTruthy();
+    expect(within(sidebar).queryByRole("link", { name: "Folio home" })).toBeNull();
   });
 
-  it("keeps the logo in the sidebar top row in both modes and never in the top bar", async () => {
+  it("moves the full-size logo into the top bar only while collapsed", async () => {
     localStorage.setItem("folio-sidebar-collapsed", "true");
     renderShell();
     await boot();
     const topBar = screen.getAllByRole("banner")[0]!;
-    expect(within(topBar).queryByRole("link", { name: "Folio home" })).toBeNull();
-    const sidebar = navs()[0]!;
-    expect(within(sidebar).getByRole("link", { name: "Folio home" })).toBeTruthy();
+    expect(within(topBar).getByRole("link", { name: "Folio home" })).toBeTruthy();
+    expect(within(navs()[0]!).queryByRole("link", { name: "Folio home" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
     await waitFor(() => expect(localStorage.getItem("folio-sidebar-collapsed")).toBe("false"));
     expect(within(navs()[0]!).getByRole("link", { name: "Folio home" })).toBeTruthy();
