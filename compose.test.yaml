@@ -6,7 +6,3 @@ services:
       context: .
     environment:
       FOLIO_TEST_MODE: "true"
-  # The e2e stack is disposable and self-contained: do not publish Postgres on
-  # the host (the dev stack owns 127.0.0.1:5432).
-  db:
-    ports: !reset []

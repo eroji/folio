@@ -1,0 +1,6 @@
+# E2E-only override (`make e2e`): the disposable stack needs no host-published
+# Postgres — the dev stack owns 127.0.0.1:5432. FOLIO_TEST_MODE stays in
+# compose.test.yaml, the only file allowed to set it.
+services:
+  db:
+    ports: !reset []
