@@ -256,3 +256,5 @@ One line each: decision, why, what it costs.
 - **Voice defaults (BE): user settings keep non-{en,ja,ko,zh} language keys as-is and fold region variants to the base (`zh-TW`→`zh`, `kr`→`ko`, zh wins)** — migration must not silently drop a `de` pin; costs: two stored spellings can coexist until the next save.
 
 - Admin jobs show the user who triggered the job (`jobs.user_id`, migration 0010); null for worker/system jobs, pre-0010 rows and deleted users (FK `ON DELETE SET NULL`). Retry keeps the original attribution.
+
+- Genre is derived from the file's own `dc:subject`/Keywords tags on ingest (bare subjects like `Mystery` map to `Mystery & thriller`), not only from online provider subjects; manual genres stay locked. Migration 0011 backfills `books.genre` for books imported before this.

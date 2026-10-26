@@ -9,6 +9,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from folio.config import GENRES
+from folio.ingest import EmbeddedMetadata
+from folio.ingest.pipeline import _apply_metadata
 from folio.metadata import Candidate
 from folio.metadata.service import apply_candidate, genre_from_subjects
 from folio.models import Book
@@ -42,6 +44,9 @@ def _seed(db: Session, **fields: Any) -> Book:
         (["Historical fiction"], "Historical fiction"),  # not "History" or "Literary fiction"
         (["non-fiction"], "Nonfiction"),
         (["Science"], "Science"),  # not "Science fiction"
+        (["Mystery", "Fiction"], "Mystery & thriller"),  # bare EPUB subject
+        (["Crime"], "Mystery & thriller"),
+        (["Horror"], "Gothic & horror"),
         (["Biography & memoir"], "Biography & memoir"),  # genre names map to themselves
         (["Cooking", "Travel"], None),  # unmapped → NULL
         ([], None),
@@ -203,3 +208,18 @@ async def test_list_genre_filter(auth_client: httpx.AsyncClient, db: Session) ->
         await auth_client.get("/api/v1/books", params={"genre": "Fantasy", "group": "genre"})
     ).json()
     assert [(g["label"], g["count"]) for g in body["groups"]] == [("Fantasy", 1)]
+
+
+# --- embedded tags → genre on ingest ------------------------------------------
+
+
+def test_embedded_tags_derive_the_genre_on_import() -> None:
+    book = Book(title="Salvation of a Saint", language="en", locked_fields=[])
+    _apply_metadata(book, EmbeddedMetadata(tags=["Mystery", "Fiction"]))
+    assert book.genre == "Mystery & thriller"
+
+
+def test_embedded_tags_never_overwrite_a_locked_genre() -> None:
+    book = Book(title="x", language="en", genre="Fantasy", locked_fields=["genre"])
+    _apply_metadata(book, EmbeddedMetadata(tags=["Mystery"]))
+    assert book.genre == "Fantasy"

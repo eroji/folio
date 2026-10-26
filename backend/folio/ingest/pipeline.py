@@ -31,7 +31,7 @@ from folio.ingest.epub import extract_epub
 from folio.ingest.kindle import extract_kindle
 from folio.ingest.pdf import extract_pdf
 from folio.ingest.segment import segment_chapter
-from folio.metadata.service import auto_fetch
+from folio.metadata.service import auto_fetch, genre_from_subjects
 from folio.models import Book, BookFile, Chapter, Job, Segment
 from folio.storage import book_dir
 
@@ -135,6 +135,12 @@ def _apply_metadata(book: Book, meta: EmbeddedMetadata) -> None:
     for name, value in fields.items():
         if value is not None and name not in book.locked_fields:
             setattr(book, name, value)
+    # The file's own subjects are the only genre hint on an offline import;
+    # a manual genre (locked) always wins and is never overwritten here.
+    if book.genre is None and "genre" not in book.locked_fields:
+        derived = genre_from_subjects(meta.tags)
+        if derived:
+            book.genre = derived
 
 
 def _store_cover(settings: Settings, book: Book, cover: bytes | None) -> None:
