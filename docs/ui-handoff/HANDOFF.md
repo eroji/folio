@@ -10,7 +10,7 @@ The backend stays as it is except for the few data changes listed under "Data an
 
 ## How to work
 
-1. Read this file end to end, then open the files in `reference/` in a browser. Each one names its screen in a comment at the top.
+1. Read this file end to end, then look at `screenshots/` (or open the matching files in `reference/` in a browser). Each reference file names its screen in a comment at the top.
 2. Work one phase at a time (see "Implementation plan"). After each phase run `npm run lint`, `npx tsc --noEmit` and the existing tests, then **stop and report** before the next phase.
 3. Take every color, radius and font from `frontend/src/styles/tokens.css`, never from the inline styles in the reference files.
 4. Do not invent layouts for screens that are not designed (listed under "Not designed"). Restyle them with the new tokens and components only.
@@ -26,8 +26,9 @@ The backend stays as it is except for the few data changes listed under "Data an
 | `brand/web/` | Favicon (ICO and SVG), Apple touch icon, PWA icons (192, 512, maskable 512), `site.webmanifest`, `head-snippet.html` → copy into `frontend/public/` and `index.html` |
 | `brand/svg/` | `folio-mark.svg` (bookmark mark, in-app logo), `folio-mark-mono.svg` (`currentColor`), `folio-logo.svg` (mark + "folio" for dark backgrounds), `folio-logo-on-light.svg`, `folio-wordmark.svg` (`currentColor`), `app-icon.svg` |
 | `brand/png/` | 1024 px mark and app icon, 1200 px logo, favicon PNGs |
-| `reference/desktop-*.html` | Desktop screens: home, library, book, book menu, book manage, player, search, upload, settings (playback, voices), account menu, admin voices, login |
+| `reference/desktop-*.html` | Desktop screens: home, library, book, book menu, book manage, edit details drawer, player, search, upload, settings (playback, voices), account menu, admin voices, login |
 | `reference/phone-*.html` | Phone screens: home, book, player, read along |
+| `screenshots/*.png` | A PNG of every reference file (same names), rendered with the real fonts: desktop at 1440 px wide (full page), phone at 390 × 844 (2×). Use these when you can't open the HTML; if a screenshot and this document disagree, this document wins |
 
 ---
 
@@ -48,6 +49,7 @@ The backend stays as it is except for the few data changes listed under "Data an
 | The open-book "box" logo and all its icon files | The bookmark-ribbon mark in `brand/` |
 | `@material-symbols/svg-400` and the Material Symbols icon pipeline | `lucide-react` (see the icon table) |
 | The "⋯" listener menu items "Download for offline" (already removed) | — |
+| The full-page "Edit metadata" view, the separate Cover row in Manage, and the "Narrator voice override" field | The **Edit details drawer** (cover included); the narrator is set only from the book's ⋮ menu |
 
 ### Replace (same function, new form)
 
@@ -148,6 +150,9 @@ Use `fill="currentColor"` (and `strokeWidth={0}` where needed) for the four tran
 | Text size (read along) | `AlignLeft` |
 | Auto-scroll (read along) | `ChevronsDown` |
 | Show password | `Eye` / `EyeOff` |
+| Locked field (Edit details) | `Lock` |
+| Reorder handle | `GripVertical` |
+| Paste link (cover) | `Link` |
 | Needs OCR / failed | `TriangleAlert` |
 | Ready | `CircleCheck` |
 | Processing | `RefreshCw` (spinning; static with reduced motion) |
@@ -258,13 +263,31 @@ Main pane uses the cover glow. Two columns, wrapping to one on narrow screens:
   - clicking a row plays that chapter.
 - **About** (not drawn in D; build from this spec): full description, then a details list (label column 140 px, secondary labels): Author, Series, **Genre**, Publisher, Published, Language, Length, Narrator (shows the book's narrator voice; read-only here), ISBN, Source file, Added (date and who). Tags as raised pill chips that link to a tag search. Hide empty rows.
 - **Manage** (uploader or admin): settings-style rows separated by dividers, each with a bold title, a one-line explanation and its controls on the right:
-  1. **Details**: "Edit details" (`Pencil`) and "Find metadata" (`Globe`) outlined pills; note how many fields are protected from automatic updates.
-  2. **Cover**: a small cover preview and "Change cover" (`Image`) → dialog with upload, image URL and a 2:3 crop.
-  3. **Chapters to narrate**: "12 of 14 on", one row per chapter with its length and a **switch**; first four shown, then "Show all 14". Off chapters are skipped by the player and TTS.
-  4. **Pronunciation**: "Add rule" pill; each rule shows "written → spoken" as two raised fields with a remove (`X`) button.
-  5. **Processing**: status and explanation; "Reprocess" pill.
-  6. **Delete book**: danger-outlined pill with `Trash2`; confirm dialog that repeats the title.
+  1. **Details**: "Cover, title, author, description and other metadata." plus how many fields are protected from automatic updates; "Edit details" (`Pencil`, opens the Edit details drawer) and "Find metadata" (`Globe`) outlined pills. **There is no separate Cover row any more**: the cover is edited only in the Edit details drawer.
+  2. **Chapters to narrate**: "12 of 14 on", one row per chapter with its length and a **switch**; first four shown, then "Show all 14". Off chapters are skipped by the player and TTS.
+  3. **Pronunciation**: "Add rule" pill; each rule shows "written → spoken" as two raised fields with a remove (`X`) button.
+  4. **Processing**: status and explanation; "Reprocess" pill.
+  5. **Delete book**: danger-outlined pill with `Trash2`; confirm dialog that repeats the title.
 - Phone: a single column. Back and ⋮ in the header; centered 180 px cover; title, author, meta with percent; a full-width "Resume Chapter N" pill; tabs; chapter rows.
+
+### Edit details drawer — `reference/desktop-book-edit.html`
+
+Replaces the current full-page "Edit metadata" view. Opened from Manage → Details → "Edit details". The route can stay `/books/:id/edit` (deep-linkable) but it renders the **book page with a drawer on top**, not a separate page; closing the drawer returns to `/books/:id` on the Manage tab.
+
+- **Container**: a right-side drawer, 600 px wide (full screen on phone), `--color-surface`, 1 px left border, a large shadow, over a 62% black scrim that covers the whole app including the sidebar and the player bar. `role="dialog"`, `aria-modal="true"`, focus moves to the title field, focus is trapped, Esc or the scrim closes (with the unsaved-changes check). Slides in from the right (250 ms; instant with reduced motion).
+- **Header** (fixed): "Edit details" (Sora 24 px) and the line "Fields you change here (marked with a lock) are protected from automatic updates."; a close (`X`) icon button on the right.
+- **Body** (scrolls inside the drawer, no visible scrollbar) in groups, each with an eyebrow heading and a divider above it:
+  1. **Cover**: the current cover (96 px wide, 2:3) beside "Upload image" (`Upload`) and "Paste link" (`Link`) outlined pills, the hint "JPG, PNG or WebP. You’ll crop it to 2:3 next.", and an underlined "Remove cover" text button. Choosing an image or a link opens the crop step inside the drawer (not drawn: the image with a fixed 2:3 frame you drag and zoom, then "Use cover" / "Back"). This is now the **only** place to change a cover.
+  2. **Book**: Title; Subtitle (placeholder "Optional"); **Authors** as removable chips in one field (each chip has a drag handle (`GripVertical`) to reorder and an `X` to remove; type and press Enter or comma to add; hint "Drag to reorder. The first author is shown on covers and lists."); Series and Number side by side (Number 120 px).
+  3. **Publication**: Publisher and Published side by side; **Published accepts a year or a full date** (show "2008" or "2008-01-01", never the raw timestamp "2008-01-01T05:00:00+00:00"); Language and **Genre** selects side by side (Genre uses the fixed genre list plus the current value).
+  4. **Identifiers**: ISBN-10 and ISBN-13 side by side (validate checksums on blur; inline error under the field).
+  5. **Tags**: removable chips in one field, same behaviour as Authors (order doesn't matter, so no drag handles needed; the frame shows them, either is fine).
+  6. **Description**: a multi-line field (18 px radius), plain text. When filling it from metadata providers, strip HTML and replace characters the font can't show (the current build shows empty boxes).
+  - Inputs are 44 px pills on `--color-raised`; labels 13 px, 600, above each field with a 24 px label row so side-by-side fields line up.
+  - **Locked fields**: a field whose value was set by hand shows a small accent lock icon after its label (button: "Title is protected from automatic updates. Unlock"). Clicking it unlocks the field (icon disappears) so "Find metadata" may update it again.
+- **Footer** (fixed): on the left a count of unsaved changes ("2 unsaved changes", polite live region; empty when nothing changed); on the right "Cancel" (outlined) and "Save" (white primary pill, disabled until something changes). Saving closes the drawer and shows the updated book page; every field changed in this save is added to `locked_fields`.
+- **Removed from this form**: the "Narrator voice override" field. A book's narrator is chosen only from the book's ⋮ menu → "Narrator voice…".
+- **Unsaved changes**: closing with changes asks "Discard changes?" (Discard / Keep editing).
 
 ### Now playing, expanded (`/player`) — `reference/desktop-player.html`, `phone-player.html`, `phone-read-along.html`
 
@@ -304,7 +327,7 @@ Title "Settings", then two columns: on the left a vertical list of section butto
 - **Voices**: one secondary line: "Your narrator for each language. You can still pick a different narrator for any book from its ⋮ menu." Then **one row per language: English, Japanese, Korean, Chinese.**
   - **Chinese is one language.** Do not split Simplified and Traditional (`zh`, `zh-CN`, `zh-TW`, `zh-Hans`, `zh-Hant` books all use the Chinese preference). Remove any `zh-TW` row or setting.
   - Only show languages that have at least one voice on the server.
-  - Each row: the language name with its code in secondary text, a 220 px pill select and a 40 px outlined Preview button (plays the selected voice; `Pause` while playing).
+  - Each row: the language name with its code in secondary text, a 250 px pill select (wide enough for "Server default (Ashley)" without truncation) and a 40 px outlined Preview button (plays the selected voice; `Pause` while playing).
   - The select lists **only that language's voices, by the display names the admin set** (Admin → Voices), never raw IDs unless a voice has no name. The first option is **"Server default ({name})"**, meaning "follow whatever the admin sets as this language's default", and is the initial value. Choosing a specific voice pins it.
   - A pinned voice that disappears from the server falls back to the server default; show "{name} (no longer available)" until the user changes it.
 - **Precedence** when a book plays: the book's own narrator (chosen from the book's ⋮ menu, per book) → the user's preference for the book's language (this page) → the server default for that language (Admin → Voices).
@@ -395,7 +418,7 @@ Native selects with `appearance: none`, 40 px pill, raised fill, 18 px left padd
 
 ## 8. Not designed (restyle only, keep their structure)
 
-Edit details (metadata form), Find metadata (results picker), the cover dialog, the Narrator voice dialog, confirm dialogs, Admin Jobs, Cache and Users sections, the About tab (spec above, no frame), the empty, loading, error, offline, needs-OCR and failed states. Use: raised surfaces, pill controls, white primary pills, Sora titles, Figtree text, the accent only for selection and progress.
+Find metadata (results picker), the cover crop step inside the Edit details drawer, the Narrator voice dialog, confirm dialogs, Admin Jobs, Cache and Users sections, the About tab (spec above, no frame), the empty, loading, error, offline, needs-OCR and failed states. Use: raised surfaces, pill controls, white primary pills, Sora titles, Figtree text, the accent only for selection and progress.
 
 ## 9. Decisions log (for `docs/DECISIONS.md`)
 
