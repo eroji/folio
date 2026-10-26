@@ -26,7 +26,7 @@ The backend stays as it is except for the few data changes listed under "Data an
 | `brand/web/` | Favicon (ICO and SVG), Apple touch icon, PWA icons (192, 512, maskable 512), `site.webmanifest`, `head-snippet.html` → copy into `frontend/public/` and `index.html` |
 | `brand/svg/` | `folio-mark.svg` (bookmark mark, in-app logo), `folio-mark-mono.svg` (`currentColor`), `folio-logo.svg` (mark + "folio" for dark backgrounds), `folio-logo-on-light.svg`, `folio-wordmark.svg` (`currentColor`), `app-icon.svg` |
 | `brand/png/` | 1024 px mark and app icon, 1200 px logo, favicon PNGs |
-| `reference/desktop-*.html` | Desktop screens: home, library, book, book menu, book manage, edit details drawer, player, search, upload, settings (playback, voices), account menu, admin voices, login |
+| `reference/desktop-*.html` | Desktop screens: home, library, book, book menu, book manage, edit details drawer, edit details with find metadata, player, search, upload, settings (playback, voices), account menu, admin voices, login |
 | `reference/phone-*.html` | Phone screens: home, book, player, read along |
 | `screenshots/*.png` | A PNG of every reference file (same names), rendered with the real fonts: desktop at 1440 px wide (full page), phone at 390 × 844 (2×). Use these when you can't open the HTML; if a screenshot and this document disagree, this document wins |
 
@@ -275,7 +275,7 @@ Main pane uses the cover glow. Two columns, wrapping to one on narrow screens:
 Replaces the current full-page "Edit metadata" view. Opened from Manage → Details → "Edit details". The route can stay `/books/:id/edit` (deep-linkable) but it renders the **book page with a drawer on top**, not a separate page; closing the drawer returns to `/books/:id` on the Manage tab.
 
 - **Container**: a right-side drawer, 600 px wide (full screen on phone), `--color-surface`, 1 px left border, a large shadow, over a 62% black scrim that covers the whole app including the sidebar and the player bar. `role="dialog"`, `aria-modal="true"`, focus moves to the title field, focus is trapped, Esc or the scrim closes (with the unsaved-changes check). Slides in from the right (250 ms; instant with reduced motion).
-- **Header** (fixed): "Edit details" (Sora 24 px) and the line "Fields you change here (marked with a lock) are protected from automatic updates."; a close (`X`) icon button on the right.
+- **Header** (fixed): "Edit details" (Sora 24 px) and the line "Fields you change here (marked with a lock) are protected from automatic updates."; a close (`X`) icon button on the right. Below the header, a **"Find metadata"** outlined pill (`Globe`).
 - **Body** (scrolls inside the drawer, no visible scrollbar) in groups, each with an eyebrow heading and a divider above it:
   1. **Cover**: the current cover (96 px wide, 2:3) beside "Upload image" (`Upload`) and "Paste link" (`Link`) outlined pills, the hint "JPG, PNG or WebP. You’ll crop it to 2:3 next.", and an underlined "Remove cover" text button. Choosing an image or a link opens the crop step inside the drawer (not drawn: the image with a fixed 2:3 frame you drag and zoom, then "Use cover" / "Back"). This is now the **only** place to change a cover.
   2. **Book**: Title; Subtitle (placeholder "Optional"); **Authors** as removable chips in one field (each chip has a drag handle (`GripVertical`) to reorder and an `X` to remove; type and press Enter or comma to add; hint "Drag to reorder. The first author is shown on covers and lists."); Series and Number side by side (Number 120 px).
@@ -288,6 +288,25 @@ Replaces the current full-page "Edit metadata" view. Opened from Manage → Deta
 - **Footer** (fixed): on the left a count of unsaved changes ("2 unsaved changes", polite live region; empty when nothing changed); on the right "Cancel" (outlined) and "Save" (white primary pill, disabled until something changes). Saving closes the drawer and shows the updated book page; every field changed in this save is added to `locked_fields`.
 - **Removed from this form**: the "Narrator voice override" field. A book's narrator is chosen only from the book's ⋮ menu → "Narrator voice…".
 - **Unsaved changes**: closing with changes asks "Discard changes?" (Discard / Keep editing).
+
+#### Find metadata inside the drawer — `reference/desktop-book-edit-find.html`
+
+Find metadata **never replaces the form** (the current build swaps the whole pane and the user loses their place). Instead it opens **beside** the form:
+
+- Pressing "Find metadata" (in the drawer, or in Manage → Details, which opens the drawer already in this state) **widens the drawer from 600 px to 1040 px** (250 ms) and adds a **400 px results pane on the left**; the form stays on the right exactly where it was, with any unsaved edits intact. On screens narrower than 1100 px the results pane slides over the form instead and closes after a result is picked.
+- **Results pane** (`--color-bg` background, divider on its right):
+  - Header "Find metadata" (Sora 20 px) with a close (`X`) that collapses the pane and returns the drawer to 600 px. Suggestions already used stay in the form.
+  - One search field prefilled with "{title} {first author}" (accent border while focused), then an optional ISBN field and a white "Search" pill. Searching runs automatically when the pane opens.
+  - A polite status line: "4 results from Open Library and Google Books".
+  - Result rows (12 px radius): 40 px cover, title, "Author · year · source", match percent on the right. The selected row has a raised fill and an accent `Check`. The best match is selected automatically. Choosing another row only changes the suggestions; it changes nothing in the form.
+- **Suggestions in the form** (for the selected result):
+  - At the top of the form, a summary bar (accent tint at 10%, accent border at 30%): "**5 suggestions** from {source} · {title} ({year})" with a white "Use all" pill.
+  - Under every field where the result **differs** from the current value, a suggestion pill (accent tint at 12%): "{source}: **{value}**" with a small white "Use" button. Fields that already match show nothing.
+  - Cover: the result's cover appears on the right of the Cover group in the same tint with "Use".
+  - Locked fields (lock icon) still get suggestions, but "Use all" skips them; the user must press "Use" on a locked field explicitly.
+  - After "Use", the field takes the value and the suggestion is replaced by a small line "✓ From {source} · Undo" (Undo restores the previous value).
+  - Description: the suggestion shows the first line and its length ("{source}: 412 words") with "Use"; HTML is stripped before it is shown.
+- Nothing is written to the book until **Save**. The footer count includes used suggestions ("1 unsaved change"). Saving marks the used fields as **not** hand-edited (they came from metadata), so they are not locked; fields the user typed are locked as before.
 
 ### Now playing, expanded (`/player`) — `reference/desktop-player.html`, `phone-player.html`, `phone-read-along.html`
 
@@ -418,7 +437,7 @@ Native selects with `appearance: none`, 40 px pill, raised fill, 18 px left padd
 
 ## 8. Not designed (restyle only, keep their structure)
 
-Find metadata (results picker), the cover crop step inside the Edit details drawer, the Narrator voice dialog, confirm dialogs, Admin Jobs, Cache and Users sections, the About tab (spec above, no frame), the empty, loading, error, offline, needs-OCR and failed states. Use: raised surfaces, pill controls, white primary pills, Sora titles, Figtree text, the accent only for selection and progress.
+the cover crop step inside the Edit details drawer, the Narrator voice dialog, confirm dialogs, Admin Jobs, Cache and Users sections, the About tab (spec above, no frame), the empty, loading, error, offline, needs-OCR and failed states. Use: raised surfaces, pill controls, white primary pills, Sora titles, Figtree text, the accent only for selection and progress.
 
 ## 9. Decisions log (for `docs/DECISIONS.md`)
 
