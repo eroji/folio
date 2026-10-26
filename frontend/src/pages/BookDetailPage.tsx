@@ -110,7 +110,7 @@ function CoverDialog({ book, onClose }: { book: Parameters<typeof CoverEditor>[0
         }
       }}
     >
-      <button type="button" tabIndex={-1} aria-hidden className="absolute inset-0 cursor-default bg-fg/50" onClick={onClose} />
+      <button type="button" tabIndex={-1} aria-hidden className="absolute inset-0 cursor-default bg-bg/70" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
@@ -256,7 +256,7 @@ export function BookDetailPage() {
   if (error instanceof Error) {
     return (
       <EmptyState
-        icon={<Icon name="error" size={28} />}
+        icon={<Icon name="TriangleAlert" size={28} />}
         title="Book not found"
         description={error.message}
         action={
@@ -413,7 +413,7 @@ export function BookDetailPage() {
       )}
     >
       {preparingHere ? (
-        <Icon name="progress_activity" size={20} className="animate-spin" />
+        <Icon name="RefreshCw" size={20} className="animate-spin" />
       ) : (
         <Icon name={playingHere ? "Pause" : "Play"} size={20} />
       )}
@@ -795,7 +795,7 @@ export function BookDetailPage() {
         </div>
       )}
 
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-30 flex justify-center px-4 desktop:bottom-8">
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-30 flex justify-center px-4 lg:bottom-8">
         {toast && (
           <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-raised px-3 py-2 text-sm shadow-(--shadow-menu)">
             <span>{toast.message}</span>

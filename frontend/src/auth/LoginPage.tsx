@@ -91,7 +91,7 @@ export function LoginPage({ onSuccess }: { onSuccess?: (user: User) => void }) {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
           {error && (
             <div role="alert" className="flex items-start gap-2 rounded-2xl border border-danger px-4 py-3 text-sm leading-snug text-danger">
-              <Icon name="error" size={18} className="mt-px shrink-0" />
+              <Icon name="TriangleAlert" size={18} className="mt-px shrink-0" />
               <span>{error}</span>
             </div>
           )}

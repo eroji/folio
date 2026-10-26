@@ -26,7 +26,7 @@ export function UploadDropzone({ onFiles }: { onFiles: (files: File[]) => void }
       className={clsx(
         "flex cursor-pointer flex-col items-center gap-3.5 rounded-2xl border-2 border-dashed bg-fg/[0.02] px-6 py-12 text-center",
         "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent",
-        dragging ? "border-accent" : "border-control-border",
+        dragging ? "border-accent" : "border-off",
       )}
     >
       <img src={folioMark} alt="" width={56} height={56} aria-hidden />

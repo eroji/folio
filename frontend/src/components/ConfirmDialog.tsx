@@ -23,7 +23,7 @@ export function ConfirmDialog({
         type="button"
         tabIndex={-1}
         aria-hidden
-        className="absolute inset-0 cursor-default bg-fg/50"
+        className="absolute inset-0 cursor-default bg-bg/70"
         onClick={onCancel}
       />
       <div role="dialog" aria-modal="true" aria-label={title} className="relative w-full max-w-sm rounded-lg border border-border bg-surface p-4 shadow-(--shadow-menu)">

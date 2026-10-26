@@ -90,7 +90,7 @@ export function NarratorVoiceDialog({
         type="button"
         tabIndex={-1}
         aria-hidden
-        className="absolute inset-0 cursor-default bg-fg/50"
+        className="absolute inset-0 cursor-default bg-bg/70"
         onClick={close}
       />
       <div

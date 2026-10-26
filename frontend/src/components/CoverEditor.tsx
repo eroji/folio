@@ -203,7 +203,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
                   setZoom(next);
                   setPan((current) => clampPan(current, img, fitScale(img) * next));
                 }}
-                className="accent-progress"
+                className="accent-accent"
               />
             </label>
             {file && (
@@ -262,7 +262,7 @@ export function CoverEditor({ book, className }: { book: Book; className?: strin
 
       {error && (
         <p role="alert" className="mt-3 flex items-center gap-2 rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger">
-          <Icon name="error" size={16} />
+          <Icon name="TriangleAlert" size={16} />
           {error}
         </p>
       )}
