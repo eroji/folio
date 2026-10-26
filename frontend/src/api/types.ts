@@ -117,6 +117,8 @@ export interface Candidate {
   series_index: number | null;
   tags: string[];
   cover_url: string | null;
+  /** True when this provider cover is already the book's cover (server-side). */
+  cover_applied?: boolean;
   score: number;
   /** Genre derived from the provider subjects; absent until the backend lands. */
   suggested_genre?: string | null;

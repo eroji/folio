@@ -87,6 +87,13 @@ def metadata_search(
         item = dataclasses.asdict(candidate)
         # The drawer offers a Genre suggestion without duplicating the mapping.
         item["suggested_genre"] = genre_from_subjects(candidate.tags)
+        # True when this provider cover is already the book's cover (set via
+        # /cover-url): the drawer then shows no cover suggestion.
+        item["cover_applied"] = bool(
+            book.cover_key
+            and book.cover_source_url
+            and candidate.cover_url == book.cover_source_url
+        )
         items.append(item)
     return {"items": items}
 

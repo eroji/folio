@@ -457,6 +457,53 @@ async def test_metadata_search_scores_candidates_against_the_book(
     assert different.json()["items"][0]["score"] < 0.5
 
 
+async def test_metadata_search_flags_a_cover_that_is_already_applied(
+    admin_client: httpx.AsyncClient,
+    db: Session,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        metadata_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"metadata_online": True}),
+    )
+    applied = "https://covers.openlibrary.org/b/id/42-L.jpg"
+    book = _book(db, cover_key="abc", cover_source_url=applied)
+    ol = {
+        "docs": [
+            {
+                "key": "/works/OL1",
+                "title": "Covered",
+                "author_name": ["Ann"],
+                "cover_i": 42,
+                "isbn": ["9781111111117"],
+            },
+            {
+                "key": "/works/OL2",
+                "title": "Covered",
+                "author_name": ["Ann"],
+                "cover_i": 99,
+                "isbn": ["9781111111118"],
+            },
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "openlibrary.org":
+            return httpx.Response(200, json=ol)
+        return httpx.Response(429, json={})
+
+    _override_client(admin_client, handler)
+    response = await admin_client.get(
+        f"/api/v1/books/{book.id}/metadata/search", params={"q": "Covered"}
+    )
+    assert response.status_code == 200, response.text
+    flags = {item["cover_url"]: item["cover_applied"] for item in response.json()["items"]}
+    assert flags[applied] is True
+    assert flags["https://covers.openlibrary.org/b/id/99-L.jpg"] is False
+
+
 async def test_metadata_apply_endpoint_writes_selected_fields(
     admin_client: httpx.AsyncClient, db: Session, settings: Settings
 ) -> None:

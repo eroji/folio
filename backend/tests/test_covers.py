@@ -406,6 +406,45 @@ async def test_cover_url_stores_the_downloaded_image(
     assert seen == ["https://covers.example/one.jpg"]
     assert cover_path(settings, book.id, None).read_bytes() == data
     assert cover_path(settings, book.id, 600) is not None
+    db.expire_all()
+    assert db.get(Book, book.id).cover_source_url == "https://covers.example/one.jpg"
+
+
+async def test_cover_source_url_is_cleared_by_upload_and_delete(
+    admin_client: httpx.AsyncClient, db: Session, settings: Settings
+) -> None:
+    book = _book(db)
+    data = _image_bytes("JPEG", (400, 600))
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return _ok(data)
+
+    _override_client(admin_client, handler)
+    url = "https://covers.example/source.jpg"
+    await admin_client.put(
+        f"/api/v1/books/{book.id}/cover-url", json={"url": url}, headers=_csrf(admin_client)
+    )
+    db.expire_all()
+    assert db.get(Book, book.id).cover_source_url == url
+
+    uploaded = await admin_client.post(
+        f"/api/v1/books/{book.id}/cover",
+        files={"file": ("c.jpg", data, "image/jpeg")},
+        headers=_csrf(admin_client),
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    db.expire_all()
+    assert db.get(Book, book.id).cover_source_url is None
+
+    await admin_client.put(
+        f"/api/v1/books/{book.id}/cover-url", json={"url": url}, headers=_csrf(admin_client)
+    )
+    removed = await admin_client.delete(
+        f"/api/v1/books/{book.id}/cover", headers=_csrf(admin_client)
+    )
+    assert removed.status_code == 204
+    db.expire_all()
+    assert db.get(Book, book.id).cover_source_url is None
 
 
 async def test_cover_url_failure_leaves_the_existing_cover(

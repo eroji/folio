@@ -282,6 +282,9 @@ describe("EditDetailsDrawer", () => {
   it("Use fills the field, shows the source line and counts the change; Undo restores", async () => {
     renderDrawer();
     await openFindPane();
+    // The selected result's cover is previewed automatically; decline it so
+    // this test counts only the field.
+    fireEvent.click(screen.getByRole("button", { name: "Don't use the suggested cover" }));
     fireEvent.click(screen.getByRole("button", { name: "Use Chilton" }));
     expect(input("Publisher").value).toBe("Chilton");
     expect(screen.getByText("From Open Library")).toBeTruthy();
@@ -306,7 +309,7 @@ describe("EditDetailsDrawer", () => {
       "A classic of desert politics.",
     );
     expect(coverUrlFetches).toHaveLength(0);
-    expect(screen.getByRole("button", { name: "Undo cover" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Don't use the suggested cover" })).toBeTruthy();
   });
 
   it("typing after Use makes the field hand-edited again: no metadata_fields on Save", async () => {
@@ -338,7 +341,8 @@ describe("EditDetailsDrawer", () => {
   it("a used cover PUTs cover-url before the PATCH on Save", async () => {
     renderDrawer({ cover_url: "https://example.org/current.jpg" });
     await openFindPane();
-    fireEvent.click(screen.getByRole("button", { name: "Use cover from Open Library" }));
+    // Selecting the result previews its cover in place (X declines it).
+    expect(screen.getByRole("button", { name: "Don't use the suggested cover" })).toBeTruthy();
     expect(coverUrlFetches).toHaveLength(0);
     expect(screen.getByText("1 unsaved change")).toBeTruthy();
     fireEvent.click(saveButton());
@@ -376,6 +380,32 @@ describe("EditDetailsDrawer", () => {
     expect(searchUrls).toHaveLength(0);
     expect(screen.getByRole("button", { name: /96%/ }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Use all" })).toBeTruthy();
+  });
+
+  it("shows a green banner when the selected result changes nothing", () => {
+    const match: Candidate = {
+      ...CANDIDATE_A,
+      published_date: null,
+      publisher: null,
+      description: null,
+      isbn13: null,
+      tags: [],
+      cover_url: "https://covers.test/dune.jpg",
+      cover_applied: true,
+      suggested_genre: null,
+    };
+    renderDrawer({}, [match]);
+    expect(screen.getByText("Everything matches")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use all" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Don't use the suggested cover" })).toBeNull();
+  });
+
+  it("declining the suggested cover restores the book cover and drops the change", async () => {
+    renderDrawer({ cover_url: "https://example.org/current.jpg" });
+    await openFindPane();
+    fireEvent.click(screen.getByRole("button", { name: "Don't use the suggested cover" }));
+    expect(screen.queryByRole("button", { name: "Don't use the suggested cover" })).toBeNull();
+    expect(screen.queryByText(/unsaved change/)).toBeNull();
   });
 
   it("Cancel closes directly when nothing changed", () => {

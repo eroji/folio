@@ -282,3 +282,6 @@ One line each: decision, why, what it costs.
 - Find metadata opens only from the Edit details drawer's own pill (user override); the only other way in is the "Review metadata matches" banner, which deep-links into the same pane with saved candidates.
 
 - Find metadata keeps the Edit details form completely still: the drawer grows 600→1000 px (400 pane + fixed 600 form), a placeholder holds the Find button's space while the pane is open, the pane slides in, and overlay mode keeps the 600 px panel. The form hint no longer swaps text (the instruction lives in the pane). The Manage Edit details pill is filled with `bg-raised` again (user: it looked transparent).
+
+- Provider covers are deduped by `books.cover_source_url` (migration 0014, set by PUT /cover-url, cleared by upload/delete); the metadata search returns `cover_applied` per candidate, so re-searching after applying a cover suggests nothing. The selected result's cover is previewed in the cover slot with an X (declined suggestions are remembered for the session); it is written only on Save. When the selected result changes nothing, the summary bar is replaced by a green "Everything matches" banner.
+- The Manage Edit details pill uses the subtle filled `bg-surface` variant (user: the transparent pill looked wrong, the raised one too solid).

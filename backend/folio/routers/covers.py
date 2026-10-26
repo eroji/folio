@@ -80,6 +80,7 @@ async def upload_cover(
     if len(data) > MAX_COVER_BYTES:
         raise ApiError("cover_too_large", f"Cover image exceeds the {_MB} MB limit.", 413)
     book.cover_key, book.cover_rgb = store_cover(get_settings(), book.id, data)
+    book.cover_source_url = None  # an uploaded/cropped image has no provider source
     db.commit()
     return _stored(book)
 
@@ -100,6 +101,7 @@ def set_cover_url(
     book.cover_key, book.cover_rgb = store_cover(
         get_settings(), book.id, download_cover(body.url, http_client)
     )
+    book.cover_source_url = body.url
     db.commit()
     return _stored(book)
 
@@ -125,6 +127,7 @@ def delete_cover(
             path.unlink(missing_ok=True)
     book.cover_key = None
     book.cover_rgb = None
+    book.cover_source_url = None
     db.commit()
 
 

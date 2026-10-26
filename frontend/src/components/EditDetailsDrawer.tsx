@@ -507,15 +507,22 @@ interface CropSource {
   from: "file" | "url";
 }
 
-interface CoverSuggestion {
+interface CoverPreview {
   url: string;
   source: string;
-  used: boolean;
-  onUse: () => void;
-  onUndo: () => void;
 }
 
-function CoverGroup({ book, suggestion }: { book: Book; suggestion?: CoverSuggestion }) {
+function CoverGroup({
+  book,
+  stagedCover,
+  onDeclineCover,
+  onCoverPicked,
+}: {
+  book: Book;
+  stagedCover?: CoverPreview;
+  onDeclineCover: () => void;
+  onCoverPicked: () => void;
+}) {
   const upload = useUploadCover(book.id);
   const fromUrl = useSetCoverUrl(book.id);
   const removeCover = useDeleteCover(book.id);
@@ -628,6 +635,7 @@ function CoverGroup({ book, suggestion }: { book: Book; suggestion?: CoverSugges
                       { file: blob, filename: "cover.webp" },
                       {
                         onSuccess: () => {
+                          onCoverPicked();
                           if (crop.from === "file") URL.revokeObjectURL(crop.src);
                           setCrop(null);
                         },
@@ -665,7 +673,20 @@ function CoverGroup({ book, suggestion }: { book: Book; suggestion?: CoverSugges
   return (
     <Group title="Cover" divider={false}>
       <div className="flex flex-wrap items-center gap-5">
-        {book.cover_url ? (
+        {stagedCover ? (
+          <span className="relative block aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-md bg-raised">
+            <img src={stagedCover.url} alt="" className="h-full w-full object-cover" />
+            <button
+              type="button"
+              onClick={onDeclineCover}
+              aria-label="Don't use the suggested cover"
+              title="Don't use the suggested cover"
+              className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-bg/85 text-fg hover:bg-bg"
+            >
+              <Icon name="X" size={14} />
+            </button>
+          </span>
+        ) : book.cover_url ? (
           <img src={book.cover_url} alt="" className="aspect-[2/3] w-24 shrink-0 rounded-md bg-raised object-cover" />
         ) : (
           <div className="grid aspect-[2/3] w-24 shrink-0 place-items-center rounded-md border border-border bg-raised text-sm text-fg-2">
@@ -710,6 +731,7 @@ function CoverGroup({ book, suggestion }: { book: Book; suggestion?: CoverSugges
                 onClick={() =>
                   fromUrl.mutate(urlInput.trim(), {
                     onSuccess: (data) => {
+                      onCoverPicked();
                       setLinkOpen(false);
                       setUrlInput("");
                       if (data.cover_url) setCrop({ src: data.cover_url, from: "url" });
@@ -722,43 +744,20 @@ function CoverGroup({ book, suggestion }: { book: Book; suggestion?: CoverSugges
             </div>
           )}
           <p className="text-xs text-fg-2">JPG, PNG or WebP. You’ll crop it to 2:3 next.</p>
-          <button
-            type="button"
-            disabled={!book.cover_url || removeCover.isPending}
-            onClick={() => removeCover.mutate()}
-            className="tap self-start py-1 text-base font-semibold text-fg-2 underline hover:text-fg disabled:opacity-50"
-          >
-            Remove cover
-          </button>
+          {!stagedCover && (
+            <button
+              type="button"
+              disabled={!book.cover_url || removeCover.isPending}
+              onClick={() => removeCover.mutate()}
+              className="tap self-start py-1 text-base font-semibold text-fg-2 underline hover:text-fg disabled:opacity-50"
+            >
+              Remove cover
+            </button>
+          )}
+          {stagedCover && (
+            <span className="text-xs text-fg-2">Suggested cover from {stagedCover.source} · saves when you press Save</span>
+          )}
         </div>
-        {suggestion && (
-          <div className={clsx("flex shrink-0 flex-col items-center gap-1.5 rounded-lg border p-2", accentTint)}>
-            <img src={suggestion.url} alt="" className="aspect-[2/3] w-14 rounded-xs bg-raised object-cover" />
-            {suggestion.used ? (
-              <span className="flex items-center gap-1.5 text-xs text-fg-2">
-                <Icon name="Check" size={13} className="text-accent" />
-                From {suggestion.source}
-                <button
-                  type="button"
-                  onClick={suggestion.onUndo}
-                  aria-label="Undo cover"
-                  className="font-semibold text-fg underline"
-                >
-                  Undo
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={suggestion.onUse}
-                aria-label={`Use cover from ${suggestion.source}`}
-                className={clsx(whitePill, "h-7 px-3 text-base")}
-              >
-                Use
-              </button>
-            )}
-          </div>
-        )}
       </div>
       {error && (
         <p role="alert" className="flex items-center gap-2 rounded-lg border border-danger bg-bg px-3 py-2 text-sm text-danger">
@@ -795,8 +794,10 @@ export function EditDetailsDrawer({
   const [suggestion, setSuggestion] = useState<Candidate | null>(initialReviewItems?.[0] ?? null);
   // field → where it came from and the form to restore on Undo.
   const [usedMeta, setUsedMeta] = useState<Record<string, { source: string; prev: Form }>>({});
-  // Deferred cover: remembered until Save PUTs it.
+  // Deferred cover: the selected result's cover is shown in place until Save
+  // PUTs it; the X on the preview declines it.
   const [usedCover, setUsedCover] = useState<{ url: string; source: string } | null>(null);
+  const [declinedCovers, setDeclinedCovers] = useState<string[]>([]);
   const [query, setQuery] = useState(`${book.title} ${book.authors[0] ?? ""}`.trim());
   const [isbn, setIsbn] = useState(book.isbn13 ?? book.isbn10 ?? "");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -836,6 +837,29 @@ export function EditDetailsDrawer({
   useEffect(() => {
     if (findOpen && live.current.items === null) runSearch();
   }, [findOpen]);
+
+  // The selected result's cover is previewed in the cover slot immediately
+  // (unless the server says it is already applied, or the user declined it).
+  useEffect(() => {
+    if (!suggestion) return;
+    const url = suggestion.cover_url;
+    if (!url || suggestion.cover_applied || declinedCovers.includes(url)) {
+      setUsedCover(null);
+      return;
+    }
+    setUsedCover((current) =>
+      current?.url === url ? current : { url, source: sourceName(suggestion.source) },
+    );
+  }, [suggestion, declinedCovers]);
+
+  function declineCover() {
+    if (usedCover) {
+      setDeclinedCovers((current) =>
+        current.includes(usedCover.url) ? current : [...current, usedCover.url],
+      );
+    }
+    setUsedCover(null);
+  }
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -903,9 +927,6 @@ export function EditDetailsDrawer({
       markers[field] = { source, prev: form };
       next = { ...next, ...def.apply(suggestion, next) };
     }
-    if (suggestion.cover_url && suggestion.cover_url !== book.cover_url) {
-      setUsedCover({ url: suggestion.cover_url, source });
-    }
     setForm(next);
     setUsedMeta(markers);
   }
@@ -928,8 +949,8 @@ export function EditDetailsDrawer({
     const def = SUGGESTIONS[field]!;
     return Boolean(def.text(suggestion)) && !def.same(suggestion, form);
   };
-  const coverSuggested = Boolean(suggestion?.cover_url) && suggestion?.cover_url !== book.cover_url;
-  const suggestionCount = usedFields.length + Object.keys(SUGGESTIONS).filter(pillShown).length + (coverSuggested || usedCover ? 1 : 0);
+  const suggestionCount =
+    usedFields.length + Object.keys(SUGGESTIONS).filter(pillShown).length + (usedCover ? 1 : 0);
 
   /** Per-field suggestion UI: the pill, or the "✓ From … · Undo" line. */
   function suggestionUi(field: string): ReactNode {
@@ -1014,18 +1035,6 @@ export function EditDetailsDrawer({
   const sourceLabel = suggestion ? sourceName(suggestion.source) : "";
   const suggestionYear = suggestion?.published_date ? normalizeDate(suggestion.published_date).slice(0, 4) : "";
   const statusNames = [...new Set((items ?? []).map((item) => sourceName(item.source)))].sort();
-  const coverSuggestion: CoverSuggestion | undefined = usedCover
-    ? { url: usedCover.url, source: usedCover.source, used: true, onUse: () => undefined, onUndo: () => setUsedCover(null) }
-    : suggestion?.cover_url && suggestion.cover_url !== book.cover_url
-      ? {
-          url: suggestion.cover_url,
-          source: sourceName(suggestion.source),
-          used: false,
-          onUse: () => setUsedCover({ url: suggestion.cover_url!, source: sourceName(suggestion.source) }),
-          onUndo: () => undefined,
-        }
-      : undefined;
-
   return (
     <div
       className="fixed inset-0 z-40 flex justify-end bg-black/62"
@@ -1187,6 +1196,19 @@ export function EditDetailsDrawer({
                 )}
               </div>
 
+              {suggestion && suggestionCount === 0 && (
+                <div className="mb-4 mt-4 flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-3.5 py-3 text-success">
+                  <Icon name="Check" size={18} />
+                  <span className="text-base">
+                    <span className="font-bold">Everything matches</span>{" "}
+                    <span className="text-fg-2">
+                      · {sourceLabel} · {suggestion.title}
+                      {suggestionYear && ` (${suggestionYear})`}
+                    </span>
+                  </span>
+                </div>
+              )}
+
               {suggestion && suggestionCount > 0 && (
                 <div className={clsx("mb-4 mt-4 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border px-3.5 py-3", accentTint)}>
                   <span className="text-base">
@@ -1202,7 +1224,12 @@ export function EditDetailsDrawer({
                 </div>
               )}
 
-              <CoverGroup book={book} suggestion={coverSuggestion} />
+              <CoverGroup
+                book={book}
+                stagedCover={usedCover ?? undefined}
+                onDeclineCover={declineCover}
+                onCoverPicked={declineCover}
+              />
 
               <Group title="Book">
                 <Field name="Title" locked={isLocked("title")} onUnlock={() => unlockField("title")}>
