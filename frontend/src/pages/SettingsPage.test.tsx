@@ -81,12 +81,17 @@ function renderSettings(): void {
   );
 }
 
+async function openVoicesTab(): Promise<void> {
+  fireEvent.click(await screen.findByRole("tab", { name: "Voices" }));
+}
+
 describe("SettingsPage", () => {
   it("re-queries the engine when opened and from the button", async () => {
     renderSettings();
     await screen.findByRole("heading", { name: "Settings" });
     await vi.waitFor(() => expect(callsTo("/voices?refresh=true")).toBe(1));
 
+    await openVoicesTab();
     fireEvent.click(screen.getByRole("button", { name: "Refresh voices" }));
     await vi.waitFor(() => expect(callsTo("/voices?refresh=true")).toBe(2));
   });
@@ -94,14 +99,59 @@ describe("SettingsPage", () => {
   it("offers only the Playback and Voices sections — no Theme", async () => {
     renderSettings();
     await screen.findByRole("heading", { name: "Settings" });
-    const nav = screen.getByRole("navigation", { name: "Settings sections" });
-    expect(within(nav).getAllByRole("link").map((link) => link.textContent)).toEqual([
+    const tabs = screen.getByRole("tablist", { name: "Settings sections" });
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Playback",
       "Voices",
     ]);
     expect(screen.queryByRole("radiogroup", { name: "Theme" })).toBeNull();
     expect(screen.queryByText("Appearance")).toBeNull();
     expect(screen.queryByText("Theme")).toBeNull();
+  });
+
+  it("renders only the selected section, Playback by default", async () => {
+    renderSettings();
+    expect((await screen.findByRole("tab", { name: "Playback" })).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Voices" }).getAttribute("aria-selected")).toBe("false");
+    expect(await screen.findByLabelText("Skip back in seconds")).toBeTruthy();
+    expect(screen.queryAllByRole("combobox", { name: /^Voice for / })).toHaveLength(0);
+  });
+
+  it("switching tabs swaps the sections", async () => {
+    renderSettings();
+    await screen.findByLabelText("Skip back in seconds");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Voices" }));
+    expect(await screen.findByRole("combobox", { name: "Voice for English" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Default playback speed" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Playback" }));
+    expect(await screen.findByRole("combobox", { name: "Default playback speed" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Voice for English" })).toBeNull();
+  });
+
+  it("arrow keys move selection and focus between the tabs", async () => {
+    renderSettings();
+    const playback = await screen.findByRole("tab", { name: "Playback" });
+    fireEvent.keyDown(playback, { key: "ArrowRight" });
+    const voices = screen.getByRole("tab", { name: "Voices" });
+    expect(voices.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(voices);
+    expect(await screen.findByRole("combobox", { name: "Voice for English" })).toBeTruthy();
+
+    fireEvent.keyDown(voices, { key: "ArrowRight" }); // wraps around
+    expect(screen.getByRole("tab", { name: "Playback" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Playback" }));
+  });
+
+  it("uses the section-title heading scale with room below the top bar", () => {
+    renderSettings();
+    const heading = screen.getByRole("heading", { name: "Settings", level: 1 });
+    expect(heading.className).toContain("text-3xl");
+    expect(heading.className).not.toContain("text-4xl");
+    expect(String(heading.parentElement?.className)).toContain("pt-6");
   });
 
   it("hydrates the listening settings from the server", async () => {
@@ -185,6 +235,7 @@ describe("SettingsPage", () => {
       "value",
       "1.25",
     );
+    await openVoicesTab();
     expect(await screen.findByRole("combobox", { name: "Voice for English" })).toHaveProperty(
       "value",
       "ashley-en",
@@ -193,6 +244,7 @@ describe("SettingsPage", () => {
 
   it("groups one aligned row per language and labels voices for reading", async () => {
     renderSettings();
+    await openVoicesTab();
     const selects = await screen.findAllByRole("combobox", { name: /^Voice for / });
     expect(selects.map((select) => select.getAttribute("aria-label"))).toEqual([
       "Voice for English",
@@ -216,6 +268,7 @@ describe("SettingsPage", () => {
 
   it("preselects a voice without saving, then persists an explicit choice", async () => {
     renderSettings();
+    await openVoicesTab();
     const en = await screen.findByRole("combobox", { name: "Voice for English" });
     await vi.waitFor(() => expect(en).toHaveProperty("value", "ashley-en"));
     expect(settingsPutBodies()).toEqual([]);
@@ -229,6 +282,7 @@ describe("SettingsPage", () => {
   it("keeps a saved voice the server no longer listed selected and marked", async () => {
     serverSettings = { ...DEFAULT_SETTINGS, voices: { en: "ghost-en" } };
     renderSettings();
+    await openVoicesTab();
     const en = await screen.findByRole("combobox", { name: "Voice for English" });
     expect(en).toHaveProperty("value", "ghost-en");
     expect(Array.from(en.querySelectorAll("option")).map((o) => o.textContent)).toContain(
@@ -238,6 +292,7 @@ describe("SettingsPage", () => {
 
   it("disables language rows that have no voices", async () => {
     renderSettings();
+    await openVoicesTab();
     const zh = await screen.findByRole("combobox", { name: "Voice for Chinese, Simplified" });
     await vi.waitFor(() => expect(zh.hasAttribute("disabled")).toBe(true));
     expect(screen.getAllByText("No voices available for this language").length).toBeGreaterThan(0);
@@ -245,6 +300,7 @@ describe("SettingsPage", () => {
 
   it("preview plays a sample and the same button stops it", async () => {
     renderSettings();
+    await openVoicesTab();
     await screen.findByRole("combobox", { name: "Voice for English" });
     const preview = screen.getByRole("button", { name: "Preview ashley-en" });
 

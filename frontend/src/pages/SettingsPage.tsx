@@ -1,8 +1,15 @@
-/** Settings (Direction D §4): title, left section pills (Playback and
+/** Settings (Direction D §4): title, left section tabs (Playback and
  * Voices only — the app is dark, there is no Theme), rows with dividers,
- * steppers and switches. Every change saves immediately; a failed save
- * reverts the control and shows an inline error under its row. */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+ * steppers and switches. The tabs are a roving-tabindex tablist and only
+ * the selected section renders. Every change saves immediately; a failed
+ * save reverts the control and shows an inline error under its row. */
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import clsx from "clsx";
 import { useListeningSettings, useUpdateSettings } from "../api/settings";
 import {
@@ -296,6 +303,23 @@ export function SettingsPage() {
   const { data: voices } = useVoices();
   const { mutate } = refresh;
   const [section, setSection] = useState<string>("playback");
+  const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  /** roving-tabindex tablist: arrows / Home / End move selection and focus. */
+  function onTabKeyDown(event: ReactKeyboardEvent, index: number) {
+    const last = SECTIONS.length - 1;
+    let next = -1;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = index === last ? 0 : index + 1;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = index === 0 ? last : index - 1;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = last;
+    if (next < 0) return;
+    event.preventDefault();
+    const id = SECTIONS[next]!.id;
+    setSection(id);
+    tabRefs.current.get(id)?.focus();
+  }
+
   /** The row a failed save is attributed to; the coalesced PUT covers every
    * key changed since the last success, so the error shows under the last one. */
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -315,28 +339,88 @@ export function SettingsPage() {
   const groups = groupVoicesByLanguage(items);
 
   return (
-    <div className="flex flex-col gap-8">
-      <h1 className="font-display text-4xl">Settings</h1>
+    <div className="flex flex-col gap-8 pt-6">
+      <h1 className="font-display text-3xl">Settings</h1>
       <div className="flex flex-wrap items-start gap-8 lg:gap-12">
-        <nav aria-label="Settings sections" className="flex w-full flex-col gap-1 lg:w-52">
-          {SECTIONS.map(({ id, label }) => (
-            <a
+        <div role="tablist" aria-label="Settings sections" className="flex w-full flex-col gap-1 lg:w-52">
+          {SECTIONS.map(({ id, label }, index) => (
+            <button
               key={id}
-              href={`#${id}`}
-              aria-current={section === id ? "true" : undefined}
+              ref={(node) => {
+                if (node) tabRefs.current.set(id, node);
+                else tabRefs.current.delete(id);
+              }}
+              type="button"
+              role="tab"
+              id={`settings-tab-${id}`}
+              aria-selected={section === id}
+              aria-controls="settings-panel"
+              tabIndex={section === id ? 0 : -1}
               onClick={() => setSection(id)}
+              onKeyDown={(event) => onTabKeyDown(event, index)}
               className={clsx(
-                "tap flex h-11 items-center rounded-full px-4 text-md no-underline",
+                "tap flex h-11 items-center rounded-full px-4 text-left text-md",
                 section === id ? "bg-raised font-bold text-fg" : "font-medium text-fg-2 hover:bg-raised",
               )}
             >
               {label}
-            </a>
+            </button>
           ))}
-        </nav>
+        </div>
 
-        <div className="flex w-full min-w-0 flex-1 flex-col gap-10 lg:max-w-[760px]">
-          {isPending ? (
+        <div
+          id="settings-panel"
+          role="tabpanel"
+          aria-labelledby={`settings-tab-${section}`}
+          tabIndex={-1}
+          className="flex w-full min-w-0 flex-1 flex-col gap-10 lg:max-w-[760px]"
+        >
+          {section === "voices" ? (
+            <section id="voices" aria-labelledby="voices-h" className="flex flex-col">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
+                <h2 id="voices-h" className="font-display text-xl">
+                  Voices
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => refresh.mutate()}
+                  disabled={refresh.isPending}
+                  className={outlinedPill}
+                >
+                  <Icon name="RefreshCw" size={18} />
+                  Refresh voices
+                </button>
+              </div>
+              <p className="pb-2 text-base text-fg-2">
+                Your narrator for each book language. A book’s own narrator setting overrides these.
+                {voices && (
+                  <>
+                    {" "}
+                    {availableCount} {availableCount === 1 ? "voice" : "voices"} from your TTS server.
+                  </>
+                )}
+              </p>
+              {isPending || !voices ? (
+                <div className="h-40 animate-pulse rounded-xl bg-surface" aria-busy="true" />
+              ) : (
+                <div>
+                  {LANGUAGES.map(({ code, label }) => (
+                    <VoiceRow
+                      key={code}
+                      code={code}
+                      label={label}
+                      value={settings.voices[code]}
+                      options={groups[code.split("-")[0]!.toLowerCase()] ?? []}
+                      error={saveFailed && errorKey === `voice-${code}`}
+                      onChange={(voice) =>
+                        change(`voice-${code}`, { voices: { ...settings.voices, [code]: voice } })
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : isPending ? (
             <div className="h-72 animate-pulse rounded-xl bg-surface" aria-busy="true" />
           ) : (
             <section id="playback" aria-labelledby="playback-h" className="flex flex-col">
@@ -414,51 +498,6 @@ export function SettingsPage() {
               </Row>
             </section>
           )}
-
-          <section id="voices" aria-labelledby="voices-h" className="flex flex-col">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
-              <h2 id="voices-h" className="font-display text-xl">
-                Voices
-              </h2>
-              <button
-                type="button"
-                onClick={() => refresh.mutate()}
-                disabled={refresh.isPending}
-                className={outlinedPill}
-              >
-                <Icon name="RefreshCw" size={18} />
-                Refresh voices
-              </button>
-            </div>
-            <p className="pb-2 text-base text-fg-2">
-              Your narrator for each book language. A book’s own narrator setting overrides these.
-              {voices && (
-                <>
-                  {" "}
-                  {availableCount} {availableCount === 1 ? "voice" : "voices"} from your TTS server.
-                </>
-              )}
-            </p>
-            {isPending || !voices ? (
-              <div className="h-40 animate-pulse rounded-xl bg-surface" aria-busy="true" />
-            ) : (
-              <div>
-                {LANGUAGES.map(({ code, label }) => (
-                  <VoiceRow
-                    key={code}
-                    code={code}
-                    label={label}
-                    value={settings.voices[code]}
-                    options={groups[code.split("-")[0]!.toLowerCase()] ?? []}
-                    error={saveFailed && errorKey === `voice-${code}`}
-                    onChange={(voice) =>
-                      change(`voice-${code}`, { voices: { ...settings.voices, [code]: voice } })
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </section>
         </div>
       </div>
     </div>
