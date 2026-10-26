@@ -223,7 +223,7 @@ Handoff: `docs/ui-handoff/HANDOFF.md` (the old `folio-ui-handoff` is superseded)
 | 4 | Book page two-column, ⋮ menu + narrator dialog | **done** — 202 web tests |
 | 5 | Home/Library shelves, Genre data, group API | **done** — 211 web tests, 455 backend |
 | 6 | Search, Upload, Settings, Sign in | **done** — 215 web tests; e2e 9/9 |
-| 7 | Restyle remaining, clean up, rewrite DESIGN.md | **done** — 207 web tests, 9 e2e, Lightning 100 on six screens |
+| 7 | Restyle remaining, clean up, rewrite DESIGN.md | **done** — 207 web tests, 9 e2e, Lighthouse 100 on six screens |
 
 Backend §5 merged: genre + cover colour (migration 0009), grouped books, `/me/home`, `/search`; 455 backend tests. All seven phases shipped; final: 455 backend / 207 web / 9 Playwright, acceptance all-pass, Lighthouse 100 on login/home/library/book/player/settings. Screenshots `docs/screenshots/d-*.png`.
 
