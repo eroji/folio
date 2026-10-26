@@ -14,14 +14,16 @@ import clsx from "clsx";
 import { useListeningSettings, useUpdateSettings } from "../api/settings";
 import {
   groupVoicesByLanguage,
-  previewVoice,
   useRefreshVoices,
   useVoices,
   voiceLabel,
+  voiceOnServer,
   type Voice,
 } from "../api/voices";
 import { Icon } from "../components/Icon";
+import { PillSelect } from "../components/PillSelect";
 import { Switch } from "../components/Switch";
+import { VoicePreview } from "../components/VoicePreview";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5] as const;
 const LANGUAGES = [
@@ -41,46 +43,12 @@ const SECTIONS = [
   { id: "voices", label: "Voices" },
 ] as const;
 
-const selectPill =
-  "select-pill tap h-10 border border-border bg-raised text-base text-fg";
-const selectChevron = "pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-fg-2";
 const outlinedPill =
   "tap inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border px-4 text-base font-semibold text-fg hover:bg-raised disabled:opacity-50";
 
 function skipValid(value: string): boolean {
   const n = Number(value);
   return Number.isInteger(n) && n >= SKIP_MIN && n <= SKIP_MAX;
-}
-
-function PillSelect({
-  ariaLabel,
-  width,
-  value,
-  disabled,
-  onChange,
-  children,
-}: {
-  ariaLabel: string;
-  width: string;
-  value: string;
-  disabled?: boolean;
-  onChange: (value: string) => void;
-  children: ReactNode;
-}) {
-  return (
-    <span className={clsx("relative inline-flex", width, "max-w-full")}>
-      <select
-        aria-label={ariaLabel}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className={clsx(selectPill, "w-full")}
-      >
-        {children}
-      </select>
-      <Icon name="ChevronDown" size={18} className={selectChevron} />
-    </span>
-  );
 }
 
 /** One setting row: bold title + one-line explanation left, control right,
@@ -191,53 +159,6 @@ function SkipStepper({
   );
 }
 
-/** 40 px outlined pill button speaking a sample of one voice (Play → Pause). */
-function VoicePreview({ voice }: { voice: string }) {
-  const [playing, setPlaying] = useState(false);
-  const sample = useRef<{ url: string; audio: HTMLAudioElement } | null>(null);
-
-  function stop() {
-    if (sample.current) {
-      sample.current.audio.pause();
-      URL.revokeObjectURL(sample.current.url);
-      sample.current = null;
-    }
-    setPlaying(false);
-  }
-  useEffect(() => stop, []);
-
-  async function toggle() {
-    if (playing) {
-      stop();
-      return;
-    }
-    try {
-      const url = await previewVoice(voice);
-      const audio = new Audio(url);
-      sample.current = { url, audio };
-      setPlaying(true);
-      audio.addEventListener("ended", () => {
-        if (sample.current?.audio === audio) stop();
-      });
-      audio.play().catch(stop);
-    } catch {
-      stop();
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-label={`Preview ${voice}`}
-      title={`Preview ${voice}`}
-      className="tap grid size-10 shrink-0 place-items-center rounded-full border border-border bg-transparent text-fg hover:bg-raised"
-    >
-      <Icon name={playing ? "Pause" : "Play"} size={18} />
-    </button>
-  );
-}
-
 /** One language row: "English en", 180 px voice pill select + Preview. A
  * saved voice the engine no longer lists reads "(no longer available)". */
 function VoiceRow({
@@ -257,7 +178,7 @@ function VoiceRow({
 }) {
   const empty = options.length === 0;
   const listed = options.some((voice) => voice.id === value);
-  const selected = value ?? options.find((voice) => voice.available)?.id ?? options[0]?.id ?? "";
+  const selected = value ?? options.find((voice) => voiceOnServer(voice))?.id ?? options[0]?.id ?? "";
 
   return (
     <Row
@@ -282,9 +203,9 @@ function VoiceRow({
             <>
               {value && !listed && <option value={value}>{value} (no longer available)</option>}
               {options.map((voice) => (
-                <option key={voice.id} value={voice.id} disabled={!voice.available}>
+                <option key={voice.id} value={voice.id} disabled={!voiceOnServer(voice)}>
                   {voiceLabel(voice)}
-                  {voice.available ? "" : " (no longer available)"}
+                  {voiceOnServer(voice) ? "" : " (no longer available)"}
                 </option>
               ))}
             </>

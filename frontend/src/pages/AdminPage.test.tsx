@@ -24,23 +24,34 @@ let retryFails = false;
 let clearFails = false;
 let cache = { files: 1234, bytes: 1288490188, tts: { status: "ok", latency_ms: 42 } };
 
-const derivedNames: Record<string, string> = { "ashley-en": "Ashley", "ashley-ja": "Ashley (JA)" };
-let voiceNames: { names: Record<string, string>; items: { id: string; display_name: string; overridden: boolean }[] } = {
-  names: { "ashley-ja": "Yuki" },
-  items: [
-    { id: "ashley-en", display_name: "Ashley", overridden: false },
-    { id: "ashley-ja", display_name: "Yuki", overridden: true },
-  ],
-};
+interface VoiceRowData {
+  id: string;
+  language: string | null;
+  display_name: string | null;
+  is_default?: boolean;
+  books_count: number;
+  on_server: boolean;
+  language_overridden?: boolean;
+}
 
-function applyVoiceNames(names: Record<string, string>) {
-  voiceNames = {
-    names,
-    items: Object.keys(derivedNames).map((id) => ({
-      id,
-      display_name: names[id] ?? derivedNames[id]!,
-      overridden: id in names,
-    })),
+let voices: { defaults: Record<string, string>; items: VoiceRowData[] } = { defaults: {}, items: [] };
+let patchFails = false;
+let deleteFails = false;
+
+function resetVoices(): void {
+  voices = {
+    defaults: { en: "ashley-en", ja: "haruto-ja", ko: "suri-ko" },
+    items: [
+      { id: "ashley-en", language: "en", display_name: "Ashley", is_default: true, books_count: 74, on_server: true },
+      { id: "marcus-en", language: "en", display_name: "Marcus", books_count: 9, on_server: true },
+      { id: "nora-en", language: "en", display_name: null, books_count: 0, on_server: true },
+      { id: "narrator-02", language: "en", display_name: "Ruth", books_count: 0, on_server: true, language_overridden: true },
+      { id: "haruto-ja", language: "ja", display_name: "Haruto", is_default: true, books_count: 12, on_server: true },
+      { id: "suri-ko", language: "ko", display_name: "Suri", is_default: true, books_count: 5, on_server: true },
+      { id: "mei-zh", language: "zh", display_name: "Mei", books_count: 0, on_server: true },
+      { id: "narrator-01", language: null, display_name: null, books_count: 0, on_server: true },
+      { id: "ashley-fr", language: "fr", display_name: "Ashley", books_count: 1, on_server: false },
+    ],
   };
 }
 
@@ -48,23 +59,59 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+function findCall(fragment: string, method: string): readonly unknown[] | undefined {
+  return vi
+    .mocked(fetch)
+    .mock.calls.find(([url, init]) => String(url).includes(fragment) && (init?.method ?? "GET") === method);
+}
+
+function bodyOf(call: readonly unknown[] | undefined): Record<string, unknown> {
+  return JSON.parse(String((call?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
+}
+
 beforeEach(() => {
   jobs = [makeJob(), makeJob({ id: 8, status: "done", error: null })];
   retryFails = false;
   clearFails = false;
   cache = { files: 1234, bytes: 1288490188, tts: { status: "ok", latency_ms: 42 } };
-  applyVoiceNames({ "ashley-ja": "Yuki" });
+  resetVoices();
+  patchFails = false;
+  deleteFails = false;
+  URL.createObjectURL = vi.fn(() => "blob:sample") as typeof URL.createObjectURL;
+  URL.revokeObjectURL = vi.fn();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
-      if (url.includes("/admin/voice-names") && method === "PUT") {
-        const body = JSON.parse(String(init?.body)) as { names: Record<string, string> };
-        applyVoiceNames(body.names);
-        return jsonResponse(200, { names: body.names });
+      if (url.includes("/voices/preview")) {
+        return { ok: true, status: 200, blob: async () => new Blob(["opus-bytes"]) } as Response;
       }
-      if (url.includes("/admin/voice-names")) return jsonResponse(200, voiceNames);
+      if (url.includes("/admin/voices/defaults") && method === "PUT") {
+        const body = JSON.parse(String(init?.body)) as { language: string; voice_id: string };
+        voices.defaults = { ...voices.defaults, [body.language]: body.voice_id };
+        return jsonResponse(200, { defaults: voices.defaults });
+      }
+      const voicePath = url.match(/\/admin\/voices\/([^?]+)$/);
+      if (voicePath && method === "PATCH") {
+        if (patchFails) return jsonResponse(500, { error: { code: "server_error", message: "nope" } });
+        const body = JSON.parse(String(init?.body)) as Record<string, string | null>;
+        const item = voices.items.find((i) => i.id === decodeURIComponent(voicePath[1]!));
+        if (item) {
+          if ("display_name" in body) item.display_name = body.display_name || null;
+          if ("language_override" in body) {
+            item.language = body.language_override;
+            item.language_overridden = body.language_override != null;
+          }
+        }
+        return jsonResponse(200, { item });
+      }
+      if (voicePath && method === "DELETE") {
+        if (deleteFails) return jsonResponse(500, { error: { code: "server_error", message: "nope" } });
+        voices.items = voices.items.filter((i) => i.id !== decodeURIComponent(voicePath[1]!));
+        return new Response(null, { status: 204 });
+      }
+      if (url.includes("/voices")) return jsonResponse(200, voices);
       const retry = url.match(/\/admin\/jobs\/(\d+)\/retry$/);
       if (retry && method === "POST") {
         if (retryFails) return jsonResponse(500, { error: { code: "nope", message: "nope" } });
@@ -86,10 +133,13 @@ beforeEach(() => {
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
+  vi.spyOn(window.HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+  vi.spyOn(window.HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function renderAdmin() {
@@ -104,6 +154,12 @@ function renderAdmin() {
 async function openSection(label: string): Promise<HTMLElement> {
   fireEvent.click(await screen.findByRole("tab", { name: label }));
   return screen.getByRole("tabpanel");
+}
+
+async function openVoices(): Promise<HTMLElement> {
+  const panel = await openSection("Voices");
+  await within(panel).findByRole("radiogroup", { name: "English voices" });
+  return panel;
 }
 
 describe("AdminPage", () => {
@@ -121,13 +177,20 @@ describe("AdminPage", () => {
     renderAdmin();
     await screen.findByRole("button", { name: "Retry job 7" });
 
-    await openSection("Voice names");
-    expect(await screen.findByLabelText("Display name for ashley-en")).toBeTruthy();
+    const panel = await openSection("Voices");
+    expect(await within(panel).findByRole("heading", { name: "Voices" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry job 7" })).toBeNull();
 
     await openSection("Jobs");
     expect(await screen.findByRole("button", { name: "Retry job 7" })).toBeTruthy();
     expect(screen.queryAllByLabelText(/^Display name for /)).toHaveLength(0);
+  });
+
+  it("has no old Voice names section", async () => {
+    renderAdmin();
+    expect(screen.queryByRole("tab", { name: "Voice names" })).toBeNull();
+    const panel = await openSection("Voices");
+    expect(within(panel).queryByText("Voice names")).toBeNull();
   });
 
   it("arrow keys and Home/End move selection and focus between the tabs", async () => {
@@ -147,10 +210,10 @@ describe("AdminPage", () => {
     expect(screen.getByRole("tab", { name: "Cache" }).getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Cache" }), { key: "End" });
-    expect(screen.getByRole("tab", { name: "Voice names" }).getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Voice names" }));
+    expect(screen.getByRole("tab", { name: "Voices" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Voices" }));
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Voice names" }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Voices" }), { key: "Home" });
     expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Jobs" }));
   });
 
@@ -183,8 +246,8 @@ describe("AdminPage", () => {
     await openSection("Users");
     expectFlat(await within(panel).findByRole("list"));
 
-    await openSection("Voice names");
-    for (const list of await within(panel).findAllByRole("list")) expectFlat(list);
+    await openVoices();
+    expectFlat(within(panel).getByRole("radiogroup", { name: "English voices" }));
   });
 
   it("renders cache size and TTS status with latency", async () => {
@@ -202,10 +265,7 @@ describe("AdminPage", () => {
 
     fireEvent.click(retryButton);
     await vi.waitFor(() => {
-      const call = vi
-        .mocked(fetch)
-        .mock.calls.find(([url, init]) => String(url).includes("/admin/jobs/7/retry") && init?.method === "POST");
-      expect(call).toBeTruthy();
+      expect(findCall("/admin/jobs/7/retry", "POST")).toBeTruthy();
     });
     // Optimistic refresh: the refetched row shows the new status.
     expect(await screen.findByText("queued")).toBeTruthy();
@@ -224,10 +284,7 @@ describe("AdminPage", () => {
     const panel = await openSection("Cache");
     fireEvent.click(await within(panel).findByRole("button", { name: "Clear cache" }));
     await vi.waitFor(() => {
-      const call = vi
-        .mocked(fetch)
-        .mock.calls.find(([url, init]) => String(url).includes("/admin/cache/clear") && init?.method === "POST");
-      expect(call).toBeTruthy();
+      expect(findCall("/admin/cache/clear", "POST")).toBeTruthy();
     });
     expect(await within(panel).findByText(/0 files · 0 B/)).toBeTruthy();
   });
@@ -254,53 +311,189 @@ describe("AdminPage", () => {
     expect(within(section).getAllByText("admin").length).toBe(2); // username + role badge
     expect(within(section).queryByRole("button")).toBeNull();
   });
+});
 
-  it("prefills voice names with the effective name and flags overrides", async () => {
+describe("AdminPage voices section", () => {
+  it("groups voices: languages with books first, then alphabetical, Unassigned, No longer", async () => {
     renderAdmin();
-    const panel = await openSection("Voice names");
-    const section = await within(panel).findByRole("region", { name: "Voice names" });
-    expect((await within(section).findByLabelText("Display name for ashley-en") as HTMLInputElement).value).toBe(
-      "Ashley",
-    );
-    expect((within(section).getByLabelText("Display name for ashley-ja") as HTMLInputElement).value).toBe("Yuki");
-    expect(within(section).getAllByText("Custom")).toHaveLength(1);
+    const panel = await openVoices();
+    const headings = within(panel)
+      .getAllByRole("heading", { level: 3 })
+      .map((h) => h.textContent ?? "");
+    expect(headings.map((h) => h.replace(/(en|ja|ko|zh)$/, ""))).toEqual([
+      "English",
+      "Japanese",
+      "Korean",
+      "Chinese",
+      "Unassigned",
+      "No longer on the server",
+    ]);
+    expect(within(panel).getByText("4 voices")).toBeTruthy(); // English
+    expect(within(panel).getByText(/Language couldn’t be detected · 1 voice/)).toBeTruthy();
+    expect(within(panel).getByText(/8 voices on the server, checked .* ago\./)).toBeTruthy();
   });
 
-  it("saves edited and untouched overrides and shows the saved indicator", async () => {
+  it("shows usage descriptions and the Unassign pill only on manual assignments", async () => {
     renderAdmin();
-    const panel = await openSection("Voice names");
-    const section = await within(panel).findByRole("region", { name: "Voice names" });
-    fireEvent.change(await within(section).findByLabelText("Display name for ashley-en"), {
-      target: { value: "Ash" },
-    });
-    fireEvent.click(within(section).getByRole("button", { name: "Save" }));
+    const panel = await openVoices();
+    expect(await within(panel).findByText("Used by 74 books")).toBeTruthy();
+    expect(within(panel).getAllByText("Not used yet").length).toBeGreaterThan(0);
+    expect(within(panel).getByRole("button", { name: "Unassign narrator-02" })).toBeTruthy();
+    expect(within(panel).queryByRole("button", { name: "Unassign ashley-en" })).toBeNull();
+    expect(
+      within(panel).getByText("Not on the TTS server · 1 book falls back to its language default"),
+    ).toBeTruthy();
+  });
+
+  it("marks exactly one default per language group", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const english = within(within(panel).getByRole("radiogroup", { name: "English voices" }));
+    expect(english.getByRole("radio", { name: "Default English voice" }).getAttribute("aria-checked")).toBe("true");
+    expect(
+      english.getByRole("radio", { name: "Make marcus-en the default English voice" }).getAttribute("aria-checked"),
+    ).toBe("false");
+    const japanese = within(within(panel).getByRole("radiogroup", { name: "Japanese voices" }));
+    expect(japanese.getByRole("radio", { name: "Default Japanese voice" })).toBeTruthy();
+  });
+
+  it("switches the default on click with PUT /admin/voices/defaults", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const english = within(within(panel).getByRole("radiogroup", { name: "English voices" }));
+    fireEvent.click(english.getByRole("radio", { name: "Make marcus-en the default English voice" }));
     await vi.waitFor(() => {
-      const call = vi
-        .mocked(fetch)
-        .mock.calls.find(([url, init]) => String(url).includes("/admin/voice-names") && init?.method === "PUT");
+      const call = findCall("/admin/voices/defaults", "PUT");
       expect(call).toBeTruthy();
-      expect(JSON.parse(String(call![1]!.body))).toEqual({ names: { "ashley-en": "Ash", "ashley-ja": "Yuki" } });
+      expect(bodyOf(call)).toEqual({ language: "en", voice_id: "marcus-en" });
     });
-    expect(await within(section).findByText("Saved")).toBeTruthy();
-    expect(within(section).getAllByText("Custom")).toHaveLength(2);
+    await vi.waitFor(() => {
+      expect(
+        english.getByRole("radio", { name: "Make ashley-en the default English voice" }).getAttribute("aria-checked"),
+      ).toBe("false");
+      expect(english.getByRole("radio", { name: "Default English voice" })).toBeTruthy();
+    });
   });
 
-  it("clearing an override removes it from the saved map", async () => {
+  it("saves the display name on blur and on Enter", async () => {
     renderAdmin();
-    const panel = await openSection("Voice names");
-    const section = await within(panel).findByRole("region", { name: "Voice names" });
-    fireEvent.change(await within(section).findByLabelText("Display name for ashley-ja"), { target: { value: "" } });
-    fireEvent.click(within(section).getByRole("button", { name: "Save" }));
+    const panel = await openVoices();
+    const ashley = await within(panel).findByLabelText("Display name for ashley-en");
+    fireEvent.change(ashley, { target: { value: "Ash" } });
+    fireEvent.blur(ashley);
     await vi.waitFor(() => {
-      const call = vi
-        .mocked(fetch)
-        .mock.calls.find(([url, init]) => String(url).includes("/admin/voice-names") && init?.method === "PUT");
-      expect(JSON.parse(String(call![1]!.body))).toEqual({ names: {} });
+      expect(bodyOf(findCall("/admin/voices/ashley-en", "PATCH"))).toEqual({ display_name: "Ash" });
+    });
+
+    const mei = within(panel).getByLabelText("Display name for mei-zh");
+    fireEvent.change(mei, { target: { value: "Meiling" } });
+    fireEvent.keyDown(mei, { key: "Enter" });
+    await vi.waitFor(() => {
+      expect(bodyOf(findCall("/admin/voices/mei-zh", "PATCH"))).toEqual({ display_name: "Meiling" });
+    });
+  });
+
+  it("does not save when the name is unchanged on blur", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const ashley = await within(panel).findByLabelText("Display name for ashley-en");
+    fireEvent.blur(ashley);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(findCall("/admin/voices/ashley-en", "PATCH")).toBeUndefined();
+  });
+
+  it("assigning a language moves the row out of Unassigned immediately", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const select = await within(panel).findByLabelText("Language for narrator-01");
+    fireEvent.change(select, { target: { value: "en" } });
+    await vi.waitFor(() => {
+      expect(bodyOf(findCall("/admin/voices/narrator-01", "PATCH"))).toEqual({ language_override: "en" });
     });
     await vi.waitFor(() => {
-      const ja = within(section).getByLabelText("Display name for ashley-ja") as HTMLInputElement;
-      expect(ja.value).toBe("Ashley (JA)");
+      expect(within(panel).queryByLabelText("Language for narrator-01")).toBeNull();
+      const english = within(within(panel).getByRole("radiogroup", { name: "English voices" }));
+      expect(english.getByLabelText("Display name for narrator-01")).toBeTruthy();
+      expect(english.getByRole("radio", { name: "Make narrator-01 the default English voice" })).toBeTruthy();
+      expect(english.getByRole("button", { name: "Unassign narrator-01" })).toBeTruthy();
     });
-    expect(within(section).queryByText("Custom")).toBeNull();
+  });
+
+  it("unassign returns the row to Unassigned and keeps the display name", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    fireEvent.click(await within(panel).findByRole("button", { name: "Unassign narrator-02" }));
+    await vi.waitFor(() => {
+      expect(bodyOf(findCall("/admin/voices/narrator-02", "PATCH"))).toEqual({ language_override: null });
+    });
+    await vi.waitFor(() => {
+      expect(within(panel).getByLabelText("Language for narrator-02")).toBeTruthy();
+      expect(within(panel).queryByLabelText("Display name for narrator-02")).toBeNull();
+    });
+    // Re-assigning shows the kept name again.
+    fireEvent.change(within(panel).getByLabelText("Language for narrator-02"), { target: { value: "ja" } });
+    await vi.waitFor(() => {
+      const japanese = within(within(panel).getByRole("radiogroup", { name: "Japanese voices" }));
+      expect((japanese.getByLabelText("Display name for narrator-02") as HTMLInputElement).value).toBe("Ruth");
+    });
+  });
+
+  it("removes a voice no longer on the server", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    fireEvent.click(await within(panel).findByRole("button", { name: "Remove ashley-fr" }));
+    await vi.waitFor(() => {
+      expect(findCall("/admin/voices/ashley-fr", "DELETE")).toBeTruthy();
+    });
+    await vi.waitFor(() => {
+      expect(within(panel).queryByText("No longer on the server")).toBeNull();
+      expect(within(panel).queryByText("ashley-fr")).toBeNull();
+    });
+  });
+
+  it("has no name field or default control on Unassigned rows", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    expect(await within(panel).findByText("Assign a language to name it and offer it to listeners")).toBeTruthy();
+    expect(within(panel).queryByLabelText("Display name for narrator-01")).toBeNull();
+    expect(within(panel).getByRole("button", { name: "Preview narrator-01" })).toBeTruthy();
+  });
+
+  it("preview plays a sample and the same button stops it", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const preview = await within(panel).findByRole("button", { name: "Preview marcus-en" });
+    fireEvent.click(preview);
+    await vi.waitFor(() => expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1));
+    expect(bodyOf(findCall("/voices/preview", "POST"))).toEqual({ voice: "marcus-en" });
+    fireEvent.click(preview);
+    await vi.waitFor(() => expect(window.HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1));
+  });
+
+  it("refreshes the voices from the header button", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    fireEvent.click(await within(panel).findByRole("button", { name: "Refresh voices" }));
+    await vi.waitFor(() => {
+      expect(findCall("/voices?refresh=true", "GET")).toBeTruthy();
+    });
+  });
+
+  it("shows an error under the row when a save fails", async () => {
+    patchFails = true;
+    renderAdmin();
+    const panel = await openVoices();
+    const ashley = await within(panel).findByLabelText("Display name for ashley-en");
+    fireEvent.change(ashley, { target: { value: "Ash" } });
+    fireEvent.blur(ashley);
+    const alert = await within(panel).findByRole("alert");
+    expect(alert.textContent).toMatch(/Couldn.t save/);
+  });
+
+  it("shows the empty state when the server lists no voices", async () => {
+    voices = { defaults: {}, items: [] };
+    renderAdmin();
+    const panel = await openSection("Voices");
+    expect(await within(panel).findByRole("heading", { name: "No voices found" })).toBeTruthy();
   });
 });
