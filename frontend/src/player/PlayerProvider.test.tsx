@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayerContextValue } from "./PlayerProvider";
 import { TTS_LOOKAHEAD } from "./PlayerProvider";
 import { installMockEventSource, MockEventSource } from "../test/eventsource";
-import { BOOK_ID, CH1, CH2, installPlayerFetch, makeProgress, makeSegments, renderPlayer, stubMedia } from "../test/player";
+import { BOOK_ID, BOOK2_ID, CH1, CH2, CH3, installPlayerFetch, makeProgress, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import { deviceLabel } from "../api/progress";
 import type { AudioStatus } from "../api/audio";
 
@@ -285,6 +285,77 @@ describe("PlayerProvider progress", () => {
     expect(getPlayer().chapter?.id).toBe(CH2);
     expect(getPlayer().index).toBe(1);
     expect(getPlayer().time).toBe(4);
+  });
+
+  it("with no progress starts at the first included chapter, segment 0", async () => {
+    installPlayerFetch({
+      chapters: [
+        { id: CH1, idx: 0, title: "Front matter", char_count: 600, excluded: true },
+        { id: CH2, idx: 1, title: "Chapter One", char_count: 600 },
+      ],
+    });
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().chapter?.id).toBe(CH2);
+    expect(getPlayer().index).toBe(0);
+    expect(getPlayer().time).toBe(0);
+  });
+
+  it("starts fresh when the saved chapter has since been excluded", async () => {
+    installPlayerFetch({
+      chapters: [
+        { id: CH1, idx: 0, title: "Front matter", char_count: 600, excluded: true },
+        { id: CH2, idx: 1, title: "Chapter One", char_count: 600 },
+      ],
+      progress: makeProgress({ chapter_id: CH1, segment_id: `${CH1}-seg1`, offset_s: 7, device_label: deviceLabel() }),
+    });
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().chapter?.id).toBe(CH2); // the first included chapter
+    expect(getPlayer().index).toBe(0);
+    expect(getPlayer().time).toBe(0);
+  });
+
+  it("resumes the saved chapter by its place in the included list, not the raw one", async () => {
+    // The 16 % bug: the saved chapter's index was computed on the unfiltered
+    // list but applied to the included one, landing an excluded-chapter count
+    // deeper into the book.
+    installPlayerFetch({
+      chapters: [
+        { id: CH1, idx: 0, title: "Front matter", char_count: 600, excluded: true },
+        { id: CH2, idx: 1, title: "Chapter One", char_count: 600 },
+      ],
+      progress: makeProgress({ chapter_id: CH2, segment_id: `${CH2}-seg1`, offset_s: 7, device_label: deviceLabel() }),
+    });
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().chapter?.id).toBe(CH2);
+    expect(getPlayer().index).toBe(1);
+    expect(getPlayer().time).toBe(4);
+  });
+
+  it("switching books resets the position instead of carrying it over", async () => {
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    await act(async () => {
+      getPlayer().seekSegment(1, 5);
+    });
+    expect(getPlayer().index).toBe(1);
+    await act(async () => {
+      await getPlayer().load(BOOK2_ID);
+    });
+    expect(getPlayer().book?.id).toBe(BOOK2_ID);
+    expect(getPlayer().chapter?.id).toBe(CH3);
+    expect(getPlayer().index).toBe(0);
+    expect(getPlayer().time).toBe(0);
   });
 
   it("saves every 10 s while playing and restarts the timer on each save", async () => {

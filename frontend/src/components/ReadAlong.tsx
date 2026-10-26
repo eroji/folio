@@ -6,7 +6,7 @@
  * Tapping a sentence seeks there. `useReadAlongControls` lifts the text-size
  * and auto-scroll knobs so the phone sheet can drive them from its strip and
  * pinned footer. */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { usePlayer } from "../player/usePlayer";
 import { Icon } from "./Icon";
@@ -136,6 +136,21 @@ export function ReadAlong({
     scrollToCurrent();
   });
 
+  // A manual scroll pauses the follow until "Back to current" (or the
+  // auto-scroll toggle is clicked off and on again).
+  const [manual, setManual] = useState(false);
+
+  // The initial follow: place the current sentence as soon as the content
+  // mounts and whenever the segment, chapter or book changes while the
+  // follow is on — without requiring an auto-scroll toggle. The rAF defers
+  // the measurement until the new sentences have laid out.
+  useLayoutEffect(() => {
+    if (!c.autoScroll || manual) return;
+    const raf = requestAnimationFrame(scrollToCurrent);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- scrollToCurrent reads live geometry from the DOM and refs
+  }, [player.book?.id, player.chapter?.id, player.index, all.length, c.autoScroll, manual]);
+
   useEffect(() => stopAnimation, []);
 
   function stopAnimation() {
@@ -145,9 +160,6 @@ export function ReadAlong({
     }
   }
 
-  // A manual scroll pauses the follow until "Back to current" (or the
-  // auto-scroll toggle is clicked off and on again).
-  const [manual, setManual] = useState(false);
   useEffect(() => {
     if (c.autoScroll) setManual(false);
   }, [c.autoScroll]);
@@ -170,7 +182,7 @@ export function ReadAlong({
   const currentSize = (phone ? 25 : 26) * scale;
 
   return (
-    <div className={clsx("relative mx-auto flex min-h-0 w-full max-w-[68ch] flex-col", className)}>
+    <div className={clsx("relative mx-auto flex min-h-0 w-full max-w-[620px] flex-col", className)}>
       {toolbar && (
         <div className="flex shrink-0 items-center justify-between gap-3 pb-3">
           <span className="text-sm text-fg-2">Follows the narration</span>
@@ -204,7 +216,8 @@ export function ReadAlong({
         aria-label="Read along"
         data-font-step={c.fontStep}
         className={clsx(
-          "no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain",
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+          phone ? "no-scrollbar" : "scroll-thin",
           phone && "fade-edges",
         )}
       >

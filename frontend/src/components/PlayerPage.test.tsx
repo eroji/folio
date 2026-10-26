@@ -86,6 +86,25 @@ describe("PlayerPage (desktop)", () => {
     renderPlayer(<PlayerPage />, ["/player"]);
     expect(screen.getByText("Nothing to play")).toBeTruthy();
   });
+
+  it("splits into the same columns as the book page so the cover never moves", async () => {
+    await renderAtPlayer();
+    const grid = document.querySelector('[class*="340px_minmax"]');
+    expect(grid).toBeTruthy();
+    expect(grid?.className).toContain("gap-12");
+    expect(grid?.className).toContain("pt-6");
+  });
+
+  it("scrolls the panes internally instead of the window", async () => {
+    await renderAtPlayer();
+    const pane = screen.getByRole("tabpanel");
+    expect(pane.className).toContain("overflow-y-auto");
+    expect(pane.className).toContain("scroll-thin");
+    expect(pane.getAttribute("style")).toContain("min(560px");
+    const box = document.querySelector('article[aria-label="Read along"]')!;
+    expect(box.className).toContain("overflow-y-auto");
+    expect(box.className).toContain("scroll-thin");
+  });
 });
 
 describe("PlayerPage (phone)", () => {

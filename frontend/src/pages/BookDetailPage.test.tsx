@@ -342,6 +342,29 @@ describe("BookDetailPage", () => {
     await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s3")).toBe(true));
   });
 
+  it("labels the primary action Play and starts at the first included chapter when the saved chapter is excluded", async () => {
+    chapters = [
+      { id: "c1", idx: 0, title: "One Way", char_count: 500, excluded: true },
+      { id: "c2", idx: 1, title: "The Other", char_count: 500 },
+    ];
+    progress = makeProgress({ percent: 16, chapter_id: "c1", segment_id: "s2", offset_s: 7 });
+    renderDetail();
+    const play = await screen.findByRole("button", { name: "Play" });
+    fireEvent.click(play);
+    await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s3")).toBe(true));
+    expect(prepareCalls.every((call) => call.segment_id === "s3" || call.segment_id === "s4")).toBe(true);
+  });
+
+  it("disables the primary action when every chapter is excluded", async () => {
+    chapters = [
+      { id: "c1", idx: 0, title: "One Way", char_count: 500, excluded: true },
+      { id: "c2", idx: 1, title: "The Other", char_count: 500, excluded: true },
+    ];
+    renderDetail();
+    const play = (await screen.findByRole("button", { name: "Play" })) as HTMLButtonElement;
+    expect(play.disabled).toBe(true);
+  });
+
   it("labels a finished book Play again and restarts it from chapter 1", async () => {
     progress = makeProgress({ percent: 100, chapter_id: "c2", segment_id: "s4", finished_at: "2026-01-03T00:00:00Z" });
     renderDetail();
@@ -803,6 +826,16 @@ describe("BookDetailPage", () => {
     expect(more).toBeTruthy();
     fireEvent.click(more);
     expect(screen.getByRole("button", { name: "Less" })).toBeTruthy();
+  });
+
+  it("splits into the same columns as the player page so the cover never moves", async () => {
+    stubViewport(true);
+    renderDetail();
+    await screen.findByRole("button", { name: /Play|Resume/ });
+    const grid = document.querySelector('[class*="340px_minmax"]');
+    expect(grid?.className).toContain("lg:grid-cols-[340px_minmax(0,1fr)]");
+    expect(grid?.className).toContain("gap-12");
+    expect(grid?.className).toContain("pt-6");
   });
 
   it("renders the phone layout: back + ⋮ header, centered cover, meta with percent", async () => {
