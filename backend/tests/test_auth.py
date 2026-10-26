@@ -281,10 +281,12 @@ async def test_admin_endpoints_reject_non_admins(auth_client: httpx.AsyncClient)
 
 async def test_admin_jobs_lists_newest_first(admin_client: httpx.AsyncClient, db: Session) -> None:
     book = make_book(db)
+    uploader = make_user(db, username="uploader")
     for i in range(3):
         job = Job(
             type="ingest",
             book_id=book.id,
+            user_id=uploader.id,
             status="done",
             created_at=datetime.now(UTC) - timedelta(minutes=i),
         )
@@ -295,6 +297,8 @@ async def test_admin_jobs_lists_newest_first(admin_client: httpx.AsyncClient, db
     jobs = response.json()["items"]
     assert [j["status"] for j in jobs] == ["done", "done", "done"]
     assert [j["book_title"] for j in jobs] == [book.title, book.title, book.title]
+    assert [j["user_username"] for j in jobs] == ["uploader", "uploader", "uploader"]
+    assert [j["user_name"] for j in jobs] == ["Uploader", "Uploader", "Uploader"]
     dates = [j["created_at"] for j in jobs]
     assert dates == sorted(dates, reverse=True)
 

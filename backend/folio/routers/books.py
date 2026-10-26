@@ -287,7 +287,7 @@ def upload_books(
                     sha256=sha,
                 )
             )
-            job = enqueue(db, "ingest", book.id)
+            job = enqueue(db, "ingest", book.id, user_id=user.id)
             db.commit()
             notify(db, {"event": "book", "book_id": str(book.id), "status": "uploading"})
             results.append({"book_id": str(book.id), "job_id": str(job.id), "duplicate_of": None})
@@ -459,7 +459,7 @@ def reprocess_book(
     db.execute(delete(Chapter).where(Chapter.book_id == book.id))
     book.status = "uploading"
     book.error = None
-    job = enqueue(db, "ingest", book.id)
+    job = enqueue(db, "ingest", book.id, user_id=user.id)
     db.commit()
     notify(db, {"event": "book", "book_id": str(book.id), "status": "uploading"})
     return {"job_id": str(job.id)}

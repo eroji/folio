@@ -210,6 +210,7 @@ export function AdminPage() {
                     <thead className="border-b border-border text-xs uppercase tracking-wide text-fg-2">
                       <tr>
                         <th className="px-3 py-2 font-medium">Book</th>
+                        <th className="px-3 py-2 font-medium">User</th>
                         <th className="px-3 py-2 font-medium">Status</th>
                         <th className="px-3 py-2 font-medium">Started</th>
                         <th className="px-3 py-2 font-medium">Took</th>
@@ -239,6 +240,15 @@ export function AdminPage() {
                                 {jobType(job.type)}
                                 {job.attempts > 1 && ` · attempt ${job.attempts}`}
                               </span>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2">
+                              {job.user_name ? (
+                                <span title={job.user_username ? `@${job.user_username}` : undefined}>
+                                  {job.user_name}
+                                </span>
+                              ) : (
+                                <span className="text-fg-2">—</span>
+                              )}
                             </td>
                             <td className="px-3 py-2">
                               <span className={clsx(pill, status.tone)}>{status.label}</span>

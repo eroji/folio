@@ -254,3 +254,5 @@ One line each: decision, why, what it costs.
 - **Voice defaults (BE): the effective server default (explicit `voice_defaults` entry, else the first on-server voice of the language) beats `TTS_VOICE_MAP`** — `voice_defaults` supersedes the config map; costs: `TTS_VOICE_MAP` only applies when the engine reports no voice for that language.
 - **Voice defaults (BE): `GET /voices` returns unassigned and removed voices to everyone with `language:null` / `on_server:false` flags** — Settings needs the display name of a pinned voice that vanished ("no longer available"); costs: clients must filter by the flags before offering a voice.
 - **Voice defaults (BE): user settings keep non-{en,ja,ko,zh} language keys as-is and fold region variants to the base (`zh-TW`→`zh`, `kr`→`ko`, zh wins)** — migration must not silently drop a `de` pin; costs: two stored spellings can coexist until the next save.
+
+- Admin jobs show the user who triggered the job (`jobs.user_id`, migration 0010); null for worker/system jobs, pre-0010 rows and deleted users (FK `ON DELETE SET NULL`). Retry keeps the original attribution.

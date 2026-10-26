@@ -174,6 +174,10 @@ class Job(Base):
     book_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("books.id", ondelete="CASCADE")
     )
+    # Who triggered the job; null for worker/system jobs and deleted users.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

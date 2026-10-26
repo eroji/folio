@@ -13,9 +13,15 @@ from sqlalchemy.orm import Session
 from folio.models.book import Job
 
 
-def enqueue(db: Session, job_type: str, book_id: UUID | None, priority: int = 100) -> Job:
+def enqueue(
+    db: Session,
+    job_type: str,
+    book_id: UUID | None,
+    priority: int = 100,
+    user_id: UUID | None = None,
+) -> Job:
     """Create a ``queued`` job. The caller commits with its own rows."""
-    job = Job(type=job_type, book_id=book_id, priority=priority)
+    job = Job(type=job_type, book_id=book_id, priority=priority, user_id=user_id)
     db.add(job)
     db.flush()
     return job

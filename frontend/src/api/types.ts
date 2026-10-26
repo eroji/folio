@@ -124,6 +124,9 @@ export interface Job {
   book_id: string | null;
   /** Joined from the book row so the admin table reads without UUIDs. */
   book_title?: string | null;
+  /** Joined from the user row; null for worker/system jobs. */
+  user_name?: string | null;
+  user_username?: string | null;
   priority: number;
   status: string;
   attempts: number;

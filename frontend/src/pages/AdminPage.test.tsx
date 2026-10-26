@@ -11,6 +11,8 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     type: "ingest",
     book_id: "11111111-1111-1111-1111-111111111111",
     book_title: "Dune",
+    user_name: "Browser User",
+    user_username: "browser",
     priority: 0,
     status: "failed",
     attempts: 3,
@@ -270,6 +272,7 @@ describe("AdminPage", () => {
     expect(screen.queryByText("7")).toBeNull();
     expect(screen.getByText("Failed")).toBeTruthy();
     expect(screen.getAllByText(/^Ingest/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Browser User").length).toBe(2);
     expect(screen.getByText(/2 jobs/)).toBeTruthy();
     expect(screen.getByText(/1 failed/)).toBeTruthy();
   });

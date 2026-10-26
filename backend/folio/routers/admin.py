@@ -52,21 +52,26 @@ class JobPublic(BaseModel):
     created_at: datetime
     finished_at: datetime | None
     book_title: str | None = None
+    user_name: str | None = None
+    user_username: str | None = None
 
 
 @router.get("/jobs")
 def list_jobs(db: Annotated[DbSession, Depends(get_session)]) -> dict[str, Any]:
-    """Newest first, with the book title so the table reads without UUIDs."""
+    """Newest first, with the book title and the user who triggered the job."""
     rows = db.execute(
-        select(Job, Book.title)
+        select(Job, Book.title, User.display_name, User.username)
         .outerjoin(Book, Job.book_id == Book.id)
+        .outerjoin(User, Job.user_id == User.id)
         .order_by(Job.created_at.desc())
         .limit(JOBS_PAGE_SIZE)
     ).all()
     items = []
-    for job, title in rows:
+    for job, title, user_name, username in rows:
         item = JobPublic.model_validate(job)
         item.book_title = title
+        item.user_name = user_name
+        item.user_username = username
         items.append(item)
     return {"items": items}
 
