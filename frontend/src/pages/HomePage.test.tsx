@@ -39,7 +39,9 @@ const HOME = {
     {
       book: makeBook(),
       progress: makeProgress({ percent: 38, chapter_id: CH1 }),
-      chapter: { id: CH1, idx: 2, title: "Lamp Oil" },
+      // idx 4 with earlier chapters excluded: the card must show the included
+      // position (2), not the source index (5).
+      chapter: { id: CH1, idx: 4, number: 2, title: "Lamp Oil" },
       time_left_s: 9360,
     },
   ],
@@ -103,7 +105,7 @@ describe("HomePage", () => {
     renderHome();
     const continueShelf = await screen.findByRole("region", { name: "Continue listening" });
     expect(within(continueShelf).getByText("Browser User")).toBeTruthy();
-    expect(within(continueShelf).getByText("Ch. 3 · 2 h 36 m left")).toBeTruthy();
+    expect(within(continueShelf).getByText("Ch. 2 · 2 h 36 m left")).toBeTruthy();
 
     const next = await screen.findByRole("region", { name: "Next chapters" });
     expect(within(next).getByText("2 · The Keeper")).toBeTruthy();

@@ -1,6 +1,7 @@
 """/me: Home shelves, Continue listening and per-user listening settings (spec M5, handoff §5)."""
 
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict
@@ -46,6 +47,19 @@ class SettingsPatch(BaseModel):
 
 def _fail() -> None:
     raise ApiError("validation_failed", "Invalid request", 422)
+
+
+def _included_number(db: DbSession, book_id: UUID, idx: int) -> int:
+    """1-based position of ``idx`` among the book's included chapters, so the
+    Home cards match the book page's 1..N numbering even after exclusions."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(Chapter)
+            .where(Chapter.book_id == book_id, Chapter.excluded.is_(False), Chapter.idx <= idx)
+        )
+        or 0
+    )
 
 
 def _merge(current: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -182,7 +196,12 @@ def home(
                 "chapter": (
                     None
                     if chapter is None
-                    else {"id": str(chapter.id), "idx": chapter.idx, "title": chapter.title}
+                    else {
+                        "id": str(chapter.id),
+                        "idx": chapter.idx,
+                        "number": _included_number(db, book.id, chapter.idx),
+                        "title": chapter.title,
+                    }
                 ),
                 "time_left_s": max(0.0, book.est_duration_s * (1 - row.percent / 100)),
             }
@@ -198,24 +217,13 @@ def home(
                 .order_by(Chapter.idx)
             )
             if nxt is not None:
-                # 1-based position among included chapters, so the card matches
-                # the book page's 1..N numbering even after exclusions.
-                number = db.scalar(
-                    select(func.count())
-                    .select_from(Chapter)
-                    .where(
-                        Chapter.book_id == book.id,
-                        Chapter.excluded.is_(False),
-                        Chapter.idx <= nxt.idx,
-                    )
-                )
                 next_items.append(
                     {
                         "book": _public(book, user),
                         "chapter": {
                             "id": str(nxt.id),
                             "idx": nxt.idx,
-                            "number": number,
+                            "number": _included_number(db, book.id, nxt.idx),
                             "title": nxt.title,
                             "duration_s": nxt.char_count / cps,
                         },
