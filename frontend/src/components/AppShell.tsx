@@ -83,9 +83,10 @@ function SideNavItem({ to, icon, label, collapsed }: { to: string; icon: IconNam
   );
 }
 
-/** ≥768px: labelled sidebar; collapsed it is an 80px rail of 48px icon +
- * 11px-label items (no logo; the logo moves to the top bar). Settings/Admin
- * live in the account menu. Tablet (768–1023) starts as this rail. */
+/** ≥768px: labelled sidebar. Collapsed it narrows to a rail, but keeps the
+ * Menu button and logo in the same top row (as YouTube Music does); items
+ * become 48px icon + 11px label stacks. Settings/Admin live in the account
+ * menu. Tablet (768–1023) starts collapsed. */
 function Sidebar({
   collapsed,
   onToggle,
@@ -100,10 +101,10 @@ function Sidebar({
       aria-label="Main"
       className={clsx(
         "sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-bg px-3 pt-2 pb-4 md:flex",
-        collapsed ? "w-20" : "w-[240px]",
+        collapsed ? "w-[168px]" : "w-[240px]",
       )}
     >
-      <div className={clsx("flex h-14 shrink-0 items-center gap-2 px-0.5", collapsed && "justify-center px-0")}>
+      <div className="flex h-14 shrink-0 items-center gap-2 px-0.5">
         <button
           type="button"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -113,7 +114,7 @@ function Sidebar({
         >
           <Icon name="Menu" size={22} />
         </button>
-        {!collapsed && <Logo size={29} textClass="text-[23px]" />}
+        <Logo size={29} textClass="text-[23px]" />
       </div>
       {NAV.map((item) => (
         <SideNavItem key={item.to} {...item} collapsed={collapsed} />
@@ -257,13 +258,11 @@ function BottomNav() {
   );
 }
 
-/** ≥768px: 56px top bar inside the main pane; with the sidebar collapsed the
- * logo sits at its far left, before the search pill. <768px: 56px phone
- * header with the logo, a Search icon button and the avatar. */
-function TopBar({ collapsed }: { collapsed: boolean }) {
+/** ≥768px: 56px top bar inside the main pane. <768px: 56px phone header
+ * with the logo, a Search icon button and the avatar. */
+function TopBar() {
   return (
     <header className="hidden h-14 shrink-0 items-center gap-4 px-10 md:flex">
-      {collapsed && <Logo size={24} textClass="text-[19px]" />}
       <TopBarSearch />
       <div className="ml-auto shrink-0">
         <AccountMenu />
@@ -357,7 +356,7 @@ function Shell() {
     <div className="flex min-h-dvh">
       <Sidebar collapsed={collapsed} onToggle={toggleSidebar} inProgress={continueData?.items ?? []} />
       <div className={clsx("flex min-w-0 flex-1 flex-col", glow.className)} style={glow.style}>
-        <TopBar collapsed={collapsed} />
+        <TopBar />
         <PhoneHeader />
         <main
           className={clsx(
