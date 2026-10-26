@@ -285,3 +285,5 @@ One line each: decision, why, what it costs.
 
 - Provider covers are deduped by `books.cover_source_url` (migration 0014, set by PUT /cover-url, cleared by upload/delete); the metadata search returns `cover_applied` per candidate, so re-searching after applying a cover suggests nothing. The selected result's cover is previewed in the cover slot with an X (declined suggestions are remembered for the session); it is written only on Save. When the selected result changes nothing, the summary bar is replaced by a green "Everything matches" banner.
 - The Manage Edit details pill uses the subtle filled `bg-surface` variant (user: the transparent pill looked wrong, the raised one too solid).
+
+- The Find results banner (suggestions or green "Everything matches") reuses the fixed 36 px slot the Find metadata button occupied, so the form does not move when the pane opens or when the banner appears/changes; the same slot keeps the button after the pane closes.

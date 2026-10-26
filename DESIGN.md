@@ -115,7 +115,8 @@
   used values are deferred until Save and save without locking, typed fields
   still lock. The selected result's cover is previewed in place (X declines);
   a provider cover already applied is deduped server-side and the banner turns
-  green ("Everything matches") when nothing differs. Manage has no Find button:
+  green ("Everything matches") when nothing differs. The banner occupies the
+  Find button's fixed 36 px slot, so the form never moves. Manage has no Find button:
   the pane opens only from the drawer (or the Review metadata matches banner).
   The narrator is set only from the book's ⋮ menu.
 - **Restyle-only screens** (Find metadata, narrator dialog, confirms, Admin,

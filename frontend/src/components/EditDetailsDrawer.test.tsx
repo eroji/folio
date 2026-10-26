@@ -360,7 +360,10 @@ describe("EditDetailsDrawer", () => {
     await waitFor(() => expect(screen.queryByRole("region", { name: "Find metadata" })).toBeNull());
     expect(panel().className).toContain("max-w-[600px]");
     expect(screen.getByText("Ace")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Use all" })).toBeTruthy();
+    // Closing the pane restores the Find pill in its slot; per-field
+    // suggestions stay in the form.
+    expect(screen.getByRole("button", { name: "Find metadata" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use Ace" })).toBeTruthy();
   });
 
   it("closing the pane with X clears unused pills but keeps used values and their lines", async () => {

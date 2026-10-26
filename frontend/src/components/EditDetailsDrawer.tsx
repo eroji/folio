@@ -1185,44 +1185,44 @@ export function EditDetailsDrawer({
                 </p>
               )}
 
+              {/* The Find button's fixed 36 px slot is reused by the result
+                  banner, so none of the form moves when the pane opens. */}
               <div className="pt-4">
-                {findOpen ? (
-                  <div aria-hidden className="h-9" /> // keeps the form from jumping when the pane opens
-                ) : (
+                {!findOpen ? (
                   <button type="button" onClick={() => setFindOpen(true)} className={outlinePill}>
                     <Icon name="Globe" size={18} />
                     Find metadata
                   </button>
+                ) : suggestion && suggestionCount === 0 ? (
+                  <div className="flex h-9 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3.5 text-success">
+                    <Icon name="Check" size={16} className="shrink-0" />
+                    <span className="min-w-0 truncate text-[13px]">
+                      <span className="font-bold">Everything matches</span>
+                      <span className="text-fg-2">
+                        {" "}· {sourceLabel} · {suggestion.title}
+                        {suggestionYear && ` (${suggestionYear})`}
+                      </span>
+                    </span>
+                  </div>
+                ) : suggestion ? (
+                  <div className={clsx("flex h-9 items-center justify-between gap-2 rounded-full border px-3.5", accentTint)}>
+                    <span className="min-w-0 truncate text-[13px]">
+                      <span className="font-bold">
+                        {suggestionCount} suggestion{suggestionCount === 1 ? "" : "s"}
+                      </span>
+                      <span className="text-fg-2">
+                        {" "}from {sourceLabel} · {suggestion.title}
+                        {suggestionYear && ` (${suggestionYear})`}
+                      </span>
+                    </span>
+                    <button type="button" onClick={useAll} className={clsx(whitePill, "h-7 shrink-0 px-3 text-sm")}>
+                      Use all
+                    </button>
+                  </div>
+                ) : (
+                  <div aria-hidden className="h-9" />
                 )}
               </div>
-
-              {suggestion && suggestionCount === 0 && (
-                <div className="mb-4 mt-4 flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-3.5 py-3 text-success">
-                  <Icon name="Check" size={18} />
-                  <span className="text-base">
-                    <span className="font-bold">Everything matches</span>{" "}
-                    <span className="text-fg-2">
-                      · {sourceLabel} · {suggestion.title}
-                      {suggestionYear && ` (${suggestionYear})`}
-                    </span>
-                  </span>
-                </div>
-              )}
-
-              {suggestion && suggestionCount > 0 && (
-                <div className={clsx("mb-4 mt-4 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border px-3.5 py-3", accentTint)}>
-                  <span className="text-base">
-                    <span className="font-bold">{suggestionCount} suggestion{suggestionCount === 1 ? "" : "s"}</span>{" "}
-                    <span className="text-fg-2">
-                      from {sourceLabel} · {suggestion.title}
-                      {suggestionYear && ` (${suggestionYear})`}
-                    </span>
-                  </span>
-                  <button type="button" onClick={useAll} className={clsx(whitePill, "h-[34px] px-[18px] text-base")}>
-                    Use all
-                  </button>
-                </div>
-              )}
 
               <CoverGroup
                 book={book}
