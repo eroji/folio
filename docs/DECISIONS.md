@@ -273,3 +273,8 @@ One line each: decision, why, what it costs.
 - Manage → Chapters to narrate shows the first **10** chapters before "Show all N" (handoff said four; user override).
 
 - Find metadata moved from Manage into the Edit details drawer (user override): the drawer has a Find view with a Back button, and the "Review metadata matches" banner deep-links into it. Find is disabled while the form has unsaved changes; applying metadata refreshes the form from the server book.
+- Find metadata is now a 400 px results pane beside the Edit details form (drawer widens 600→1040 px; under 1100 px the pane overlays and closes after a pick) — replaces the earlier "Find view with Back button" decision; nothing is written until Save: used fields go in the PATCH with `metadata_fields` (written, not locked), a used cover is PUT via /cover-url first; costs: the drawer holds more transient state (selection, used markers, deferred cover).
+- The Find pane is `role="region"` inside the single "Edit details" dialog, not a second dialog — one focus trap and one Esc story; "Use all" skips locked fields by design (explicit Use is allowed).
+- Auto-search runs whenever the pane opens without results; preloaded review items and reopening after a search skip it — one fetch per user intent; costs: no re-search button discoverability issue because the Search pill is always there.
+- Manage → Details keeps two entry points (user request): "Edit details" and a "Find metadata" (Globe) pill that navigates to /books/:id/edit with state `{find:true}` → new `initialFind` drawer prop.
+- POST /books/{id}/metadata/apply is no longer called by the UI (suggestions + PATCH replace it); the now-unused useApplyMetadata hook was deleted — the endpoint can go with a later backend cleanup.

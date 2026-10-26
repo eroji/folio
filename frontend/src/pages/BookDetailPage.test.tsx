@@ -259,9 +259,7 @@ beforeEach(() => {
       }
       if (url.includes("/me/settings")) return jsonResponse(200, { settings: DEFAULT_SETTINGS });
       if (url.includes("/metadata/candidates")) return jsonResponse(200, { items: candidates });
-      if (url.includes("/metadata/apply") && method === "POST") {
-        return jsonResponse(200, { book, applied: (body.fields as string[]) ?? [] });
-      }
+      if (url.includes("/metadata/search")) return jsonResponse(200, { items: candidates });
       if (url.includes("/voices/preview")) {
         return { ok: true, status: 200, blob: async () => new Blob(["opus-bytes"]) } as Response;
       }
@@ -576,8 +574,8 @@ describe("BookDetailPage", () => {
     expect(screen.getByText(/Cover, title, author, description and other metadata./)).toBeTruthy();
     expect(screen.getByText(/2 fields you edited are protected from automatic updates/)).toBeTruthy();
 
-    // Find metadata now lives inside the Edit details drawer.
-    expect(screen.queryByRole("button", { name: "Find metadata" })).toBeNull();
+    // Manage offers both entry points: the drawer and Find metadata beside the form.
+    expect((await screen.findByRole("link", { name: /Find metadata/ })).getAttribute("href")).toBe(`/books/${ID}/edit`);
 
     const toggle = screen.getByRole("switch", { name: "Narrate One Way" });
     expect(toggle.getAttribute("aria-checked")).toBe("true");
@@ -787,25 +785,41 @@ describe("BookDetailPage", () => {
     expect(await screen.findByText("at /search?q=Frank%20Herbert")).toBeTruthy();
   });
 
-  it("opens saved metadata matches in the Edit details drawer", async () => {
+  it("opens saved metadata matches in the drawer with the results pane open", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     const review = await screen.findByRole("button", { name: "Review metadata matches" });
     fireEvent.click(review);
-    expect(await screen.findByRole("dialog", { name: "Find metadata" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Apply selected" })).toBeTruthy();
-    expect(screen.getByText(/72% match/)).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    const pane = within(dialog).getByRole("region", { name: "Find metadata" });
+    expect(within(pane).getByRole("button", { name: /72%/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(dialog).getByRole("button", { name: "Use 1965" })).toBeTruthy();
   });
 
-  it("applies metadata inside the drawer and closes back to the book", async () => {
+  it("uses a suggestion and saves from inside the drawer", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     fireEvent.click(await screen.findByRole("button", { name: "Review metadata matches" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Apply selected" }));
-    await screen.findByText(/Applied:/);
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await screen.findByRole("tab", { name: "Manage" });
-    expect(screen.queryByRole("button", { name: "Apply selected" })).toBeNull();
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use 1965" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      const call = vi.mocked(fetch).mock.calls.find(([url, init]) => String(url).includes(`/books/${ID}`) && init?.method === "PATCH");
+      expect(String(call?.[1]?.body)).toContain('"metadata_fields":["published_date"]');
+    });
+    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull());
+    expect(screen.getByRole("tab", { name: "Manage" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("Find metadata in Manage opens the drawer at /edit with the pane active", async () => {
+    book = makeBook({ can_edit: true });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
+    expect(await screen.findByRole("link", { name: /Edit details/ })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("link", { name: /Find metadata/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    expect(within(dialog).getByRole("region", { name: "Find metadata" })).toBeTruthy();
+    expect(within(dialog).getByText("Pick a result on the left, then use the suggestions you want.")).toBeTruthy();
   });
 
   it("hides the banner when there are no candidates", async () => {

@@ -24,6 +24,10 @@ export type BookPatch = Partial<
   >
 >;
 
+/** Body of PATCH /books/{id} with the Find-metadata extension: fields listed in
+ * metadata_fields are written but not locked (existing locks are removed). */
+export type BookSavePatch = BookPatch & { metadata_fields?: string[] };
+
 /** Body of POST /books/{id}/cover and PUT /books/{id}/cover-url. */
 export interface CoverResponse {
   cover_url: string | null;
@@ -51,35 +55,20 @@ export function useMetadataSearch(id: string) {
   });
 }
 
-export function useApplyMetadata(id: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ payload, fields }: { payload: Candidate; fields: string[] }) =>
-      api.post<{ book: Book; applied: string[] }>(`/books/${id}/metadata/apply`, {
-        source: payload.source,
-        payload,
-        fields,
-      }),
-    onSuccess: (data) => {
-      queryClient.setQueryData<BookDetailResponse>(["book", id], (old) =>
-        old ? { ...old, book: data.book } : old,
-      );
-      void queryClient.invalidateQueries({ queryKey: ["books"] });
-      void queryClient.invalidateQueries({ queryKey: ["metadata-candidates", id] });
-    },
-  });
-}
-
-/** Optimistic PATCH; the server response is authoritative and replaces the cache. */
+/** Optimistic PATCH; the server response is authoritative and replaces the cache.
+ * metadata_fields is save metadata, not a book field: it is stripped before the
+ * optimistic merge so it never leaks into the cached Book. */
 export function useUpdateBook(id: string) {
   const queryClient = useQueryClient();
-  return useMutation<Book, Error, BookPatch, { prev?: BookDetailResponse }>({
+  return useMutation<Book, Error, BookSavePatch, { prev?: BookDetailResponse }>({
     mutationFn: (patch) => api.patch<{ book: Book }>(`/books/${id}`, patch).then((data) => data.book),
     onMutate: async (patch) => {
       await queryClient.cancelQueries({ queryKey: ["book", id] });
       const prev = queryClient.getQueryData<BookDetailResponse>(["book", id]);
+      const bookPatch = { ...patch };
+      delete bookPatch.metadata_fields;
       queryClient.setQueryData<BookDetailResponse>(["book", id], (old) =>
-        old ? { ...old, book: { ...old.book, ...patch } } : old,
+        old ? { ...old, book: { ...old.book, ...bookPatch } } : old,
       );
       return { prev };
     },

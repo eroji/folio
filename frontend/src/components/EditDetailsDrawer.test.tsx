@@ -6,21 +6,37 @@ import type { Book, Candidate } from "../api/types";
 
 const ID = "11111111-1111-1111-1111-111111111111";
 
-const CANDIDATE: Candidate = {
+/** Differs from the default book in publisher, published, description, isbn13,
+ * tags, genre and cover; title, authors and language already match. */
+const CANDIDATE_A: Candidate = {
   source: "openlibrary",
   title: "Dune",
   authors: ["Frank Herbert"],
   published_date: "1965",
-  publisher: null,
-  description: null,
+  publisher: "Chilton",
+  description: "<p>A classic of <i>desert</i> politics.</p>",
   language: "en",
   isbn10: null,
-  isbn13: null,
+  isbn13: "9780441013593",
   series: null,
   series_index: null,
+  tags: ["Desert"],
+  cover_url: "https://covers.test/dune.jpg",
+  score: 0.96,
+  suggested_genre: "Science Fiction",
+};
+
+const CANDIDATE_B: Candidate = {
+  ...CANDIDATE_A,
+  source: "googlebooks",
+  publisher: "Ace",
+  published_date: "2002",
+  description: null,
+  isbn13: null,
   tags: [],
   cover_url: null,
-  score: 0.72,
+  suggested_genre: null,
+  score: 0.9,
 };
 
 function makeBook(overrides: Partial<Book> = {}): Book {
@@ -59,6 +75,9 @@ let patches: Record<string, unknown>[] = [];
 let unlocks: string[] = [];
 let coverDeletes = 0;
 let coverUrlFetches: string[] = [];
+let searchUrls: string[] = [];
+let searchItems: Candidate[] = [];
+let calls: string[] = [];
 let sends: FormData[] = [];
 let current: Book;
 
@@ -94,13 +113,28 @@ class FakeImage {
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
 const originalToBlob = HTMLCanvasElement.prototype.toBlob;
 
+/** Width-aware matchMedia so the drawer's 1100 px overlay breakpoint is testable. */
+function stubViewport(width: number) {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: width >= Number(/min-width:\s*(\d+)px/.exec(query)?.[1] ?? 0),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 beforeEach(() => {
   patches = [];
   unlocks = [];
   coverDeletes = 0;
   coverUrlFetches = [];
+  searchUrls = [];
+  searchItems = [CANDIDATE_A, CANDIDATE_B];
+  calls = [];
   sends = [];
   current = makeBook();
+  stubViewport(1440);
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
     clearRect: () => undefined,
     drawImage: () => undefined,
@@ -122,6 +156,7 @@ beforeEach(() => {
         return jsonResponse(200, { book: current });
       }
       if (url.includes("/cover-url") && method === "PUT") {
+        calls.push("put-cover");
         coverUrlFetches.push(String(body.url));
         return jsonResponse(200, { cover_url: `/api/v1/books/${ID}/cover?v=abc`, cover_key: "abc" });
       }
@@ -130,13 +165,11 @@ beforeEach(() => {
         return new Response(null, { status: 204 });
       }
       if (url.includes("/metadata/search") && method === "GET") {
-        return jsonResponse(200, { items: [CANDIDATE] });
-      }
-      if (url.includes("/metadata/apply") && method === "POST") {
-        current = { ...current, title: "Dune (Provider)", updated_at: "2026-01-02T00:00:00Z" };
-        return jsonResponse(200, { book: current, applied: body.fields ?? [] });
+        searchUrls.push(url);
+        return jsonResponse(200, { items: searchItems });
       }
       if (method === "PATCH") {
+        calls.push("patch");
         patches.push(body);
         current = { ...current, ...(body as Partial<Book>) };
         return jsonResponse(200, { book: current });
@@ -153,12 +186,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderDrawer(overrides: Partial<Book> = {}, reviewItems?: Candidate[]) {
+function renderDrawer(overrides: Partial<Book> = {}, reviewItems?: Candidate[], find?: boolean) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onClose = vi.fn();
   render(
     <QueryClientProvider client={client}>
-      <EditDetailsDrawer book={makeBook(overrides)} onClose={onClose} initialReviewItems={reviewItems} />
+      <EditDetailsDrawer book={makeBook(overrides)} onClose={onClose} initialReviewItems={reviewItems} initialFind={find} />
     </QueryClientProvider>,
   );
   return { onClose };
@@ -168,11 +201,25 @@ function saveButton(): HTMLButtonElement {
   return screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
 }
 
+function panel(): HTMLElement {
+  return screen.getByRole("dialog", { name: "Edit details" });
+}
+
+function input(name: string): HTMLInputElement {
+  return screen.getByRole("textbox", { name }) as HTMLInputElement;
+}
+
+/** Opens the pane through the pill and waits for the auto-searched rows. */
+async function openFindPane() {
+  fireEvent.click(screen.getByRole("button", { name: "Find metadata" }));
+  await screen.findByRole("button", { name: /96%/ });
+}
+
 describe("EditDetailsDrawer", () => {
   it("focuses the Title input on open", () => {
     renderDrawer();
     expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Title" }));
-    expect(screen.getByRole("dialog", { name: "Edit details" }).getAttribute("aria-modal")).toBe("true");
+    expect(panel().getAttribute("aria-modal")).toBe("true");
   });
 
   it("keeps Save disabled until a change and counts unsaved changes", () => {
@@ -192,45 +239,149 @@ describe("EditDetailsDrawer", () => {
     expect(screen.queryByText(/unsaved change/)).toBeNull();
   });
 
-  it("opens Find metadata inside the drawer and Back returns to the form", () => {
+  it("opens Find beside the form: widens, keeps the form and unsaved edits, X collapses", async () => {
     renderDrawer();
-    fireEvent.click(screen.getByRole("button", { name: "Find metadata" }));
-    expect(screen.getByRole("dialog", { name: "Find metadata" })).toBeTruthy();
-    expect(screen.queryByRole("textbox", { name: "Subtitle" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
-    expect(screen.getByRole("dialog", { name: "Edit details" })).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: "Subtitle" })).toBeTruthy();
-  });
-
-  it("disables Find metadata while edits are unsaved", () => {
-    renderDrawer();
+    fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Messiah" } });
     const find = screen.getByRole("button", { name: "Find metadata" }) as HTMLButtonElement;
     expect(find.disabled).toBe(false);
-    fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Messiah" } });
-    expect(find.disabled).toBe(true);
+    fireEvent.click(find);
+    expect(panel().className).toContain("max-w-[1040px]");
+    expect(screen.getByRole("region", { name: "Find metadata" })).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement).value).toBe("Messiah");
+    expect(screen.getByText("Pick a result on the left, then use the suggestions you want.")).toBeTruthy();
+    await screen.findByRole("button", { name: /96%/ });
+    fireEvent.click(screen.getByRole("button", { name: "Close find metadata" }));
+    expect(screen.queryByRole("region", { name: "Find metadata" })).toBeNull();
+    expect(panel().className).toContain("max-w-[600px]");
   });
 
-  it("opens straight into the saved-matches review view", () => {
-    renderDrawer({}, [CANDIDATE]);
-    expect(screen.getByRole("dialog", { name: "Find metadata" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Apply selected" })).toBeTruthy();
-    expect(screen.getByText(/72% match/)).toBeTruthy();
-  });
-
-  it("refreshes the form after applying provider metadata", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const onClose = vi.fn();
-    const view = (value: Book) => (
-      <QueryClientProvider client={client}>
-        <EditDetailsDrawer book={value} onClose={onClose} initialReviewItems={[CANDIDATE]} />
-      </QueryClientProvider>
+  it("auto-searches with the prefilled query, reports the sources and selects the best match", async () => {
+    renderDrawer({ isbn13: "9780441013593" });
+    fireEvent.click(screen.getByRole("button", { name: "Find metadata" }));
+    await waitFor(() => expect(searchUrls).toHaveLength(1));
+    expect(searchUrls[0]).toContain("q=Dune+Frank+Herbert");
+    expect((screen.getByRole("searchbox", { name: "Title or author" }) as HTMLInputElement).value).toBe(
+      "Dune Frank Herbert",
     );
-    const { rerender } = render(view(makeBook()));
-    fireEvent.click(screen.getByRole("button", { name: "Apply selected" }));
-    await screen.findByText(/Applied:/);
-    rerender(view(makeBook({ title: "Dune (Provider)", updated_at: "2026-01-02T00:00:00Z" })));
-    fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
-    expect((screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement).value).toBe("Dune (Provider)");
+    expect((screen.getByRole("textbox", { name: "ISBN" }) as HTMLInputElement).value).toBe("9780441013593");
+    expect(await screen.findByText("2 results from Google Books and Open Library")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /96%/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: /90%/ }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("selecting another result only swaps the suggestions driving the form", async () => {
+    renderDrawer();
+    await openFindPane();
+    expect(screen.getByText("Chilton")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /90%/ }));
+    expect(await screen.findByText("Ace")).toBeTruthy();
+    expect(screen.queryByText("Chilton")).toBeNull();
+    expect((input("Publisher") as HTMLInputElement).value).toBe("");
+  });
+
+  it("Use fills the field, shows the source line and counts the change; Undo restores", async () => {
+    renderDrawer();
+    await openFindPane();
+    fireEvent.click(screen.getByRole("button", { name: "Use Chilton" }));
+    expect(input("Publisher").value).toBe("Chilton");
+    expect(screen.getByText("From Open Library")).toBeTruthy();
+    expect(screen.getByText("1 unsaved change")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Undo Publisher" }));
+    expect(input("Publisher").value).toBe("");
+    expect(screen.queryByText("From Open Library")).toBeNull();
+    expect(screen.getByRole("button", { name: "Use Chilton" })).toBeTruthy();
+    expect(screen.queryByText(/unsaved change/)).toBeNull();
+  });
+
+  it("Use all fills every differing field, skips locked ones and defers the cover", async () => {
+    renderDrawer({ locked_fields: ["publisher"] });
+    await openFindPane();
+    fireEvent.click(screen.getByRole("button", { name: "Use all" }));
+    expect(input("Publisher").value).toBe("");
+    expect(input("Published").value).toBe("1965");
+    expect(input("ISBN-13").value).toBe("9780441013593");
+    expect((screen.getByRole("combobox", { name: "Genre" }) as HTMLSelectElement).value).toBe("Science Fiction");
+    expect(screen.getByText("Desert")).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement).value).toBe(
+      "A classic of desert politics.",
+    );
+    expect(coverUrlFetches).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Undo cover" })).toBeTruthy();
+  });
+
+  it("typing after Use makes the field hand-edited again: no metadata_fields on Save", async () => {
+    renderDrawer();
+    await openFindPane();
+    fireEvent.click(screen.getByRole("button", { name: "Use Chilton" }));
+    fireEvent.change(input("Publisher"), { target: { value: "Chilton Press" } });
+    expect(screen.queryByText("From Open Library")).toBeNull();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ publisher: "Chilton Press" });
+  });
+
+  it("Save sends metadata_fields for used suggestions and lists typed fields only as changes", async () => {
+    const { onClose } = renderDrawer();
+    await openFindPane();
+    fireEvent.click(screen.getByRole("button", { name: "Use Chilton" }));
+    fireEvent.change(input("Subtitle"), { target: { value: "Appendix" } });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({
+      publisher: "Chilton",
+      subtitle: "Appendix",
+      metadata_fields: ["publisher"],
+    });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("a used cover PUTs cover-url before the PATCH on Save", async () => {
+    renderDrawer({ cover_url: "https://example.org/current.jpg" });
+    await openFindPane();
+    fireEvent.click(screen.getByRole("button", { name: "Use cover from Open Library" }));
+    expect(coverUrlFetches).toHaveLength(0);
+    expect(screen.getByText("1 unsaved change")).toBeTruthy();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(coverUrlFetches).toEqual(["https://covers.test/dune.jpg"]);
+    expect(calls.indexOf("put-cover")).toBeLessThan(calls.indexOf("patch"));
+    expect(patches[0]).toEqual({});
+  });
+
+  it("under 1100 px the pane overlays the form and a pick closes it with suggestions kept", async () => {
+    stubViewport(900);
+    renderDrawer();
+    await openFindPane();
+    fireEvent.click(screen.getByRole("button", { name: /90%/ }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Find metadata" })).toBeNull());
+    expect(panel().className).toContain("max-w-[600px]");
+    expect(screen.getByText("Ace")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use all" })).toBeTruthy();
+  });
+
+  it("closing the pane with X clears unused pills but keeps used values and their lines", async () => {
+    renderDrawer();
+    await openFindPane();
+    fireEvent.click(screen.getByRole("button", { name: "Use Chilton" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close find metadata" }));
+    expect(screen.getByText("From Open Library")).toBeTruthy();
+    expect(input("Publisher").value).toBe("Chilton");
+    expect(screen.queryByRole("button", { name: "Use all" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Use 978/ })).toBeNull();
+  });
+
+  it("opens straight into the pane with preloaded review items and no auto-search", () => {
+    renderDrawer({}, [CANDIDATE_A]);
+    expect(screen.getByRole("region", { name: "Find metadata" })).toBeTruthy();
+    expect(searchUrls).toHaveLength(0);
+    expect(screen.getByRole("button", { name: /96%/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Use all" })).toBeTruthy();
+  });
+
+  it("initialFind opens the pane and searches automatically", async () => {
+    renderDrawer({}, undefined, true);
+    expect(screen.getByRole("region", { name: "Find metadata" })).toBeTruthy();
+    await waitFor(() => expect(searchUrls).toHaveLength(1));
   });
 
   it("Cancel closes directly when nothing changed", () => {
@@ -251,9 +402,13 @@ describe("EditDetailsDrawer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("Escape closes when clean, scrim closes too", () => {
+  it("Escape closes the pane first, then the drawer", () => {
     const { onClose } = renderDrawer();
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "Edit details" }), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Find metadata" }));
+    fireEvent.keyDown(panel(), { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "Find metadata" })).toBeNull();
+    fireEvent.keyDown(panel(), { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -282,8 +437,7 @@ describe("EditDetailsDrawer", () => {
 
   it("displays a stored timestamp as a plain date and counts it as unchanged", () => {
     renderDrawer({ published_date: "2008-01-01T05:00:00+00:00" });
-    const published = screen.getByRole("textbox", { name: "Published" }) as HTMLInputElement;
-    expect(published.value).toBe("2008-01-01");
+    expect(input("Published").value).toBe("2008-01-01");
     expect(saveButton().disabled).toBe(true);
   });
 
@@ -365,10 +519,9 @@ describe("EditDetailsDrawer", () => {
 
   it("is a right drawer that goes full screen on phones", () => {
     renderDrawer();
-    const panel = screen.getByRole("dialog", { name: "Edit details" });
-    expect(panel.className).toContain("w-full");
-    expect(panel.className).toContain("max-w-[600px]");
-    expect(panel.className).toContain("bg-surface");
+    expect(panel().className).toContain("w-full");
+    expect(panel().className).toContain("max-w-[600px]");
+    expect(panel().className).toContain("bg-surface");
   });
 
   it("PATCHes only the changed fields on Save and closes", async () => {

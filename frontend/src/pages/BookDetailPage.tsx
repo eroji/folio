@@ -541,6 +541,10 @@ export function BookDetailPage() {
           <Icon name="Pencil" size={18} />
           Edit details
         </Link>
+        <Link to={`/books/${id}/edit`} state={{ find: true }} className={outlinePill}>
+          <Icon name="Globe" size={18} />
+          Find metadata
+        </Link>
       </ManageRow>
 
       <section className="flex flex-col gap-1.5 border-t border-border py-4">
@@ -800,6 +804,7 @@ export function BookDetailPage() {
         <EditDetailsDrawer
           book={book}
           initialReviewItems={navState?.find ? navState.reviewItems : undefined}
+          initialFind={navState?.find}
           onClose={() => {
             setTab("Manage");
             navigate(`/books/${id}`, { replace: true, state: { tab: "Manage" } });
