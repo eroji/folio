@@ -37,7 +37,7 @@ make fixtures           # regenerate the seven test books
 # Test workflow
 make test               # backend pytest (starts db if needed)
 make test-web           # frontend vitest
-make e2e                # full stack via compose.test.yaml + Playwright
+make e2e                # isolated `folio-e2e` stack on :8001 + Playwright (never touches :8000)
 
 # Full stack / deployment shape
 make up / make down     # docker compose, production-shaped

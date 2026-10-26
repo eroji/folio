@@ -37,10 +37,10 @@ lint:
 # Clean volume on purpose: the suite asserts the empty library and uploads a
 # fixture that content-hash dedupe would reject on a reused database.
 e2e:
-	docker compose -f compose.yaml -f compose.test.yaml down -v
-	docker compose -f compose.yaml -f compose.test.yaml up -d --build
-	@for i in $$(seq 1 60); do curl -fsS localhost:8000/healthz >/dev/null 2>&1 && break; sleep 2; done
-	cd frontend && npx playwright test
+	FOLIO_PORT=8001 docker compose -p folio-e2e -f compose.yaml -f compose.test.yaml down -v
+	FOLIO_PORT=8001 docker compose -p folio-e2e -f compose.yaml -f compose.test.yaml up -d --build
+	@for i in $$(seq 1 60); do curl -fsS localhost:8001/healthz >/dev/null 2>&1 && break; sleep 2; done
+	cd frontend && FOLIO_E2E_BASE_URL=http://localhost:8001 npx playwright test
 
 up:
 	docker compose up -d --build
