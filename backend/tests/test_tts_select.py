@@ -123,3 +123,53 @@ def test_saved_unavailable_voice_falls_to_first_for_language() -> None:
     book = Book(status="ready", language="ja", title="B", narrator_voice="gone-ja")
     voices = [Voice(id="tts"), Voice(id="hana-ja", language="ja")]
     assert select_voice(book, {}, settings, voices) == "hana-ja"
+
+
+def test_server_default_beats_voice_map() -> None:
+    # Admin-set default wins over TTS_VOICE_MAP.
+    book = Book(status="ready", language="en", title="B")
+    voices = [Voice(id="bruno-en", language="en"), Voice(id="ashley-en", language="en")]
+    got = select_voice(book, {}, _settings(), voices, {"en": "bruno-en", "ja": None})
+    assert got == "bruno-en"
+
+
+def test_stale_server_default_falls_through_to_voice_map() -> None:
+    book = Book(status="ready", language="en", title="B")
+    voices = [Voice(id="ashley-en", language="en")]
+    got = select_voice(book, {}, _settings(), voices, {"en": "gone-en"})
+    assert got == "ashley-en"  # via TTS_VOICE_MAP; the gone default is skipped
+
+
+def test_server_default_beats_first_voice_of_language() -> None:
+    settings = _settings(tts_voice_map={})
+    book = Book(status="ready", language="ko", title="B")
+    voices = [Voice(id="bruno-kr", language="ko"), Voice(id="hana-kr", language="ko")]
+    got = select_voice(book, {}, settings, voices, {"ko": "hana-kr"})
+    assert got == "hana-kr"
+
+
+def test_user_voice_must_match_the_book_language() -> None:
+    # A pinned en voice for a ja book falls through to the server default.
+    book = Book(status="ready", language="ja", title="B")
+    voices = [Voice(id="ashley-en", language="en"), Voice(id="hana-ja", language="ja")]
+    got = select_voice(
+        book, {"voices": {"ja": "ashley-en"}}, _settings(), voices, {"ja": "hana-ja"}
+    )
+    assert got == "hana-ja"
+
+
+def test_user_voice_keyed_by_legacy_region_folds_to_base() -> None:
+    # Old rows still key by zh-TW; the zh-Hant book must find the pin.
+    book = Book(status="ready", language="zh-Hant", title="B")
+    voices = [Voice(id="mina-zh", language="zh"), Voice(id="ashley-en", language="en")]
+    got = select_voice(book, {"voices": {"zh-TW": "mina-zh"}}, _settings(), voices, {"zh": None})
+    assert got == "mina-zh"
+
+
+def test_removed_user_voice_falls_back_to_server_default() -> None:
+    book = Book(status="ready", language="en", title="B")
+    voices = [Voice(id="ashley-en", language="en")]
+    got = select_voice(
+        book, {"voices": {"en": "gone-en"}}, _settings(), voices, {"en": "ashley-en"}
+    )
+    assert got == "ashley-en"

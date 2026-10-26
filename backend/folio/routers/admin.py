@@ -3,7 +3,7 @@
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import httpx
@@ -22,6 +22,15 @@ from folio.routers.auth import UserPublic
 from folio.routers.voices import get_tts_client
 from folio.security import require_csrf
 from folio.tts import TtsClient, discover_voices
+from folio.voice_catalog import (
+    build_catalog,
+    effective_defaults,
+    load_voice_defaults,
+    load_voice_languages,
+    save_voice_defaults,
+    save_voice_languages,
+    voice_languages,
+)
 from folio.voice_names import MAX_NAME_LENGTH, load_overrides, resolve_display_names, save_overrides
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -182,6 +191,105 @@ def put_voice_names(
         if name:
             cleaned[voice_id] = name
     return {"names": save_overrides(db, cleaned)}
+
+
+class VoicePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = None
+    language_override: Literal["en", "ja", "ko", "zh"] | None = None  # null = detect again
+
+
+@router.patch("/voices/{voice_id}")
+def patch_voice(
+    request: Request,
+    voice_id: str,
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    client: Annotated[TtsClient, Depends(get_tts_client)],
+    body: VoicePatch | None = None,
+) -> dict[str, Any]:
+    """Save one voice's alias and/or language override; return its catalog item."""
+    require_csrf(request, request.state.session_row)
+    patch = body or VoicePatch()
+    voices = discover_voices(settings, client)
+    names = load_overrides(db)
+    languages = load_voice_languages(db)
+    if voice_id not in {v.id for v in voices} and voice_id not in {*names, *languages}:
+        raise ApiError("validation_failed", f"Unknown voice: {voice_id}.", 422)
+    fields = patch.model_dump(exclude_unset=True)
+    if "display_name" in fields:
+        name = (patch.display_name or "").strip()
+        if len(name) > MAX_NAME_LENGTH:
+            raise ApiError(
+                "validation_failed",
+                f"Voice names must be at most {MAX_NAME_LENGTH} characters.",
+                422,
+            )
+        if name:
+            names[voice_id] = name
+        else:
+            names.pop(voice_id, None)
+        save_overrides(db, names)
+    if "language_override" in fields:
+        if patch.language_override is None:
+            languages.pop(voice_id, None)  # unassign: detect again
+        else:
+            languages[voice_id] = patch.language_override
+        save_voice_languages(db, languages)
+    items = build_catalog(db, voices, include_tts=True)["items"]
+    item = next((i for i in items if i["id"] == voice_id), None)
+    if item is None:  # unreachable: the id is in the engine list or in one of the maps
+        raise ApiError("not_found", "Voice not found.", 404)
+    return item
+
+
+class VoiceDefaultsBody(BaseModel):
+    language: Literal["en", "ja", "ko", "zh"]
+    voice_id: str = Field(min_length=1, max_length=64)
+
+
+@router.put("/voices/defaults")
+def put_voice_defaults(
+    request: Request,
+    body: VoiceDefaultsBody,
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    client: Annotated[TtsClient, Depends(get_tts_client)],
+) -> dict[str, Any]:
+    """Set the server-wide default for one language; it must be an on-server
+    voice whose (detected or assigned) language is that language."""
+    require_csrf(request, request.state.session_row)
+    voices = discover_voices(settings, client)
+    if voice_languages(db, voices).get(body.voice_id) != body.language:
+        raise ApiError(
+            "validation_failed",
+            f"{body.voice_id} is not a {body.language} voice on the server.",
+            422,
+        )
+    defaults = load_voice_defaults(db)
+    defaults[body.language] = body.voice_id
+    save_voice_defaults(db, defaults)
+    return {"defaults": effective_defaults(db, voices)}
+
+
+@router.delete("/voices/{voice_id}", status_code=204)
+def delete_voice(
+    request: Request,
+    voice_id: str,
+    db: Annotated[DbSession, Depends(get_session)],
+) -> None:
+    """Forget a voice that is no longer on the server: drop its alias,
+    language override and any default entry pointing at it. Idempotent."""
+    require_csrf(request, request.state.session_row)
+    names = load_overrides(db)
+    names.pop(voice_id, None)
+    save_overrides(db, names)
+    languages = load_voice_languages(db)
+    languages.pop(voice_id, None)
+    save_voice_languages(db, languages)
+    defaults = {k: v for k, v in load_voice_defaults(db).items() if v != voice_id}
+    save_voice_defaults(db, defaults)
 
 
 def probe_tts(settings: Settings) -> str:
