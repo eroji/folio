@@ -259,6 +259,24 @@ def test_run_tts_job_success_writes_file_audio_row_and_ready(
     assert audio.duration_s == pytest.approx(1.0, abs=0.1)
 
 
+def test_run_tts_job_survives_row_deleted_mid_synthesis(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chapter/rule change can delete the row while TTS runs; the worker must
+    survive the stale UPDATE instead of crashing the whole process."""
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _segments(db, book)[0]
+    prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    row = claim_next_tts(db)
+    assert row is not None
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+
+    db.delete(row)
+    db.commit()
+
+    run_tts_job(db, settings, row)  # must not raise StaleDataError
+
+
 def test_run_tts_job_after_repeated_5xx_is_failed_never_generating(
     db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:

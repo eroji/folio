@@ -30,6 +30,7 @@ services:
   api:
     image: ${FOLIO_IMAGE:-folio:latest}
     build: .
+    restart: unless-stopped
     command: sh -c "alembic upgrade head && uvicorn folio.main:app --host 0.0.0.0 --port 8000"
     <<: *app-env
     volumes:
@@ -49,6 +50,7 @@ services:
   worker:
     image: ${FOLIO_IMAGE:-folio:latest}
     build: .
+    restart: unless-stopped
     command: python -m folio.worker
     <<: *app-env
     volumes:

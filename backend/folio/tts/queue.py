@@ -7,12 +7,14 @@ No separate jobs plumbing: the rows double as queue and state.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from folio.config import Settings
 from folio.errors import ApiError
@@ -36,6 +38,8 @@ from folio.tts import (
 )
 from folio.tts.pronunciation import apply_rules
 from folio.voice_catalog import effective_defaults
+
+logger = logging.getLogger(__name__)
 
 # Segments needed now go first; lookahead is lower priority (spec: Priority).
 PRIORITY_NOW = 10
@@ -200,6 +204,7 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
 
     Always releases the row: after this returns it is never ``generating``.
     """
+    row_id = row.id
     segment = session.get(Segment, row.segment_id)
     chapter = session.get(Chapter, segment.chapter_id) if segment else None
     book_id = str(chapter.book_id) if chapter else None
@@ -217,7 +222,14 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
     except Exception as exc:  # noqa: BLE001 - a stuck generating row is worse than a failure
         session.rollback()
         row.status, row.error = "failed", f"{type(exc).__name__}: {exc}"
-    session.commit()
+    try:
+        session.commit()
+    except StaleDataError:
+        # A chapter/pronunciation change deleted the row mid-synthesis. The
+        # audio is cached; drop the orphaned status update and keep working.
+        session.rollback()
+        logger.info("segment_audio %s vanished during synthesis; result dropped", row_id)
+        return
     _notify(session, book_id, row.segment_id, row.status)
 
 

@@ -79,7 +79,12 @@ def main() -> None:
     try:
         while not _stopping:
             heartbeat.touch()
-            if not run_once(session, settings):
+            try:
+                if not run_once(session, settings):
+                    time.sleep(IDLE_S)
+            except Exception:
+                logger.exception("worker iteration failed; continuing")
+                session.rollback()
                 time.sleep(IDLE_S)
     finally:
         session.close()
