@@ -26,7 +26,7 @@ The backend stays as it is except for the few data changes listed under "Data an
 | `brand/web/` | Favicon (ICO and SVG), Apple touch icon, PWA icons (192, 512, maskable 512), `site.webmanifest`, `head-snippet.html` → copy into `frontend/public/` and `index.html` |
 | `brand/svg/` | `folio-mark.svg` (bookmark mark, in-app logo), `folio-mark-mono.svg` (`currentColor`), `folio-logo.svg` (mark + "folio" for dark backgrounds), `folio-logo-on-light.svg`, `folio-wordmark.svg` (`currentColor`), `app-icon.svg` |
 | `brand/png/` | 1024 px mark and app icon, 1200 px logo, favicon PNGs |
-| `reference/desktop-*.html` | Desktop screens: home, library, book, book menu, book manage, player, search, upload, settings, account menu, login |
+| `reference/desktop-*.html` | Desktop screens: home, library, book, book menu, book manage, player, search, upload, settings (playback, voices), account menu, admin voices, login |
 | `reference/phone-*.html` | Phone screens: home, book, player, read along |
 
 ---
@@ -293,16 +293,51 @@ Opened from the player bar (middle block or `ChevronUp`). The sidebar stays; the
 - Drop zone: 2 px dashed `#4A4A52` border, 20 px radius, the bookmark mark (56 px), "Drop books here" (Sora 24 px), the limits line ("EPUB, PDF, MOBI, AZW or AZW3 · up to 200 MB each · no DRM or KFX"), and a white "Choose files" pill with `Upload`.
 - **This session**: title plus a polite summary "2 in progress · 3 added · 1 failed"; one surface row (14 px radius) per file: status icon, file name and size, status text, an action on the right, and a progress bar (accent on the border track) while uploading or converting. States: Uploading · N% (determinate bar); Converting Kindle file to EPUB… (indeterminate bar); Ready · N chapters (success, "Open book"); Added · scanned PDF, needs OCR (warning, "Open book"); Already in your library ("Open book" goes to the existing book); Couldn't add · {reason} (danger, "Remove").
 
-### Settings (`/settings`, from the account menu) — `reference/desktop-settings.html`
+### Settings (`/settings`, from the account menu) — `reference/desktop-settings-playback.html`, `desktop-settings-voices.html`
 
-- Title "Settings"; a left list of sections (pills): **Playback**, **Voices**. Nothing else.
+Title "Settings", then two columns: on the left a vertical list of section buttons, **Playback** and **Voices** (44 px pills; selected = raised fill, primary text, 700; others transparent with secondary text). On the right **only the selected section's settings** are shown (max 760 px). Playback is selected by default. Implement as a vertical tab list (`role="tablist"`, `aria-orientation="vertical"`, `role="tab"` with `aria-selected`/`aria-controls`, `role="tabpanel"`, arrow keys move between tabs). Reflect the section in the URL (`/settings/playback`, `/settings/voices`) so it survives reload and can be linked. On phone the two buttons sit side by side above the content. Nothing else (no Appearance/Theme, no Account section).
+
 - **Playback** rows (bold title, secondary one-line explanation, control on the right, divider between rows):
   - Default speed: pill select (0.75× to 2.5×).
   - Skip back / Skip forward: a **stepper** (− value +, 5 to 120 seconds, step 5) followed by "sec". The player's skip labels use these values.
   - Auto-play next chapter, Speak chapter titles: **switches** (44×26 pill; on = accent track with a dark knob; off = `--color-off` track with a white knob; `role="switch"`).
-- **Voices**: a "Refresh voices" pill in the section header; an explanation that a book's own narrator (set from its ⋮ menu) overrides these, plus how many voices the server reports; one row per language ("English en", "Japanese ja", "Korean ko", "Chinese, Simplified zh", "Chinese, Traditional zh-TW") with a 180 px pill select of voices and a 40 px outlined Preview button (`Play`, becomes `Pause` while previewing). A saved voice the server no longer lists shows "{voice} (no longer available)".
+- **Voices**: one secondary line: "Your narrator for each language. You can still pick a different narrator for any book from its ⋮ menu." Then **one row per language: English, Japanese, Korean, Chinese.**
+  - **Chinese is one language.** Do not split Simplified and Traditional (`zh`, `zh-CN`, `zh-TW`, `zh-Hans`, `zh-Hant` books all use the Chinese preference). Remove any `zh-TW` row or setting.
+  - Only show languages that have at least one voice on the server.
+  - Each row: the language name with its code in secondary text, a 220 px pill select and a 40 px outlined Preview button (plays the selected voice; `Pause` while playing).
+  - The select lists **only that language's voices, by the display names the admin set** (Admin → Voices), never raw IDs unless a voice has no name. The first option is **"Server default ({name})"**, meaning "follow whatever the admin sets as this language's default", and is the initial value. Choosing a specific voice pins it.
+  - A pinned voice that disappears from the server falls back to the server default; show "{name} (no longer available)" until the user changes it.
+- **Precedence** when a book plays: the book's own narrator (chosen from the book's ⋮ menu, per book) → the user's preference for the book's language (this page) → the server default for that language (Admin → Voices).
 - Every change saves immediately; on failure revert the control and show an inline error under its row.
-- **Removed**: Theme / Appearance.
+- Data: user settings store `voices` as a map of language → voice ID or `null` (null = server default), keyed by base language (`en`, `ja`, `ko`, `zh`).
+
+### Admin · Voices (`/admin`, "Voices" section) — `reference/desktop-admin-voices.html`
+
+Replaces the current "Voice names" section. It uses **exactly the same styling as the user Settings page**: no card, no gray box, rows on the page background separated by dividers. The TTS server can have **several voices per language**, so the list is **grouped by language**.
+
+- **Admin section list** (left, same as Settings): Jobs, Cache, Users, **Voices**; selected = raised-fill pill, 700 weight, no accent outline.
+- **Section header** (Settings section component): "Voices" (Sora 24 px), "Refresh voices" outlined pill on the right, then three short secondary paragraphs: (1) "Friendly names for the voices on your TTS server, grouped by language. The default is used for books in that language unless a listener or a book picks another voice." (2) "Each voice’s language is detected automatically, from the language the TTS server reports or from the end of the voice ID: -en English, -ja Japanese, -ko or -kr Korean, -zh Chinese. Voices whose language can’t be detected go to Unassigned until you pick one; listeners don’t see them until then." (suffixes in monospace, primary color) (3) "{N} voices on the server, checked {time} ago."
+- **Language groups**, in this order: languages that have books in the library (by number of books, largest first), then other languages alphabetically, then **Unassigned**, then **No longer on the server**.
+  - Group heading: language name (Sora 18 px, 700) with its code in secondary text ("English en"); on the right, "3 voices". Unassigned says "Language couldn’t be detected · N voices".
+  - Each group is a `role="radiogroup"` for its default.
+- **Voice row** (Settings row component):
+  - Title: voice ID in monospace, 15 px, 600.
+  - Description: usage, "Used by 74 books" / "Not used yet".
+  - Controls: 200 px pill input for the display name (placeholder "Display name"; empty shows the ID), a 40 px outlined round Preview (`Play`/`Pause`), and the **default control**:
+    - the language's default: accent-filled pill "✓ Default" (`role="radio"`, `aria-checked="true"`);
+    - other voices: outlined pill "Set default" (`aria-checked="false"`); choosing it moves the default in that group and saves immediately.
+  - Exactly one default per language. A language's first voice becomes its default automatically when it appears. This is the server-wide default (previously `TTS_VOICE_MAP`); a listener's own choice in Settings and a book's own narrator still override it.
+  - **Unassigned** group (heading "Unassigned", note "Language couldn’t be detected · N voices"): voices whose language can't be detected. These rows have **no display-name field and no default control**: only the ID, the description "Assign a language to name it and offer it to listeners", the Preview button and an **"Assign language…" pill select** (English, Japanese, Korean, Chinese). Unassigned voices are never offered to listeners.
+  - **Assigning** saves immediately and **moves the row out of Unassigned into that language's group** (it does not stay in Unassigned). In its new group the row is a normal voice row (display name field, Preview, Set default) and its description is followed by a small outlined **"Unassign"** pill (`RotateCcw`, label "Unassign {id}"). Only voices whose language was set manually get this pill; there is no extra "set by you" text. If the group had no voices, the voice becomes its default.
+  - **Undo** is the "Unassign" pill only (no toast or popup). It returns the voice to Unassigned, clears its language override and keeps any display name it was given (shown again when it is re-assigned). If it was that language's default, the next voice in the group becomes the default. Voices whose language was detected automatically have no "Unassign" control.
+  - Store the manual choice as `language_override` on the voice (null = use detection). Detection otherwise uses the same suffix rules as before (`-en`, `-ja`, `-kr`/`-ko`, `-zh`, or a `language` field from the server); all Chinese variants map to one **Chinese** group.
+  - **No longer on the server** group: rows show a warning description ("Not on the TTS server · 1 book falls back to its language default") and a "Remove" pill instead of Preview and Default. If the removed voice was a language default, the next voice in that language becomes the default.
+- **Saving**: names save on blur or Enter; defaults save on click; errors appear under the row. No Save button.
+- **Where names and grouping are used elsewhere**:
+  - Settings → Voices: each language's dropdown lists **only that language's voices** by display name, with "Server default ({name})" first.
+  - The book's Narrator voice dialog lists the book language's voices first, then "Other languages" collapsed.
+  - Everywhere a voice is shown to a listener: "Name · Language"; the raw ID only when no name is set.
+- Data: keep the alias storage; add a per-language default table or setting; `GET /voices` returns `{id, display_name, language, is_default, books_count, on_server}`.
 
 ### Sign in (`/login`) — `reference/desktop-login.html`
 
@@ -325,7 +360,7 @@ Native selects with `appearance: none`, 40 px pill, raised fill, 18 px left padd
 2. **Cover color**: add `cover_rgb TEXT NULL` ("35 70 107"), computed when a cover is stored or changed. Return it with the book. The book page and player set `--cover-rgb` from it.
 3. **Home data**: add `GET /me/home` returning `continue` (in-progress books, most recently played first, with chapter and time left), `next_chapters` (for each in-progress book, its next unplayed chapter with length), and `recent` (newest books). Respect the same filters as the chips (`status`, `language`, `max_minutes`).
 4. **Search**: `GET /search?q=&type=all|books|authors|series` returning `top` (one author or book) plus `books`, `authors`, `series` lists.
-5. **User settings**: remove `theme`. Keep speed, skip back/forward, auto-play, speak chapter titles, per-language voices.
+5. **User settings**: remove `theme`. Keep speed, skip back/forward, auto-play, speak chapter titles. Per-language voices become a map of base language (`en`, `ja`, `ko`, `zh`) → voice ID or `null` for the server default; migrate any `zh-TW` value into `zh` (keep `zh` if both exist).
 6. **Routes**: `/` Home (new), `/library` Library (moved), `/search` Search (new page), `/player` expanded player (new layout), others unchanged. Keep `?q=` working on `/library` by redirecting to `/search?q=`.
 
 ---
@@ -360,7 +395,7 @@ Native selects with `appearance: none`, 40 px pill, raised fill, 18 px left padd
 
 ## 8. Not designed (restyle only, keep their structure)
 
-Edit details (metadata form), Find metadata (results picker), the cover dialog, the Narrator voice dialog, confirm dialogs, Admin, the About tab (spec above, no frame), the empty, loading, error, offline, needs-OCR and failed states. Use: raised surfaces, pill controls, white primary pills, Sora titles, Figtree text, the accent only for selection and progress.
+Edit details (metadata form), Find metadata (results picker), the cover dialog, the Narrator voice dialog, confirm dialogs, Admin Jobs, Cache and Users sections, the About tab (spec above, no frame), the empty, loading, error, offline, needs-OCR and failed states. Use: raised surfaces, pill controls, white primary pills, Sora titles, Figtree text, the accent only for selection and progress.
 
 ## 9. Decisions log (for `docs/DECISIONS.md`)
 
