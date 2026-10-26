@@ -198,7 +198,7 @@ curl -fsS -b "$TMP/admin.jar" "$API/books/$dup/pronunciation" | grep -q '"Light 
   || fail "pronunciation rule not listed"
 curl -fsS -b "$TMP/admin.jar" -H "X-CSRF-Token: $csrf" -X DELETE -o /dev/null \
   "$API/books/$dup/pronunciation/$rule_id" || fail "pronunciation rule delete failed"
-curl -fsS -b "$TMP/admin.jar" "$API/voices" | grep -q '"id": *"tts"' && fail "the tts fallback voice is still listed"
+curl -fsS -b "$TMP/user.jar" "$API/voices" | grep -q '"id": *"tts"' && fail "the tts fallback voice is visible to listeners"
 echo "PASS: pronunciation rule CRUD; tts voice hidden"
 
 echo "== M3: online metadata search (live Open Library; optional) =="

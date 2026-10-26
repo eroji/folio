@@ -236,7 +236,8 @@ Backend §5 merged: genre + cover colour (migration 0009), grouped books, `/me/h
 - Covers: percent overlay restored alongside the accent bar; finished check kept.
 - Book page: played rows show a check instead of duration, “Resume” without a chapter number, “Narrator voice”.
 - Icons: transparent fills; **Material Symbols trial** replaces lucide (easy to revert; filled transport glyphs look chunkier).
-- Final: **458 backend / 243 web / 9 Playwright**, acceptance all-pass. Lighthouse was 100 before the icon swap and was not re-run.
+- Final: **509 backend / 252 web / 9 Playwright**, acceptance all-pass. Lighthouse was 100 before the icon swap and was not re-run.
+- Voice handoff update: server-wide per-language defaults, language overrides/assignment, book counts, removed-voice tracking, single `zh` language, user pins as `language → id|null`. Settings → Voices and Admin → Voices rebuilt accordingly (URL-backed Settings tabs; grouped admin catalog). Sidebar/logo intentionally untouched per the handoff note.
 - Collapsed sidebar keeps an icon + 11px label per item and moves the logo into the top bar; Admin panels are flat (no bordered/gray wrapper) like Settings.
 - Player locks to the viewport with exactly one internal read-along scroll container; text fills the pane (22/26 desktop, 21/25 phone); size buttons use `text_decrease`/`text_increase`; book Chapters scroll in a bounded 60vh list.
 - Material Symbols trial is isolated in `Icon.tsx` (revert path: restore the lucide map).
