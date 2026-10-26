@@ -35,7 +35,7 @@ import Refresh from "@material-symbols/svg-400/rounded/refresh.svg?react";
 import Replay from "@material-symbols/svg-400/rounded/replay.svg?react";
 import Search from "@material-symbols/svg-400/rounded/search.svg?react";
 import Settings from "@material-symbols/svg-400/rounded/settings.svg?react";
-import Shield from "@material-symbols/svg-400/rounded/shield.svg?react";
+import ManageAccounts from "@material-symbols/svg-400/rounded/manage_accounts.svg?react";
 import SkipNextFilled from "@material-symbols/svg-400/rounded/skip_next-fill.svg?react";
 import SkipPreviousFilled from "@material-symbols/svg-400/rounded/skip_previous-fill.svg?react";
 import Speed from "@material-symbols/svg-400/rounded/speed.svg?react";
@@ -75,7 +75,7 @@ const OUTLINED = {
   RefreshCw: Refresh,
   Trash2: Delete,
   Settings,
-  Shield,
+  ManageAccounts,
   LogOut: Logout,
   LayoutGrid: GridView,
   List,

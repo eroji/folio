@@ -130,8 +130,8 @@ describe("SettingsPage", () => {
 
   it("offers only the Playback and Voices sections — no Theme", async () => {
     renderSettings();
-    await screen.findByRole("heading", { name: "Settings" });
-    const tabs = screen.getByRole("tablist", { name: "Settings sections" });
+    await screen.findByRole("heading", { name: "Profile" });
+    const tabs = screen.getByRole("tablist", { name: "Profile sections" });
     expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Playback",
       "Voices",

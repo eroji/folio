@@ -211,7 +211,7 @@ describe("AppShell", () => {
     expect(within(menu).getByText("Browser User")).toBeTruthy();
     expect(within(menu).getByText("@browser · Admin")).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "Admin" })).toBeTruthy();
-    expect(within(menu).getByRole("menuitem", { name: "Settings" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Profile" })).toBeTruthy();
   });
 
   it("hides Admin for plain users", async () => {

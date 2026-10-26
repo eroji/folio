@@ -17,8 +17,8 @@ function Avatar({ initial, size }: { initial: string; size: number }) {
   );
 }
 
-/** Accent avatar plus the account menu: identity header, Settings, Admin
- * (admins only), Sign out. The app is dark only — there is no theme control. */
+/** Accent avatar plus the account menu: identity header, Profile, Admin
+ * (admins only, gear icon), Sign out. Dark only — there is no theme control. */
 export function AccountMenu({ size = 36 }: { size?: number }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -108,11 +108,11 @@ export function AccountMenu({ size = 36 }: { size?: number }) {
                 </span>
               </div>
               <Link to="/settings" role="menuitem" className={row} onClick={() => close(false)}>
-                <Icon name="Settings" size={20} /> Settings
+                <Icon name="ManageAccounts" size={20} /> Profile
               </Link>
               {user.role === "admin" && (
                 <Link to="/admin" role="menuitem" className={row} onClick={() => close(false)}>
-                  <Icon name="Shield" size={20} /> Admin
+                  <Icon name="Settings" size={20} /> Admin
                 </Link>
               )}
               <div className="my-1.5 h-px bg-border" aria-hidden />

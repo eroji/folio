@@ -54,7 +54,7 @@
   "Add books" pill; "In progress" list, 4 max) + scrolling main pane + 72 px
   **player bar** whenever a book is loaded. The 56 px **top bar** holds the pill
   search (Enter → `/search?q=`, `/` focuses it) and the accent avatar opening the
-  account menu (Settings, Admin for admins, Sign out — no theme control).
+  account menu (Profile with `manage_accounts`, Admin with the gear icon, Sign out — no theme control).
 - **Tablet (768–1023 px, `md:`):** sidebar starts collapsed to the icon rail with
   11 px labels; "In progress" hidden.
 - **Phone (<768 px):** 56 px header (logo, Search icon, avatar), 64 px bottom nav
@@ -94,7 +94,7 @@
 - **Upload `/upload`:** dashed `#4A4A52` drop zone with the bookmark mark and white
   "Choose files" pill; "This session" surface rows with status icon, progress bar
   (indeterminate via `.bar-indeterminate`) and pill actions.
-- **Settings `/settings`:** Playback (speed select, 5–120 s skip steppers, switches)
+- **Profile `/settings`:** Playback (speed select, 5–120 s skip steppers, switches)
   and Voices (per-language pill select + 40 px outlined Preview) only. Saves are
   immediate; failures revert with an inline error.
 - **Sign in `/login`:** accent glow, centered 380 px column, mark + "folio", 48 px
@@ -102,6 +102,9 @@
   that never says which field was wrong.
 - **Restyle-only screens** (Edit details, Find metadata, cover dialog, narrator
   dialog, confirms, Admin, About tab, empty/loading/error/offline/needs-OCR/failed
+
+Favicons and app icons are transparent (no dark tile) with the bookmark mark
+scaled up to ~61 % of the canvas.
   states): raised surfaces, pill controls, white primary pills, Sora titles,
   Figtree text, accent only for selection and progress.
 

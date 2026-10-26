@@ -390,11 +390,11 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-8 pt-6">
-      <h1 className="font-display text-3xl">Settings</h1>
+      <h1 className="font-display text-3xl">Profile</h1>
       <div className="flex flex-wrap items-start gap-8 lg:gap-12">
         <div
           role="tablist"
-          aria-label="Settings sections"
+          aria-label="Profile sections"
           className="flex w-full flex-row gap-1 lg:w-52 lg:flex-col"
         >
           {SECTIONS.map(({ id, label }, index) => (
