@@ -72,13 +72,13 @@ function SideNavItem({ to, icon, label, collapsed }: { to: string; icon: IconNam
       className={({ isActive }) =>
         clsx(
           "flex min-h-12 shrink-0 items-center gap-4 rounded-xl px-3.5 text-lg no-underline",
-          collapsed && "flex-col gap-0.5 px-0 py-0.5",
+          collapsed && "flex-col justify-center gap-0 px-0 py-1",
           isActive ? "bg-raised font-bold text-fg" : "font-medium text-fg hover:bg-raised/60",
         )
       }
     >
       <Icon name={icon} size={24} />
-      <span className={clsx("truncate", collapsed && "text-2xs font-medium")}>{label}</span>
+      <span className={clsx("truncate", collapsed && "text-2xs font-medium leading-none")}>{label}</span>
     </NavLink>
   );
 }

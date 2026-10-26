@@ -61,8 +61,8 @@
   --accent-rgb: 255 194 51;
   /* Page glow: accent-tinted at the top of the main pane only (not sidebar or player bar) */
   --glow-page:
-    radial-gradient(90% 420px at 22% 0%, rgb(var(--accent-rgb) / 0.16), transparent 75%),
-    radial-gradient(60% 360px at 85% 0%, rgb(var(--accent-rgb) / 0.06), transparent 80%),
+    radial-gradient(90% 420px at 78% 0%, rgb(var(--accent-rgb) / 0.16), transparent 75%),
+    radial-gradient(60% 360px at 22% 0%, rgb(var(--accent-rgb) / 0.06), transparent 80%),
     linear-gradient(180deg, #111114 0px, #0B0B0C 520px);
   --shadow-menu: 0 16px 40px rgb(0 0 0 / 0.5);
   --shadow-cover: 0 16px 40px rgb(0 0 0 / 0.45);
@@ -84,12 +84,12 @@ html {
 .bg-page-glow { background: var(--glow-page); }
 .bg-cover-glow {
   background:
-    radial-gradient(80% 520px at 25% 0%, rgb(var(--cover-rgb) / 0.55), transparent 78%),
+    radial-gradient(80% 520px at 75% 0%, rgb(var(--cover-rgb) / 0.55), transparent 78%),
     linear-gradient(180deg, #111114 0px, #0B0B0C 600px);
 }
 .bg-cover-glow-strong {
   background:
-    radial-gradient(80% 520px at 25% 0%, rgb(var(--cover-rgb) / 0.85), transparent 78%),
+    radial-gradient(80% 520px at 75% 0%, rgb(var(--cover-rgb) / 0.85), transparent 78%),
     linear-gradient(180deg, #111114 0px, #0B0B0C 600px);
 }
 
