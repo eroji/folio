@@ -436,7 +436,7 @@ export function BookDetailPage() {
       className={clsx("relative block aspect-[2/3] shrink-0 overflow-hidden rounded-lg shadow-(--shadow-cover)", width)}
     >
       <BookCover book={book} className="absolute inset-0 h-full w-full" />
-      <CoverProgressBadge percent={finished ? null : percent} finished={finished} />
+      <CoverProgressBadge percent={finished ? null : percent} finished={finished} showPercent={false} />
     </span>
   );
 

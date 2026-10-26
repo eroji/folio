@@ -79,9 +79,12 @@ export function coverName(
 export function BookCard({
   book,
   progress,
+  showPercent = true,
 }: {
   book: Book;
   progress?: Progress | null;
+  /** Home shows the percent pill; Library keeps the bar only. */
+  showPercent?: boolean;
 }) {
   const finished = Boolean(progress?.finished_at);
   const percent =
@@ -96,7 +99,7 @@ export function BookCard({
           so WCAG 2.5.3 cannot drift. State is appended for screen readers. */}
       <span className="relative block aspect-[2/3] overflow-hidden rounded-md shadow-(--shadow-cover)">
         <BookCover book={book} className="absolute inset-0 h-full w-full" />
-        <CoverProgressBadge percent={percent} finished={finished} />
+        <CoverProgressBadge percent={percent} finished={finished} showPercent={showPercent} />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="line-clamp-2 text-base font-semibold leading-[1.3]">

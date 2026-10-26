@@ -381,14 +381,14 @@ describe("BookDetailPage", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/Could not extract text/);
   });
 
-  it("shows the percent overlay and an accent progress bar on the cover, and names the state", async () => {
+  it("shows the accent progress bar but no percent pill on the cover, and names the state", async () => {
     progress = makeProgress({ percent: 38, chapter_id: "c2", segment_id: "s3" });
     renderDetail();
     const cover = await screen.findByRole("img", { name: "Dune, 38% listened" });
     // The bar: an aria-hidden track with a width-styled accent fill.
     expect(cover.querySelector("[aria-hidden='true'] span[style*='width']")).toBeTruthy();
-    // The percent pill: aria-hidden, so the accessible name stays as above.
-    expect(within(cover).getByText("38%")).toBeTruthy();
+    // The percent pill is Home-only.
+    expect(cover.querySelector("[data-testid='cover-percent']")).toBeNull();
   });
 
   it("shows a round accent check and no percent when the book is finished", async () => {

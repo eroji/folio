@@ -6,7 +6,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
-import { useAuth } from "../auth/AuthProvider";
 import {
   formatLength,
   nativeLanguageName,
@@ -191,7 +190,6 @@ function GenreShelf({
 }
 
 export function HomePage() {
-  const { user } = useAuth();
   const player = usePlayer();
   const phone = !useMediaQuery("(min-width: 768px)");
   const [chip, setChip] = useState<string>("all");
@@ -363,10 +361,7 @@ export function HomePage() {
           {items.length > 0 && (
             <section aria-label="Continue listening" className="flex flex-col gap-4">
               <div className="flex items-end justify-between gap-4">
-                <div className="flex min-w-0 flex-col gap-1">
-                  {user && <span className="eyebrow truncate">{user.display_name}</span>}
-                  <h2 className="font-display text-2xl">Continue listening</h2>
-                </div>
+                <h2 className="min-w-0 truncate font-display text-2xl">Continue listening</h2>
                 {continueRow.arrows}
               </div>
               {continueRow.row}

@@ -128,7 +128,7 @@ describe("HomePage", () => {
     mockHome();
     renderHome();
     const continueShelf = await screen.findByRole("region", { name: "Continue listening" });
-    expect(within(continueShelf).getByText("Browser User")).toBeTruthy();
+    expect(within(continueShelf).queryByText("Browser User")).toBeNull(); // no name eyebrow
     expect(within(continueShelf).getByText("Ch. 2 · 2 h 36 m left")).toBeTruthy();
 
     const next = await screen.findByRole("region", { name: "Next chapters" });
@@ -194,6 +194,12 @@ describe("HomePage", () => {
     const shelf = await screen.findByRole("region", { name: "Continue listening" });
     const card = within(shelf).getByRole("link", { name: "Dune, 38% listened, resume" });
     expect(card.getAttribute("href")).toBe(`/player?book=${BOOK_ID}&chapter=${CH1}`);
+    // The percent pill lives on Home, top-right, at the larger size.
+    const pill = within(card).getByTestId("cover-percent");
+    expect(pill.textContent).toBe("38%");
+    expect(pill.className).toContain("top-1.5");
+    expect(pill.className).toContain("right-1.5");
+    expect(pill.className).toContain("text-base");
     fireEvent.click(card);
     await vi.waitFor(() => {
       const call = vi

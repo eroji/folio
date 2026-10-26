@@ -147,7 +147,7 @@ function Shelf({
   const { arrows, row } = useCarouselRow(
     books.map((book) => (
       <div key={book.id} className="w-[150px] shrink-0">
-        <BookCard book={book} progress={progressById.get(book.id) ?? null} />
+        <BookCard book={book} progress={progressById.get(book.id) ?? null} showPercent={false} />
       </div>
     )),
     "gap-[18px]",
@@ -474,7 +474,7 @@ export function LibraryPage() {
               ) : (
                 <div className={GRID}>
                   {flatBooks.map((book) => (
-                    <BookCard key={book.id} book={book} progress={progressById.get(book.id) ?? null} />
+                    <BookCard key={book.id} book={book} progress={progressById.get(book.id) ?? null} showPercent={false} />
                   ))}
                 </div>
               )}
