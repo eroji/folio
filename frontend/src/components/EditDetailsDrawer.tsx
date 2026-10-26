@@ -725,18 +725,6 @@ export function EditDetailsDrawer({
                 Back
               </button>
             )}
-            {!findOpen && (
-              <button
-                type="button"
-                onClick={() => setFindOpen(true)}
-                disabled={changeCount > 0}
-                title={changeCount > 0 ? "Save or discard your changes first" : undefined}
-                className={outlinePill}
-              >
-                <Icon name="Globe" size={18} />
-                Find metadata
-              </button>
-            )}
             <button type="button" aria-label="Close" onClick={attemptClose} className="tap grid size-10 shrink-0 place-items-center rounded-full text-fg hover:bg-raised">
               <Icon name="X" size={22} />
             </button>
@@ -753,6 +741,21 @@ export function EditDetailsDrawer({
               <Icon name="TriangleAlert" size={16} />
               {update.error.message}
             </p>
+          )}
+
+          {!findOpen && (
+            <div className="pt-4">
+              <button
+                type="button"
+                onClick={() => setFindOpen(true)}
+                disabled={changeCount > 0}
+                title={changeCount > 0 ? "Save or discard your changes first" : undefined}
+                className={outlinePill}
+              >
+                <Icon name="Globe" size={18} />
+                Find metadata
+              </button>
+            </div>
           )}
 
           <CoverGroup book={book} />
