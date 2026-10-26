@@ -1112,7 +1112,11 @@ export function EditDetailsDrawer({
                 ) : (
                   items && (
                     <p role="status" className="text-xs text-fg-2">
-                      {items.length} result{items.length === 1 ? "" : "s"} from {statusNames.join(" and ")}
+                      {items.length === 0
+                        ? "No results"
+                        : `${items.length} result${items.length === 1 ? "" : "s"}${
+                            statusNames.length > 0 ? ` from ${statusNames.join(" and ")}` : ""
+                          }`}
                     </p>
                   )
                 )}

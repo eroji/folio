@@ -108,8 +108,12 @@
   on blur), Tags (chips) and Description. A lock after a label means the field is
   protected from automatic metadata; clicking it unlocks. Manage has no separate
   Cover row; **Find metadata** (provider search + apply, including the saved
-  "Review metadata matches" flow) also lives inside this drawer, and the narrator
-  is set only from the book's ⋮ menu.
+  "Review metadata matches" flow) opens a 400 px results pane beside the form
+  (drawer 600 → 1040 px; overlay under 1100 px). Each result offers per-field
+  accent suggestion pills with Use/Undo and "Use all" (locked fields excluded);
+  used values are deferred until Save and save without locking, typed fields
+  still lock. Manage → Details also has a Find metadata entry point. The
+  narrator is set only from the book's ⋮ menu.
 - **Restyle-only screens** (Find metadata, narrator dialog, confirms, Admin,
   About tab, empty/loading/error/offline/needs-OCR/failed
 
