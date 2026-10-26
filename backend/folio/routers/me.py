@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
 from folio.config import get_settings
@@ -198,12 +198,24 @@ def home(
                 .order_by(Chapter.idx)
             )
             if nxt is not None:
+                # 1-based position among included chapters, so the card matches
+                # the book page's 1..N numbering even after exclusions.
+                number = db.scalar(
+                    select(func.count())
+                    .select_from(Chapter)
+                    .where(
+                        Chapter.book_id == book.id,
+                        Chapter.excluded.is_(False),
+                        Chapter.idx <= nxt.idx,
+                    )
+                )
                 next_items.append(
                     {
                         "book": _public(book, user),
                         "chapter": {
                             "id": str(nxt.id),
                             "idx": nxt.idx,
+                            "number": number,
                             "title": nxt.title,
                             "duration_s": nxt.char_count / cps,
                         },

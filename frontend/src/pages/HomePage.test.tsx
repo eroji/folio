@@ -44,7 +44,9 @@ const HOME = {
     },
   ],
   next_chapters: [
-    { book: makeBook(), chapter: { id: CH2, idx: 3, title: "The Keeper", duration_s: 1080 } },
+    // idx 5 with earlier chapters excluded: the card must show the included
+    // position (2), not the source index (6).
+    { book: makeBook(), chapter: { id: CH2, idx: 5, number: 2, title: "The Keeper", duration_s: 1080 } },
   ],
   recent: [shelfBook()],
 };
@@ -104,7 +106,7 @@ describe("HomePage", () => {
     expect(within(continueShelf).getByText("Ch. 3 · 2 h 36 m left")).toBeTruthy();
 
     const next = await screen.findByRole("region", { name: "Next chapters" });
-    expect(within(next).getByText("4 · The Keeper")).toBeTruthy();
+    expect(within(next).getByText("2 · The Keeper")).toBeTruthy();
     expect(within(next).getByText("Dune · 18 min")).toBeTruthy();
     expect(within(next).getByRole("button", { name: "Play next" })).toBeTruthy();
 
