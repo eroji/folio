@@ -349,21 +349,25 @@ const whitePill = "tap inline-flex items-center justify-center rounded-full bg-f
 
 /** 13px/600 label with a fixed 24px row so side-by-side fields line up;
  * an accent lock button appears while the field is protected. */
+function LockButton({ name, onUnlock }: { name: string; onUnlock: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onUnlock}
+      title="Protected from automatic updates · click to unlock"
+      aria-label={`${name} is protected from automatic updates. Unlock`}
+      className="grid size-6 shrink-0 place-items-center rounded-full text-accent hover:bg-raised"
+    >
+      <Icon name="Lock" size={14} />
+    </button>
+  );
+}
+
 function FieldLabel({ name, locked, onUnlock }: { name: string; locked: boolean; onUnlock: () => void }) {
   return (
     <span className="flex min-h-6 items-center gap-1 text-[13px] font-semibold">
       {name}
-      {locked && (
-        <button
-          type="button"
-          onClick={onUnlock}
-          title="Protected from automatic updates · click to unlock"
-          aria-label={`${name} is protected from automatic updates. Unlock`}
-          className="grid size-6 place-items-center rounded-full text-accent hover:bg-raised"
-        >
-          <Icon name="Lock" size={14} />
-        </button>
-      )}
+      {locked && <LockButton name={name} onUnlock={onUnlock} />}
     </span>
   );
 }
@@ -391,18 +395,24 @@ function Group({
   title,
   children,
   divider = true,
+  action,
 }: {
   title: string;
   children: ReactNode;
   /** Off for the first group, which follows the Find metadata pill. */
   divider?: boolean;
+  /** Optional control beside the eyebrow (e.g. the Description lock). */
+  action?: ReactNode;
 }) {
   return (
     <section
       aria-label={title}
       className={clsx("flex flex-col gap-3.5 py-5", divider && "border-t border-border")}
     >
-      <h3 className="eyebrow">{title}</h3>
+      <div className="flex min-h-6 items-center gap-1.5">
+        <h3 className="eyebrow">{title}</h3>
+        {action}
+      </div>
       {children}
     </section>
   );
@@ -1205,7 +1215,7 @@ export function EditDetailsDrawer({
                     </span>
                   </div>
                 ) : suggestion ? (
-                  <div className={clsx("flex h-9 items-center justify-between gap-2 rounded-full border px-3.5", accentTint)}>
+                  <div className={clsx("flex h-9 items-center justify-between gap-2 rounded-full border pr-1 pl-3.5", accentTint)}>
                     <span className="min-w-0 truncate text-[13px]">
                       <span className="font-bold">
                         {suggestionCount} suggestion{suggestionCount === 1 ? "" : "s"}
@@ -1373,17 +1383,22 @@ export function EditDetailsDrawer({
                 {suggestionUi("tags")}
               </Group>
 
-              <Group title="Description">
-                <Field name="Description" locked={isLocked("description")} onUnlock={() => unlockField("description")}>
-                  <textarea
-                    value={form.description}
-                    aria-label="Description"
-                    rows={7}
-                    onChange={(event) => set("description", event.target.value)}
-                    className="w-full rounded-[18px] border border-border bg-raised px-[18px] py-3.5 text-md leading-[1.55] resize-y"
-                  />
-                  {suggestionUi("description")}
-                </Field>
+              <Group
+                title="Description"
+                action={
+                  isLocked("description") && (
+                    <LockButton name="Description" onUnlock={() => unlockField("description")} />
+                  )
+                }
+              >
+                <textarea
+                  value={form.description}
+                  aria-label="Description"
+                  rows={7}
+                  onChange={(event) => set("description", event.target.value)}
+                  className="w-full rounded-[18px] border border-border bg-raised px-[18px] py-3.5 text-md leading-[1.55] resize-y"
+                />
+                {suggestionUi("description")}
               </Group>
             </div>
 

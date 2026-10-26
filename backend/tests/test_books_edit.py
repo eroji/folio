@@ -108,6 +108,18 @@ async def test_partial_patch_leaves_other_fields_untouched(
     assert set(locked) == set(ALL_FIELDS) and len(locked) == len(ALL_FIELDS)
 
 
+async def test_get_cleans_legacy_control_characters_in_descriptions(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    # Simulate a row written before clean_description existed.
+    book = reload_book(db, book_id)
+    book.description = 'Galileo."\x9d Next\xa0line'
+    db.commit()
+    body = (await auth_client.get(f"/api/v1/books/{book_id}")).json()["book"]
+    assert body["description"] == 'Galileo." Next line'
+
+
 async def test_metadata_fields_are_written_without_being_locked(
     auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
 ) -> None:

@@ -287,3 +287,5 @@ One line each: decision, why, what it costs.
 - The Manage Edit details pill uses the subtle filled `bg-surface` variant (user: the transparent pill looked wrong, the raised one too solid).
 
 - The Find results banner (suggestions or green "Everything matches") reuses the fixed 36 px slot the Find metadata button occupied, so the form does not move when the pane opens or when the banner appears/changes; the same slot keeps the button after the pane closes.
+
+- Descriptions are cleaned on read as well as write (`_public` and the metadata search), so rows stored before `clean_description` existed no longer render C1 control characters as empty boxes without a data migration. The Description group uses its single eyebrow plus a lock control (no duplicate field label).

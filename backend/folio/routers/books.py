@@ -87,6 +87,9 @@ class ChapterPublic(BaseModel):
 
 def _public(book: Book, user: User) -> BookPublic:
     public = BookPublic.model_validate(book)
+    # Rows written before clean_description existed still carry C1 junk that
+    # renders as empty boxes; sanitise on the way out too.
+    public.description = clean_description(book.description) if book.description else None
     public.can_edit = can_edit_book(user, book)
     public.cover_url = (
         f"/api/v1/books/{book.id}/cover?v={book.cover_key[:8]}" if book.cover_key else None
