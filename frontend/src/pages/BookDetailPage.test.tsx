@@ -576,8 +576,8 @@ describe("BookDetailPage", () => {
     expect(screen.getByText(/Cover, title, author, description and other metadata./)).toBeTruthy();
     expect(screen.getByText(/2 fields you edited are protected from automatic updates/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Find metadata" }));
-    expect(await screen.findByRole("button", { name: "Search" })).toBeTruthy();
+    // Find metadata now lives inside the Edit details drawer.
+    expect(screen.queryByRole("button", { name: "Find metadata" })).toBeNull();
 
     const toggle = screen.getByRole("switch", { name: "Narrate One Way" });
     expect(toggle.getAttribute("aria-checked")).toBe("true");
@@ -787,25 +787,25 @@ describe("BookDetailPage", () => {
     expect(await screen.findByText("at /search?q=Frank%20Herbert")).toBeTruthy();
   });
 
-  it("shows the review banner and opens Find metadata in the Manage tab", async () => {
+  it("opens saved metadata matches in the Edit details drawer", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     const review = await screen.findByRole("button", { name: "Review metadata matches" });
     fireEvent.click(review);
-    expect(screen.getByRole("tab", { name: "Manage" }).getAttribute("aria-selected")).toBe("true");
-    expect(await screen.findByRole("button", { name: "Apply selected" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Find metadata" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Apply selected" })).toBeTruthy();
     expect(screen.getByText(/72% match/)).toBeTruthy();
   });
 
-  it("applies metadata and renders no search panel outside the Manage tab", async () => {
+  it("applies metadata inside the drawer and closes back to the book", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     fireEvent.click(await screen.findByRole("button", { name: "Review metadata matches" }));
     fireEvent.click(await screen.findByRole("button", { name: "Apply selected" }));
     await screen.findByText(/Applied:/);
-    fireEvent.click(screen.getByRole("tab", { name: "Chapters" }));
-    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "ISBN" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await screen.findByRole("tab", { name: "Manage" });
+    expect(screen.queryByRole("button", { name: "Apply selected" })).toBeNull();
   });
 
   it("hides the banner when there are no candidates", async () => {

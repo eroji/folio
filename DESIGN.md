@@ -107,7 +107,9 @@
   (publisher, normalised date, language, genre), Identifiers (ISBN-10/13 checked
   on blur), Tags (chips) and Description. A lock after a label means the field is
   protected from automatic metadata; clicking it unlocks. Manage has no separate
-  Cover row; the narrator is set only from the book's ⋮ menu.
+  Cover row; **Find metadata** (provider search + apply, including the saved
+  "Review metadata matches" flow) also lives inside this drawer, and the narrator
+  is set only from the book's ⋮ menu.
 - **Restyle-only screens** (Find metadata, narrator dialog, confirms, Admin,
   About tab, empty/loading/error/offline/needs-OCR/failed
 

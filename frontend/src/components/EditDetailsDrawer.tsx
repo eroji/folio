@@ -15,8 +15,9 @@ import {
 import clsx from "clsx";
 import { useDeleteCover, useSetCoverUrl, useUnlockField, useUpdateBook, useUploadCover, type BookPatch } from "../api/metadata";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { FindMetadata } from "./FindMetadata";
 import { Icon } from "./Icon";
-import type { Book } from "../api/types";
+import type { Book, Candidate } from "../api/types";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -590,11 +591,22 @@ function CoverGroup({ book }: { book: Book }) {
 
 const FOCUSABLE = 'button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
-export function EditDetailsDrawer({ book, onClose }: { book: Book; onClose: () => void }) {
+export function EditDetailsDrawer({
+  book,
+  onClose,
+  initialReviewItems,
+}: {
+  book: Book;
+  onClose: () => void;
+  /** "Review metadata matches" opens straight into the find view. */
+  initialReviewItems?: Candidate[];
+}) {
   const [form, setForm] = useState<Form>(() => fromBook(book));
   const [isbnTouched, setIsbnTouched] = useState({ isbn10: false, isbn13: false });
   const [unlocked, setUnlocked] = useState<string[]>([]);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(Boolean(initialReviewItems?.length));
+  const bookRef = useRef(book);
   const panelRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const update = useUpdateBook(book.id);
@@ -603,6 +615,13 @@ export function EditDetailsDrawer({ book, onClose }: { book: Book; onClose: () =
   useEffect(() => {
     titleRef.current?.focus();
   }, []);
+
+  // Applying provider metadata replaces the book in the query cache. Refresh
+  // the form from it — safe because Find is disabled while edits are unsaved.
+  useEffect(() => {
+    if (findOpen && bookRef.current !== book) setForm(fromBook(book));
+    bookRef.current = book;
+  }, [book, findOpen]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
   const patch = buildPatch(form, book);
@@ -637,6 +656,10 @@ export function EditDetailsDrawer({ book, onClose }: { book: Book; onClose: () =
     if (event.key === "Escape") {
       if (discardOpen) return; // the confirm dialog handles its own dismissal
       event.stopPropagation();
+      if (findOpen) {
+        setFindOpen(false);
+        return;
+      }
       attemptClose();
       return;
     }
@@ -678,18 +701,53 @@ export function EditDetailsDrawer({ book, onClose }: { book: Book; onClose: () =
         <header className="flex shrink-0 items-start justify-between gap-3 pt-[18px] pr-5 pb-3.5 pl-7">
           <div className="flex min-w-0 flex-col gap-0.5">
             <h2 id="edit-details-title" className="font-display text-xl">
-              Edit details
+              {findOpen ? "Find metadata" : "Edit details"}
             </h2>
             <span className="text-[13px] text-fg-2">
-              Fields you change here <span className="whitespace-nowrap">(marked with a <Icon name="Lock" size={12} className="inline align-[-1px]" />)</span> are protected from automatic updates.
+              {findOpen ? (
+                "Search Open Library and Google Books, then apply the fields you want."
+              ) : (
+                <>
+                  Fields you change here <span className="whitespace-nowrap">(marked with a <Icon name="Lock" size={12} className="inline align-[-1px]" />)</span> are protected from automatic updates.
+                </>
+              )}
             </span>
           </div>
-          <button type="button" aria-label="Close" onClick={attemptClose} className="tap grid size-10 shrink-0 place-items-center rounded-full text-fg hover:bg-raised">
-            <Icon name="X" size={22} />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {findOpen && (
+              <button
+                type="button"
+                aria-label="Back to details"
+                onClick={() => setFindOpen(false)}
+                className={outlinePill}
+              >
+                <Icon name="ArrowLeft" size={18} />
+                Back
+              </button>
+            )}
+            {!findOpen && (
+              <button
+                type="button"
+                onClick={() => setFindOpen(true)}
+                disabled={changeCount > 0}
+                title={changeCount > 0 ? "Save or discard your changes first" : undefined}
+                className={outlinePill}
+              >
+                <Icon name="Globe" size={18} />
+                Find metadata
+              </button>
+            )}
+            <button type="button" aria-label="Close" onClick={attemptClose} className="tap grid size-10 shrink-0 place-items-center rounded-full text-fg hover:bg-raised">
+              <Icon name="X" size={22} />
+            </button>
+          </div>
         </header>
 
         <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-7 pb-6">
+          {findOpen ? (
+            <FindMetadata book={book} initialItems={initialReviewItems} />
+          ) : (
+            <>
           {update.isError && (
             <p role="alert" className="mt-4 flex items-center gap-2 rounded-lg border border-danger bg-bg px-3 py-2 text-sm text-danger">
               <Icon name="TriangleAlert" size={16} />
@@ -841,8 +899,11 @@ export function EditDetailsDrawer({ book, onClose }: { book: Book; onClose: () =
               />
             </Field>
           </Group>
+            </>
+          )}
         </div>
 
+        {!findOpen && (
         <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border py-3.5 pr-5 pl-7">
           <span aria-live="polite" className="text-[13px] text-fg-2">
             {changeCount === 0 ? "" : `${changeCount} unsaved change${changeCount === 1 ? "" : "s"}`}
@@ -856,6 +917,7 @@ export function EditDetailsDrawer({ book, onClose }: { book: Book; onClose: () =
             </button>
           </div>
         </footer>
+        )}
 
         {discardOpen && (
           <ConfirmDialog

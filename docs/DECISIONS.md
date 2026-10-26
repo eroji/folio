@@ -271,3 +271,5 @@ One line each: decision, why, what it costs.
 - Edit details drawer: CoverEditor.tsx lost its last importers (the Manage Cover row and EditBookPage are gone) but the file stays for now — it belongs to the covers workstream; costs: one dead module until the phase-7 cleanup deletes it.
 
 - Manage → Chapters to narrate shows the first **10** chapters before "Show all N" (handoff said four; user override).
+
+- Find metadata moved from Manage into the Edit details drawer (user override): the drawer has a Find view with a Back button, and the "Review metadata matches" banner deep-links into it. Find is disabled while the form has unsaved changes; applying metadata refreshes the form from the server book.

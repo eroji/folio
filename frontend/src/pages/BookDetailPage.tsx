@@ -31,7 +31,6 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CoverProgressBadge } from "../components/CoverProgressBadge";
 import { EditDetailsDrawer } from "../components/EditDetailsDrawer";
 import { EmptyState } from "../components/EmptyState";
-import { FindMetadata } from "../components/FindMetadata";
 import { Icon } from "../components/Icon";
 import { NarratorVoiceDialog } from "../components/NarratorVoiceDialog";
 import { PronunciationRules } from "../components/PronunciationRules";
@@ -150,11 +149,8 @@ export function BookDetailPage() {
   const update = useUpdateBook(id);
   const candidates = useMetadataCandidates(id);
 
-  const [tab, setTab] = useState<Tab>(() =>
-    (location.state as { tab?: Tab } | null)?.tab === "Manage" ? "Manage" : "Chapters",
-  );
-  const [findOpen, setFindOpen] = useState(false);
-  const [reviewItems, setReviewItems] = useState<Candidate[] | null>(null);
+  const navState = location.state as { tab?: Tab; find?: boolean; reviewItems?: Candidate[] } | null;
+  const [tab, setTab] = useState<Tab>(() => (navState?.tab === "Manage" ? "Manage" : "Chapters"));
   const [pendingChapterId, setPendingChapterId] = useState<string | null>(null);
   const [showAllChapters, setShowAllChapters] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
@@ -545,24 +541,7 @@ export function BookDetailPage() {
           <Icon name="Pencil" size={18} />
           Edit details
         </Link>
-        <button
-          type="button"
-          aria-expanded={findOpen}
-          onClick={() => {
-            setReviewItems(null);
-            setFindOpen((open) => !open);
-          }}
-          className={outlinePill}
-        >
-          <Icon name="Globe" size={18} />
-          Find metadata
-        </button>
       </ManageRow>
-      {findOpen && (
-        <div className="border-t border-border py-4">
-          <FindMetadata book={book} initialItems={reviewItems ?? undefined} />
-        </div>
-      )}
 
       <section className="flex flex-col gap-1.5 border-t border-border py-4">
         <div className="flex items-baseline justify-between gap-3">
@@ -661,11 +640,9 @@ export function BookDetailPage() {
           <p className="text-md text-fg-2">Online matches were found but not applied automatically.</p>
           <button
             type="button"
-            onClick={() => {
-              setReviewItems(saved);
-              setFindOpen(true);
-              setTab("Manage");
-            }}
+            onClick={() =>
+              navigate(`/books/${id}/edit`, { state: { find: true, reviewItems: saved } })
+            }
             className={outlinePill}
           >
             Review metadata matches
@@ -822,6 +799,7 @@ export function BookDetailPage() {
       {editing && canManage && (
         <EditDetailsDrawer
           book={book}
+          initialReviewItems={navState?.find ? navState.reviewItems : undefined}
           onClose={() => {
             setTab("Manage");
             navigate(`/books/${id}`, { replace: true, state: { tab: "Manage" } });

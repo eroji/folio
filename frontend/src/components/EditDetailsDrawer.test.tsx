@@ -2,9 +2,26 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditDetailsDrawer } from "./EditDetailsDrawer";
-import type { Book } from "../api/types";
+import type { Book, Candidate } from "../api/types";
 
 const ID = "11111111-1111-1111-1111-111111111111";
+
+const CANDIDATE: Candidate = {
+  source: "openlibrary",
+  title: "Dune",
+  authors: ["Frank Herbert"],
+  published_date: "1965",
+  publisher: null,
+  description: null,
+  language: "en",
+  isbn10: null,
+  isbn13: null,
+  series: null,
+  series_index: null,
+  tags: [],
+  cover_url: null,
+  score: 0.72,
+};
 
 function makeBook(overrides: Partial<Book> = {}): Book {
   return {
@@ -112,6 +129,13 @@ beforeEach(() => {
         coverDeletes += 1;
         return new Response(null, { status: 204 });
       }
+      if (url.includes("/metadata/search") && method === "GET") {
+        return jsonResponse(200, { items: [CANDIDATE] });
+      }
+      if (url.includes("/metadata/apply") && method === "POST") {
+        current = { ...current, title: "Dune (Provider)", updated_at: "2026-01-02T00:00:00Z" };
+        return jsonResponse(200, { book: current, applied: body.fields ?? [] });
+      }
       if (method === "PATCH") {
         patches.push(body);
         current = { ...current, ...(body as Partial<Book>) };
@@ -129,12 +153,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderDrawer(overrides: Partial<Book> = {}) {
+function renderDrawer(overrides: Partial<Book> = {}, reviewItems?: Candidate[]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onClose = vi.fn();
   render(
     <QueryClientProvider client={client}>
-      <EditDetailsDrawer book={makeBook(overrides)} onClose={onClose} />
+      <EditDetailsDrawer book={makeBook(overrides)} onClose={onClose} initialReviewItems={reviewItems} />
     </QueryClientProvider>,
   );
   return { onClose };
@@ -166,6 +190,47 @@ describe("EditDetailsDrawer", () => {
     renderDrawer({ description: "\nFrom the author…\n", subtitle: "  Appendix  " });
     expect(saveButton().disabled).toBe(true);
     expect(screen.queryByText(/unsaved change/)).toBeNull();
+  });
+
+  it("opens Find metadata inside the drawer and Back returns to the form", () => {
+    renderDrawer();
+    fireEvent.click(screen.getByRole("button", { name: "Find metadata" }));
+    expect(screen.getByRole("dialog", { name: "Find metadata" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Subtitle" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
+    expect(screen.getByRole("dialog", { name: "Edit details" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Subtitle" })).toBeTruthy();
+  });
+
+  it("disables Find metadata while edits are unsaved", () => {
+    renderDrawer();
+    const find = screen.getByRole("button", { name: "Find metadata" }) as HTMLButtonElement;
+    expect(find.disabled).toBe(false);
+    fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Messiah" } });
+    expect(find.disabled).toBe(true);
+  });
+
+  it("opens straight into the saved-matches review view", () => {
+    renderDrawer({}, [CANDIDATE]);
+    expect(screen.getByRole("dialog", { name: "Find metadata" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Apply selected" })).toBeTruthy();
+    expect(screen.getByText(/72% match/)).toBeTruthy();
+  });
+
+  it("refreshes the form after applying provider metadata", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onClose = vi.fn();
+    const view = (value: Book) => (
+      <QueryClientProvider client={client}>
+        <EditDetailsDrawer book={value} onClose={onClose} initialReviewItems={[CANDIDATE]} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(view(makeBook()));
+    fireEvent.click(screen.getByRole("button", { name: "Apply selected" }));
+    await screen.findByText(/Applied:/);
+    rerender(view(makeBook({ title: "Dune (Provider)", updated_at: "2026-01-02T00:00:00Z" })));
+    fireEvent.click(screen.getByRole("button", { name: "Back to details" }));
+    expect((screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement).value).toBe("Dune (Provider)");
   });
 
   it("Cancel closes directly when nothing changed", () => {
