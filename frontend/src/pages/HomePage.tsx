@@ -54,7 +54,7 @@ function Chip({ label, selected, onClick }: { label: string; selected: boolean; 
 
 function Cover({ book, percent, finished }: { book: Book; percent: number | null; finished: boolean }) {
   return (
-    <span className="relative block aspect-[2/3] overflow-hidden rounded-cover shadow-(--shadow-cover)">
+    <span className="relative block aspect-[2/3] overflow-hidden rounded-md shadow-(--shadow-cover)">
       <BookCover book={book} className="absolute inset-0 h-full w-full" />
       <CoverProgressBadge percent={percent} finished={finished} />
     </span>
@@ -175,7 +175,7 @@ export function HomePage() {
             event.preventDefault();
             void start(item.book.id, item.progress.chapter_id);
           }}
-          className="rounded-cover no-underline"
+          className="rounded-md no-underline"
         >
           <Cover
             book={item.book}
@@ -247,7 +247,7 @@ export function HomePage() {
         <div aria-busy="true" className="flex gap-5">
           {Array.from({ length: 4 }, (_, i) => (
             <div key={i} className={clsx("animate-pulse", cardWidth)}>
-              <div className="aspect-[2/3] rounded-cover bg-raised" />
+              <div className="aspect-[2/3] rounded-md bg-raised" />
               <div className="mt-2.5 h-4 w-3/4 rounded bg-raised" />
             </div>
           ))}

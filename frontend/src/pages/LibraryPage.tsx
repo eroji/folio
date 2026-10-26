@@ -418,7 +418,7 @@ export function LibraryPage() {
         <div className={GRID} aria-busy="true">
           {Array.from({ length: 8 }, (_, i) => (
             <div key={i} className="animate-pulse">
-              <div className="aspect-[2/3] rounded-cover bg-raised" />
+              <div className="aspect-[2/3] rounded-md bg-raised" />
               <div className="mt-2 h-4 w-3/4 rounded bg-raised" />
               <div className="mt-1 h-3 w-1/2 rounded bg-raised" />
             </div>

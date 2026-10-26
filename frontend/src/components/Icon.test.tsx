@@ -4,7 +4,7 @@ import { Icon } from "./Icon";
 
 describe("Icon", () => {
   it("renders at the requested size", () => {
-    const { container } = render(<Icon name="play_arrow" size={20} />);
+    const { container } = render(<Icon name="Play" size={20} />);
     const svg = container.querySelector("svg")!;
     expect(svg.getAttribute("width")).toBe("20");
     expect(svg.getAttribute("height")).toBe("20");
@@ -13,8 +13,8 @@ describe("Icon", () => {
   it("draws the transport icons filled and everything else stroked", () => {
     const { container } = render(
       <div>
-        <Icon name="play_arrow" />
-        <Icon name="close" />
+        <Icon name="Play" />
+        <Icon name="X" />
       </div>,
     );
     const play = container.querySelectorAll("svg")[0]!;
@@ -25,7 +25,7 @@ describe("Icon", () => {
   });
 
   it("is decorative without a label and named with one", () => {
-    const { container } = render(<Icon name="close" label="Close" />);
+    const { container } = render(<Icon name="X" label="Close" />);
     const svg = container.querySelector("svg")!;
     expect(svg.getAttribute("aria-label")).toBe("Close");
     expect(svg.getAttribute("role")).toBe("img");

@@ -40,9 +40,13 @@ export const GENRES = [
   "Chinese literature",
 ];
 
-const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
+const inputClass = "tap h-10 w-full rounded-full border border-border bg-raised px-4 text-md";
 const buttonClass =
-  "tap inline-flex h-9 items-center gap-1.5 rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50";
+  "tap inline-flex h-10 items-center gap-2 rounded-full border border-border px-4 text-base font-semibold text-fg no-underline hover:bg-raised disabled:opacity-50";
+const primaryButtonClass =
+  "tap inline-flex h-10 items-center rounded-full bg-fg px-4 text-base font-bold text-on-fg disabled:opacity-50";
+const selectPill = "select-pill tap h-10 w-full border border-border bg-raised text-base text-fg";
+const selectChevron = "pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-fg-2";
 
 export function isbn10Valid(raw: string): boolean {
   const digits = raw.replace(/[-\s]/g, "");
@@ -167,7 +171,7 @@ function OrderedList({
     next.splice(target, 0, item!);
     onChange(next);
   };
-  const iconButton = "tap grid size-9 shrink-0 place-items-center rounded-md border border-control-border bg-surface text-fg hover:bg-raised disabled:opacity-40";
+  const iconButton = "tap grid size-10 shrink-0 place-items-center rounded-full border border-border text-fg hover:bg-raised disabled:opacity-40";
   return (
     <div className="flex flex-col gap-2">
       <span className="text-base font-medium">{label}</span>
@@ -181,13 +185,13 @@ function OrderedList({
               className={inputClass}
             />
             <button type="button" aria-label={`Move ${label.toLowerCase()} ${index + 1} up`} disabled={index === 0} onClick={() => move(index, -1)} className={iconButton}>
-              <Icon name="chevron_left" size={18} className="-rotate-90" />
+              <Icon name="ChevronLeft" size={18} className="-rotate-90" />
             </button>
             <button type="button" aria-label={`Move ${label.toLowerCase()} ${index + 1} down`} disabled={index === items.length - 1} onClick={() => move(index, 1)} className={iconButton}>
-              <Icon name="chevron_left" size={18} className="rotate-90" />
+              <Icon name="ChevronLeft" size={18} className="rotate-90" />
             </button>
             <button type="button" aria-label={`Remove ${label.toLowerCase()} ${index + 1}`} onClick={() => onChange(items.filter((_, i) => i !== index))} className={iconButton}>
-              <Icon name="close" size={18} />
+              <Icon name="X" size={18} />
             </button>
           </li>
         ))}
@@ -240,7 +244,7 @@ function EditForm({ book }: { book: Book }) {
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="font-display text-xl font-bold tracking-[-0.01em]">Edit metadata</h1>
+        <h1 className="font-display text-xl">Edit metadata</h1>
         <div className="flex gap-2">
           <Link to={`/books/${book.id}`} className={buttonClass}>
             Cancel
@@ -248,7 +252,7 @@ function EditForm({ book }: { book: Book }) {
           <button
             type="submit"
             disabled={invalid || Object.keys(patch).length === 0 || update.isPending}
-            className="tap inline-flex h-9 items-center rounded-md bg-primary-gradient px-4 text-base font-semibold text-on-primary disabled:opacity-50"
+            className={primaryButtonClass}
           >
             Save
           </button>
@@ -257,7 +261,7 @@ function EditForm({ book }: { book: Book }) {
 
       {update.error && (
         <p role="alert" className="flex items-center gap-2 rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger">
-          <Icon name="error" size={16} />
+          <Icon name="TriangleAlert" size={16} />
           {update.error.message}
         </p>
       )}
@@ -289,29 +293,35 @@ function EditForm({ book }: { book: Book }) {
           <input value={form.publishedDate} placeholder="YYYY or YYYY-MM-DD" onChange={(event) => set("publishedDate", event.target.value)} className={inputClass} />
         </Field>
         <Field label="Language">
-          <select value={form.language} onChange={(event) => set("language", event.target.value)} className={inputClass}>
-            {LANGUAGES.map((entry) => (
-              <option key={entry.code} value={entry.code}>
-                {entry.label} ({entry.code})
-              </option>
-            ))}
-            <option value={OTHER}>Other…</option>
-          </select>
+          <div className="relative">
+            <select value={form.language} onChange={(event) => set("language", event.target.value)} className={selectPill}>
+              {LANGUAGES.map((entry) => (
+                <option key={entry.code} value={entry.code}>
+                  {entry.label} ({entry.code})
+                </option>
+              ))}
+              <option value={OTHER}>Other…</option>
+            </select>
+            <Icon name="ChevronDown" size={18} className={selectChevron} />
+          </div>
           {form.language === OTHER && (
             <input value={form.otherLanguage} aria-label="Language code" placeholder="e.g. fr-CA" onChange={(event) => set("otherLanguage", event.target.value)} className={inputClass} />
           )}
           {languageError && <span className="text-xs text-danger">{languageError}</span>}
         </Field>
         <Field label="Genre">
-          <select value={form.genre} onChange={(event) => set("genre", event.target.value)} className={inputClass}>
-            <option value="">No genre</option>
-            {GENRES.map((genre) => (
-              <option key={genre} value={genre}>
-                {genre}
-              </option>
-            ))}
-            <option value={OTHER}>Other…</option>
-          </select>
+          <div className="relative">
+            <select value={form.genre} onChange={(event) => set("genre", event.target.value)} className={selectPill}>
+              <option value="">No genre</option>
+              {GENRES.map((genre) => (
+                <option key={genre} value={genre}>
+                  {genre}
+                </option>
+              ))}
+              <option value={OTHER}>Other…</option>
+            </select>
+            <Icon name="ChevronDown" size={18} className={selectChevron} />
+          </div>
           {form.genre === OTHER && (
             <input
               value={form.otherGenre}
@@ -340,10 +350,10 @@ function EditForm({ book }: { book: Book }) {
       <OrderedList label="Tags" items={form.tags} onChange={(tags) => set("tags", tags)} placeholder="Add a tag" />
 
       <Field label="Description">
-        <textarea value={form.description} rows={6} onChange={(event) => set("description", event.target.value)} className={`${inputClass} h-auto py-2`} />
+        <textarea value={form.description} rows={6} onChange={(event) => set("description", event.target.value)} className="tap w-full rounded-lg border border-border bg-raised px-4 py-2 text-md" />
       </Field>
 
-      <CoverEditor book={book} className="rounded-lg border border-divider bg-surface p-4" />
+      <CoverEditor book={book} className="rounded-lg border border-border bg-surface p-4" />
     </form>
   );
 }
@@ -356,11 +366,11 @@ export function EditBookPage() {
   if (error) {
     return (
       <EmptyState
-        icon={<Icon name="error" size={24} />}
+        icon={<Icon name="TriangleAlert" size={24} />}
         title="Book not found"
         description={error.message}
         action={
-          <Link to="/" className="text-base font-medium text-accent-fg underline">
+          <Link to="/library" className="text-base font-semibold text-fg underline">
             Back to library
           </Link>
         }

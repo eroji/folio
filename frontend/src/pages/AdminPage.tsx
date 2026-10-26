@@ -29,10 +29,10 @@ function formatBytes(bytes: number): string {
   return `${unit === 0 || value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
-const cellButton = "tap grid size-9 place-items-center rounded-md text-fg hover:bg-raised disabled:opacity-40";
-const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
-const sectionTitle = "font-display text-lg font-semibold";
-const pill = "rounded-sm bg-raised px-1.5 py-0.5 text-xs text-fg-2";
+const cellButton = "tap grid size-10 place-items-center rounded-full text-fg hover:bg-raised disabled:opacity-40";
+const inputClass = "tap h-10 w-full rounded-full border border-border bg-raised px-4 text-md";
+const sectionTitle = "font-display text-lg";
+const pill = "rounded-full bg-raised px-2.5 py-0.5 text-xs text-fg-2";
 
 /** Screen 9: job queue with retry, TTS status, audio cache controls, users. */
 export function AdminPage() {
@@ -98,7 +98,7 @@ export function AdminPage() {
   return (
     <div className="flex flex-col gap-6">
       <section aria-label="Jobs" className="flex flex-col gap-2">
-        <h1 className="font-display text-xl font-bold tracking-[-0.01em]">Jobs</h1>
+        <h1 className="font-display text-xl">Jobs</h1>
         {jobsQuery.isPending && (
           <div className="animate-pulse space-y-2" aria-busy="true">
             {[0, 1, 2].map((i) => (
@@ -109,7 +109,7 @@ export function AdminPage() {
         {jobsQuery.error instanceof Error && <p role="alert" className="text-sm text-danger">{jobsQuery.error.message}</p>}
         {!jobsQuery.isPending && !jobsQuery.error && jobs.length === 0 && (
           <EmptyState
-            icon={<Icon name="task_alt" size={24} />}
+            icon={<Icon name="CircleCheck" size={24} />}
             title="No jobs yet"
             description="Background jobs appear here once books are uploaded."
           />
@@ -120,9 +120,9 @@ export function AdminPage() {
           </p>
         )}
         {!jobsQuery.isPending && jobs.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-divider bg-surface">
+          <div className="overflow-x-auto rounded-lg border border-border bg-surface">
             <table className="w-full text-left text-base">
-              <thead className="border-b border-divider text-xs uppercase tracking-wide text-fg-2">
+              <thead className="border-b border-border text-xs uppercase tracking-wide text-fg-2">
                 <tr>
                   <th className="px-3 py-2 font-medium">ID</th>
                   <th className="px-3 py-2 font-medium">Type</th>
@@ -138,7 +138,7 @@ export function AdminPage() {
               </thead>
               <tbody>
                 {jobs.map((job) => (
-                  <tr key={job.id} className="border-t border-divider first:border-0">
+                  <tr key={job.id} className="border-t border-border first:border-0">
                     <td className="px-3 py-2 tabular">{job.id}</td>
                     <td className="px-3 py-2">{job.type}</td>
                     <td className="px-3 py-2">
@@ -159,7 +159,7 @@ export function AdminPage() {
                           onClick={() => retry.mutate(job.id)}
                           className={cellButton}
                         >
-                          <Icon name="restart_alt" size={18} />
+                          <Icon name="RefreshCw" size={18} />
                         </button>
                       )}
                     </td>
@@ -176,7 +176,7 @@ export function AdminPage() {
         {cacheQuery.isPending && <div className="h-9 animate-pulse rounded-md bg-raised" aria-busy="true" />}
         {cacheQuery.error instanceof Error && <p role="alert" className="text-sm text-danger">{cacheQuery.error.message}</p>}
         {stats && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-divider bg-surface p-4 text-base">
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface p-4 text-base">
             <p className="tabular">
               {stats.files.toLocaleString()} files · {formatBytes(stats.bytes)}
             </p>
@@ -189,7 +189,7 @@ export function AdminPage() {
               type="button"
               disabled={clear.isPending}
               onClick={() => clear.mutate()}
-              className="tap ml-auto inline-flex h-9 items-center rounded-md border border-danger bg-surface px-3 text-base font-semibold text-danger hover:bg-raised disabled:opacity-50"
+              className="tap ml-auto inline-flex h-10 items-center rounded-full border border-danger px-4 text-base font-semibold text-danger hover:bg-raised disabled:opacity-50"
             >
               Clear cache
             </button>
@@ -210,7 +210,7 @@ export function AdminPage() {
           <p className="text-sm text-fg-2">No users have signed in yet.</p>
         )}
         {usersQuery.data && usersQuery.data.items.length > 0 && (
-          <ul className="divide-y divide-divider rounded-lg border border-divider bg-surface">
+          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
             {usersQuery.data.items.map((user) => (
               <li key={user.id} className="tap flex min-h-9 items-center gap-3 px-4 py-1 text-base">
                 <span className="min-w-0 flex-1 truncate font-medium">{user.display_name}</span>
@@ -236,7 +236,7 @@ export function AdminPage() {
         )}
         {voiceNamesQuery.data && voiceNamesQuery.data.items.length === 0 && (
           <EmptyState
-            icon={<Icon name="record_voice_over" size={24} />}
+            icon={<Icon name="Speech" size={24} />}
             title="No voices found"
             description="Discovered voices appear here once the TTS backend answers."
           />
@@ -246,7 +246,7 @@ export function AdminPage() {
         )}
         {voiceNamesQuery.data && voiceNamesQuery.data.items.length > 0 && (
           <>
-            <ul className="divide-y divide-divider rounded-lg border border-divider bg-surface">
+            <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
               {voiceNamesQuery.data.items.map((item) => (
                 <li key={item.id} className="flex min-h-9 items-center gap-3 px-4 py-2">
                   <label className="min-w-0 flex-1">
@@ -273,7 +273,7 @@ export function AdminPage() {
                 type="button"
                 disabled={saveNames.isPending}
                 onClick={() => saveNames.mutate()}
-                className="tap inline-flex h-9 items-center rounded-md bg-primary-gradient px-3 text-base font-semibold text-on-primary disabled:opacity-50"
+                className="tap inline-flex h-10 items-center rounded-full bg-fg px-4 text-base font-bold text-on-fg disabled:opacity-50"
               >
                 Save
               </button>

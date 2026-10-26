@@ -25,7 +25,7 @@ function hasValue(value: unknown): boolean {
 
 const SOURCES: Record<string, string> = { openlibrary: "Open Library", googlebooks: "Google Books" };
 
-const inputClass = "tap h-9 w-full rounded-md border border-control-border bg-surface px-3 text-base";
+const inputClass = "tap h-10 w-full rounded-full border border-border bg-raised px-4 text-md";
 
 function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }) {
   const available = FIELDS.filter((field) => hasValue(candidate[field.key]));
@@ -34,11 +34,11 @@ function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }
   const apply = useApplyMetadata(book.id);
 
   return (
-    <li className="flex gap-3 rounded-lg border border-divider bg-surface p-4">
+    <li className="flex gap-3 rounded-lg bg-surface p-4">
       {candidate.cover_url ? (
-        <img src={candidate.cover_url} alt="" loading="lazy" className="aspect-[2/3] w-12 shrink-0 rounded-cover bg-raised object-cover" />
+        <img src={candidate.cover_url} alt="" loading="lazy" className="aspect-[2/3] w-12 shrink-0 rounded-md bg-raised object-cover" />
       ) : (
-        <div className="aspect-[2/3] w-12 shrink-0 rounded-cover bg-cover-placeholder" aria-hidden />
+        <div className="aspect-[2/3] w-12 shrink-0 rounded-md bg-raised" aria-hidden />
       )}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="min-w-0">
@@ -66,7 +66,7 @@ function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }
                     event.target.checked ? [...current, field.key] : current.filter((key) => key !== field.key),
                   )
                 }
-                className="size-4 accent-progress"
+                className="size-4 accent-accent"
               />
               {field.label}
             </label>
@@ -82,7 +82,7 @@ function CandidateCard({ book, candidate }: { book: Book; candidate: Candidate }
                 { onSuccess: (data) => setApplied(data.applied) },
               )
             }
-            className="tap inline-flex h-9 items-center rounded-md bg-primary-gradient px-4 text-base font-semibold text-on-primary disabled:opacity-50"
+            className="tap inline-flex h-10 items-center rounded-full bg-fg px-4 text-base font-bold text-on-fg disabled:opacity-50"
           >
             Apply selected
           </button>
@@ -112,7 +112,7 @@ export function FindMetadata({ book, initialItems }: { book: Book; initialItems?
   const search = useMetadataSearch(book.id);
 
   return (
-    <section aria-label="Find metadata" className="flex flex-col gap-4 rounded-lg border border-divider bg-surface p-4">
+    <section aria-label="Find metadata" className="flex flex-col gap-4 rounded-lg bg-surface p-4">
       <div className="grid gap-2 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-base font-medium">
           Title
@@ -140,23 +140,23 @@ export function FindMetadata({ book, initialItems }: { book: Book; initialItems?
               { onSuccess: (data) => setItems(data.items) },
             )
           }
-          className="tap inline-flex h-9 items-center gap-1.5 rounded-md border border-control-border bg-surface px-3 text-base font-medium hover:bg-raised disabled:opacity-50"
+          className="tap inline-flex h-10 items-center gap-2 rounded-full border border-border px-4 text-base font-semibold text-fg hover:bg-raised disabled:opacity-50"
         >
-          <Icon name="search" size={18} />
+          <Icon name="Search" size={18} />
           Search
         </button>
       </div>
 
       {search.error && (
         <p role="alert" className="flex items-center gap-2 rounded-lg border border-danger bg-surface px-3 py-2 text-sm text-danger">
-          <Icon name="error" size={16} />
+          <Icon name="TriangleAlert" size={16} />
           The metadata providers could not be reached. {search.error.message}
         </p>
       )}
 
       {items && items.length === 0 && (
         <p className="flex items-center gap-2 text-sm text-fg-2">
-          <Icon name="search" size={16} />
+          <Icon name="Search" size={16} />
           No matches found. Try a different title or ISBN.
         </p>
       )}

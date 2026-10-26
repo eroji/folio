@@ -5,7 +5,7 @@ import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import type { Book, BookStatus, Progress } from "../api/types";
 
-/** Cover image or the brand-gradient placeholder with title/author (spec "Brand"). */
+/** Cover image or the flat raised placeholder with title/author (Direction D). */
 export function BookCover({
   book,
   className,
@@ -26,7 +26,7 @@ export function BookCover({
   return (
     <div
       className={clsx(
-        "bg-cover-placeholder flex flex-col justify-end gap-1 p-3 text-on-primary",
+        "bg-raised flex flex-col justify-end gap-1 p-3 text-fg",
         className,
       )}
       aria-hidden
@@ -86,7 +86,7 @@ export function BookCard({
     <Link to={`/books/${book.id}`} className="flex min-w-0 flex-col gap-2">
       {/* No aria-label: the accessible name is the visible title/author/status,
           so WCAG 2.5.3 cannot drift. State is appended for screen readers. */}
-      <span className="relative block aspect-[2/3] overflow-hidden rounded-cover shadow-(--shadow-cover)">
+      <span className="relative block aspect-[2/3] overflow-hidden rounded-md shadow-(--shadow-cover)">
         <BookCover book={book} className="absolute inset-0 h-full w-full" />
         <CoverProgressBadge percent={percent} finished={finished} />
       </span>

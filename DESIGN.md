@@ -1,71 +1,151 @@
 # DESIGN.md — Folio
 
-> Direction C "Companion", as implemented. The tokens in `frontend/src/styles/tokens.css` are the single source of truth; this file explains how to use them. `docs/ui-handoff/HANDOFF.md` and `docs/ui-handoff/reference/*.html` show the target screens.
+> Direction D "Ribbon", as implemented. Dark only, one accent, YouTube-Music-shaped
+> shell. The tokens in `frontend/src/styles/tokens.css` are the single source of
+> truth; `docs/ui-handoff/HANDOFF.md` and `docs/ui-handoff/reference/*.html` are the
+> design source. This file describes what the app actually renders.
 
 ## Mode
 
-- **App surfaces** (library, book, upload, settings, admin): *Operate*. Familiar patterns, scannability, one primary action per screen.
-- **Read-along**: *Read*. A paper page with its own scroll; the text is the content.
-- **Nothing here is Persuade.** The gradient appears on exactly three things: the primary action, play/pause, and the logo.
+- **Dark only.** `color-scheme: dark` is set once in `tokens.css`. There is no light
+  theme, no `data-theme` attribute and no theme setting anywhere.
+- The accent (Amber `#FFC233`, one variable `--color-accent`) is used **only** for
+  fills, icons and progress — never for body text. Anything on an accent fill uses
+  `--color-on-fg`.
+- **Primary actions are white pills** (`bg-fg text-on-fg`, 700 weight): Play/Resume,
+  Choose files, Sign in, Apply, Save, the play/pause button.
 
-## Layout
+## Foundations
 
-- **Desktop shell (≥1050 px, `desktop:` breakpoint):** 60 px icon rail on the left (logo, Library, Search, Upload; account avatar pinned bottom — no Settings/Admin in the rail), the page in the middle, and a persistent **Now Playing panel** on the right whenever a book is loaded. Page and panel split the remaining width **50/50**; below 1050 px they stack.
-  - **Collapse** turns the panel into a 64 px bar along the bottom of the content area (remembered in localStorage, never switched automatically). **Close** unloads the book and returns the page to full width.
-  - **Focus mode** (`open_in_full`, F) replaces the whole window: paper background, slim header, optional contents list, reading page centered at max 680 px, transport card centered at the bottom (max 860 px). Esc returns to the exact page and panel state.
-  - The **account menu** (from the avatar) holds Settings, Admin (admins only), an inline System/Light/Dark theme switch (`menuitemradio`), and Sign out. There is no theme toggle in any top bar.
-- **Phone shell (<1050 px):** 48 px header (back, ⋯), scrolling content, the **Now Playing sheet** pinned above a 56 px tab bar (Library, Search, Upload, You). The full-screen phone player is the phone's focus mode.
-- **Player surfaces** exist whenever a book is **loaded**, playing or paused — never on play/pause. One audio element app-wide; panel, sheet and full player drive the same state.
-- **Search** is not a route: the rail icon navigates to `/` with the library search field focused (`?q=`).
+| Token | Value | Use |
+|---|---|---|
+| `--color-bg` | `#0B0B0C` | app + sidebar background |
+| `--color-surface` | `#151517` | player bar, cards, upload rows, dialogs |
+| `--color-raised` | `#202023` | chips, inputs, selects, selected nav item, menus, playing row |
+| `--color-border` | `#2E2E33` | dividers, secondary-button outlines, progress tracks |
+| `--color-fg` / `--color-fg-2` | `#F7F7F2` / `#A9A9B0` | primary / secondary text |
+| `--color-on-fg` | `#0B0B0C` | text/icons on white and on accent fills |
+| `--color-accent` | `#FFC233` | progress, selected chip, avatar, logo, playing icon, focus ring |
+| `--color-danger` / `--color-success` / `--color-warning` | `#FF7A7A` / `#5BD69B` / `#FFC233` | failed / ready+finished / needs-OCR |
+| `--color-off` | `#4A4A52` | switch track off, drop-zone dashed border |
 
-## Identity
+- **Type:** Sora 700 (`.font-display`, −0.03em) for page (42 px), shelf (30 px),
+  section (24 px), book (36/24 px) and player (30/24 px) titles and the "folio"
+  wordmark; Figtree for everything else, including the read-along. Eyebrows: 12 px,
+  600, uppercase, 0.08em, secondary (`.eyebrow`). Times/percentages use `.tabular`.
+  `lang` is set from the book's language; CJK stacks live in `tokens.css`.
+- **Shape:** pills (999 px) for every button with text, chip, input, select, switch,
+  the avatar and every icon button. Radii: 4 px list covers (`rounded-xs`), 10 px
+  grid covers and inputs in rows (`rounded-md`), 12 px list rows/menus/book cover
+  (`rounded-lg`), 14 px sidebar items/upload rows/player cover (`rounded-xl`),
+  20 px drop zone and search top-result card (`rounded-2xl`).
+- **Heights:** 48 px primary pill on the book page, 40 px elsewhere; chips 34 px;
+  icon buttons 40 px (36 px carousel arrows, 44 px phone); sidebar items 48 px;
+  player bar 72 px; phone bottom nav and mini player 64 px. `.tap` guarantees
+  44×44 on coarse pointers.
+- **Glow** (main pane only, never sidebar or bar): `.bg-page-glow` default;
+  `.bg-cover-glow` on the book page and `.bg-cover-glow-strong` on the player, both
+  driven by the book's `cover_rgb` via `--cover-rgb` (falls back to the accent glow).
 
-| Token | Use |
-|---|---|
-| `--bg` / `--surface` / `--raised` | page / cards and inputs / hover, menus, skeletons |
-| `--divider` | lines only, never a control's only edge; `--control-border` (3:1) when a control needs one |
-| `--fg` / `--fg-2` | primary / secondary text (both ≥4.5:1 in each theme) |
-| `--accent-text` | links, active tab label, playing-row text. Brand blue `#2381F7` is **never** used for text |
-| `--selected` / `--on-selected` | selected rows and chips |
-| `--progress` / `--track` | progress fills / troughs and the focus ring |
-| `--paper` / `--paper-border` / `--reading-fg` / `--highlight` | read-along page, its border, its text, the current sentence |
-| `--avatar-bg` / `--avatar-fg` | rail/tab-bar avatar |
-| `--cover-badge` | the dark cover progress tag (theme-independent) |
-| `--success` / `--warning` / `--danger` | status only |
-| `--color-brand-blue-strong` → `--color-brand-violet-strong` | the one gradient (`.bg-primary-gradient`) |
+## App shell
 
-Type: **Plus Jakarta Sans** (UI and display, 400–700, self-hosted via Fontsource) and **Newsreader** (reading). Titles 700 with `letter-spacing: -0.01em`. CJK falls back to system fonts, then Noto; set `lang` on book-derived text.
+- **Desktop (≥1024 px, `lg:`):** 240 px labelled sidebar (logo row with `Menu`
+  collapse to a 72 px rail, remembered in localStorage; Home/Library/Search/Upload;
+  "Add books" pill; "In progress" list, 4 max) + scrolling main pane + 72 px
+  **player bar** whenever a book is loaded. The 56 px **top bar** holds the pill
+  search (Enter → `/search?q=`, `/` focuses it) and the accent avatar opening the
+  account menu (Settings, Admin for admins, Sign out — no theme control).
+- **Tablet (768–1023 px, `md:`):** sidebar starts collapsed to the icon rail with
+  11 px labels; "In progress" hidden.
+- **Phone (<768 px):** 56 px header (logo, Search icon, avatar), 64 px bottom nav
+  (Home, Library, Search, Upload) and a 64 px raised **mini player** above it while
+  a book is loaded. Scroll areas use `.no-scrollbar`; header/nav/mini player respect
+  `env(safe-area-inset-*)`.
+- **Player rules:** the bar shows whenever a book is loaded (never on play/pause
+  alone); app start loads the most recently played book paused at its saved
+  position; `X` stops, saves and unloads; cross-device positions show "Paused ·
+  last played on {device}" and a ResumePrompt. One `<audio>` element app-wide —
+  bar, mini player, `/player` page and phone player all drive the same state.
 
-- Type scale (px): 11 tab labels/badges · 12 meta/timestamps · 13 secondary · 14 body/rows/buttons · 15 panel titles · 18 phone book title · 26 desktop book title · 17 read-along (user adjustable). `font-ui` / `font-display` / `font-reading`; `.tabular` for times.
+## Screens
 
-## Scale and rhythm
-
-- **Radii:** xs 1 px (progress, sheet handle) · sm 3 px (small covers, cover badge) · cover 4 px · md 6 px (buttons, rows, inputs, icon-button hover) · lg 8 px (cards, panels, menus, sheet top). Fully round (999) **only** for the avatar and play/pause.
-- **Density:** desktop controls and rows 36 px (`h-9`), nav items 40 px; every interactive element carries `.tap` so coarse pointers get 44 px. Phones author at 44 px.
-- **Icons:** Material Symbols Rounded (weight 400, outlined; filled for play, pause, skip previous/next), imported as SVGs from `@material-symbols/svg-400` through `<Icon name size fill>` — not the web font. Sizes 18/20/22/24. Skip buttons draw the interval number inside a mirrored `replay` glyph.
-- **Cover progress badge:** bottom-left dark tag (`--cover-badge`, white text) on any book cover — inset 6 px desktop / 4 px phone; percent when in progress, `check` when finished, nothing when not started. `aria-hidden`; the cover's accessible name carries the state.
+- **Home `/`:** filter chips (status, languages, "Under 3 hours"; selected = accent
+  fill, dark text), Continue listening carousel (176 px cards, click resumes in
+  place), Next chapters grid ("Play next"), Recently added shelf. Empty: "Your
+  library is empty" + white "Upload books" pill.
+- **Library `/library`:** eyebrow count, Group by (default Genre) / Sort selects,
+  grid/list icon pills (all remembered in localStorage), chips with counts
+  (incl. "Needs attention"), genre shelves or a flat grid, list rows with ⋮.
+- **Book `/books/:id`:** two columns — cover column (cover with accent bottom bar
+  or corner check, title, author link, meta, clamped description, progress line,
+  white pill + outlined ⋮) and pill tabs Chapters / About / Manage (Manage only for
+  uploader/admin). The ⋮ menu (Mark as finished with undo toast, Reset progress,
+  Narrator voice…, Go to author) is the **only** place a book's narrator is set.
+  Chapter rows: played = secondary + `Check` + sr-only "Played"; playing = raised
+  fill, accent `AudioLines`, "N% · M left".
+- **Player `/player`:** strong cover glow; left cover + chapter title; right tabs
+  UP NEXT / READ ALONG / ABOUT. Read along is lyrics-style Figtree (past 38 %,
+  current 26 px full white with `aria-current`, next 62 %), scrolls in its own
+  area, auto-scroll with a "Back to current" pill. The phone player is full-screen
+  with a 72 px play/pause and sheet tabs.
+- **Search `/search?q=`:** type chips, polite result count, top-result surface
+  card (author avatar or cover, white Play pill), book rows with ⋮; empty state
+  offers "Upload books".
+- **Upload `/upload`:** dashed `#4A4A52` drop zone with the bookmark mark and white
+  "Choose files" pill; "This session" surface rows with status icon, progress bar
+  (indeterminate via `.bar-indeterminate`) and pill actions.
+- **Settings `/settings`:** Playback (speed select, 5–120 s skip steppers, switches)
+  and Voices (per-language pill select + 40 px outlined Preview) only. Saves are
+  immediate; failures revert with an inline error.
+- **Sign in `/login`:** accent glow, centered 380 px column, mark + "folio", 48 px
+  pill inputs (password with `Eye`/`EyeOff`), 52 px white pill; one error alert
+  that never says which field was wrong.
+- **Restyle-only screens** (Edit details, Find metadata, cover dialog, narrator
+  dialog, confirms, Admin, About tab, empty/loading/error/offline/needs-OCR/failed
+  states): raised surfaces, pill controls, white primary pills, Sora titles,
+  Figtree text, accent only for selection and progress.
 
 ## Components
 
-- **Primary button:** `.bg-primary-gradient`, `text-on-primary`, `rounded-md`, one per screen (Play/Resume, Choose files, Sign in). The "Playing now" state is non-gradient: `bg-selected text-on-selected` with a headphones icon.
-- **Secondary button:** `bg-surface` with a 1 px `border-control-border`, `rounded-md`.
-- **Book card / row:** cover with progress badge, title 2 lines max, author 1 line; status text only when not ready (warning/danger color or spinner).
-- **Book page:** hero (cover, title, author, meta line, overall progress bar) → primary action (+ voice icon button on phone) → ⋯ listener menu (Mark as finished with undo toast, Reset progress; no download) → tabs **Chapters / About / Manage** (Manage only for uploader/admin). Chapter rows carry no per-row play button: played = `check` + sr-only "Played", playing = accent text with percent (desktop) or "Playing" (phone), otherwise the length.
-- **Now Playing panel:** "Now playing" + focus-mode button, 36×54 cover with chapter and book, scrubber row (elapsed · range · remaining + speed, tabular), one-line transport row (speed · previous · back 15 · play/pause 44 px round gradient · forward 30 · next · sleep · voice), then the read-along.
-- **Read-along:** its own paper page (`--paper`, internal scroll only, `.reader-scroll`, Newsreader 17 px / 1.65), current sentence on `--highlight`, read text in secondary color, `lang` from the book. The window never scrolls while reading.
-- **Menus:** `role="menu"`/`menuitem`, arrow keys, Escape closes and returns focus, sized to content (`max-content`), rows 30/34 px with 18 px icons.
-- **Voice picker:** language voices only, first available preselected, no "Default", never the engine's `tts` fallback.
-- **Destructive actions:** danger-bordered card or menu item, confirm in a dialog that repeats the book title.
+- **Primary pill:** `bg-fg text-on-fg font-bold rounded-full`. **Secondary:**
+  transparent with 1 px `border-border`, `hover:bg-raised`. **Danger:** same with
+  `border-danger text-danger`.
+- **Chips:** 34 px pills, `bg-raised`; selected `bg-accent text-on-fg font-bold`
+  with `aria-pressed`.
+- **Selects:** `.select-pill` (native arrow hidden) + a `ChevronDown` absolutely
+  positioned 16 px from the right edge, `pointer-events-none`.
+- **Switch:** 44×26 pill inside a 44 px hit area; on = accent track + dark knob,
+  off = `--color-off` + white knob; `role="switch"`.
+- **Dialogs:** scrim `bg-bg/70`, `bg-surface` panel, 12 px radius, `--shadow-menu`,
+  `font-display` title, pill buttons; Esc closes.
+- **Menus:** `role="menu"`/`menuitem`, arrow keys, Esc returns focus.
+- **Tabs:** `tablist`/`tab`/`tabpanel` with roving tabindex and arrow keys;
+  selected tab is a white pill (book page) or white text + 2 px underline (player).
+- **Cover placeholder:** flat `bg-raised` with the title in Sora; progress is a
+  4 px accent bar along the cover's bottom edge, a round accent check when
+  finished (`CoverProgressBadge`, `aria-hidden`; the accessible name carries it).
 
-## Interaction
+## Icons
 
-- Press states change color/opacity only, never bounds.
-- Focus: 2 px `--progress` ring with 2 px offset on every control (`:focus-visible`, global).
-- Motion: 200 ms panel collapse (slides right and down into the bar); `prefers-reduced-motion` switches instantly and is honored globally in `tokens.css`.
-- Loading: skeletons for grids and panels, "Preparing audio…" for synthesis, never a spinner over an empty screen. Every list has an empty state.
-- Errors: inline, human, with the next action. Sign-in failure shows one alert ("Incorrect username or password…") without revealing which field was wrong.
-- Toasts live in an `aria-live="polite"` region; result counts announce via `role="status"`.
+`lucide-react` only, stroke width 2, through `<Icon name size>`; the four transport
+icons (Play/Pause/SkipBack/SkipForward) render filled (`strokeWidth={0}`). Names
+follow the HANDOFF table and are registered in `components/Icon.tsx` — no Material
+Symbols, no inline SVGs, no emoji. Icon-only buttons carry an `aria-label` that
+includes the current value ("Playback speed, 1.25 times").
+
+## Motion
+
+150–250 ms ease-out for menus, tabs and hover fills; the expanded player slides
+up/down 250 ms. `prefers-reduced-motion` is neutralized globally in `tokens.css`
+(including the spinning Processing/RefreshCw icon). Press states change color only,
+never bounds.
 
 ## Accessibility baseline
 
-Keyboard reachable, visible focus, 44×44 touch targets via `.tap`, 4.5:1 text and 3:1 for controls/progress in both themes (token values already pass), icon-only buttons carry `aria-label` including the current value ("Playback speed, 1.25 times"), tabs use `tablist`/`tab`/`tabpanel` with arrow keys, works at 200% zoom, `data-theme` on `<html>` follows the user setting (System tracks `prefers-color-scheme` live).
+4.5:1 text and 3:1 control contrast on the dark background (the tokens pass; accent
+is never text). DB-backed sessions aside, the app is keyboard-reachable end to
+end: visible 2 px accent focus ring with 2 px offset, `aria-current` on nav/tabs/
+current sentence, `aria-haspopup`/`aria-expanded` menus, `aria-pressed` chips,
+sr-only Played/Playing chapter text, `aria-live="polite"` for search counts, upload
+summaries and toasts, skeletons for every async view and an empty state for every
+list, works at 200 % zoom, 44 px touch targets on phone.

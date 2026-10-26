@@ -78,7 +78,7 @@ function SideNavItem({ to, icon, label, collapsed }: { to: string; icon: IconNam
       }
     >
       <Icon name={icon} size={24} />
-      <span className={clsx("truncate", collapsed && "hidden text-2xs font-medium md:block desktop:hidden")}>
+      <span className={clsx("truncate", collapsed && "hidden text-2xs font-medium md:block lg:hidden")}>
         {label}
       </span>
     </NavLink>
@@ -369,8 +369,8 @@ function Shell() {
         <PhoneHeader />
         <main
           className={clsx(
-            "min-w-0 flex-1 px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] desktop:px-10 desktop:pb-12",
-            player.book && "pb-[calc(10rem+env(safe-area-inset-bottom))] desktop:pb-[calc(72px+3rem)]",
+            "min-w-0 flex-1 px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:px-10 lg:pb-12",
+            player.book && "pb-[calc(10rem+env(safe-area-inset-bottom))] lg:pb-[calc(72px+3rem)]",
           )}
         >
           <Outlet />
@@ -380,7 +380,7 @@ function Shell() {
       <BottomNav />
 
       {player.book && !onPlayerPage && player.resumePrompt && (
-        <div className="fixed inset-x-0 bottom-[calc(8.5rem+env(safe-area-inset-bottom))] z-40 mx-auto w-full max-w-md px-4 desktop:bottom-[calc(72px+1rem)]">
+        <div className="fixed inset-x-0 bottom-[calc(8.5rem+env(safe-area-inset-bottom))] z-40 mx-auto w-full max-w-md px-4 lg:bottom-[calc(72px+1rem)]">
           <ResumePrompt {...player.resumePrompt} />
         </div>
       )}

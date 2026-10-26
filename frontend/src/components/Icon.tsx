@@ -9,28 +9,19 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronsDown,
-  ChevronsLeft,
-  ChevronsRight,
-  CircleAlert,
   CircleCheck,
-  Ellipsis,
   EllipsisVertical,
   Eye,
   EyeOff,
   Gauge,
   Globe,
-  Headphones,
   House,
   Image,
   LayoutGrid,
   LibraryBig,
   List,
-  LoaderCircle,
   LogOut,
-  Maximize2,
   Menu,
-  Minimize2,
-  MonitorSmartphone,
   Moon,
   Pause,
   Pencil,
@@ -45,7 +36,6 @@ import {
   SkipBack,
   SkipForward,
   Speech,
-  Square,
   Trash2,
   TriangleAlert,
   Upload,
@@ -54,47 +44,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-/** Every icon the app renders, keyed by name: the Direction C material names
- * still used by current call sites (rewritten in phases 2–7) plus the
- * Direction D names from the HANDOFF icon table. */
+/** Every icon the app renders, keyed by name: the Direction D names from the
+ * HANDOFF icon table, plus BookOpen for the "Already in your library" row. */
 const ICONS = {
-  // current call sites (material names → lucide equivalents)
-  admin_panel_settings: Shield,
-  auto_stories: BookOpen,
-  bedtime: Moon,
-  check: Check,
-  chevron_left: ChevronLeft,
-  close: X,
-  close_fullscreen: Minimize2,
-  devices: MonitorSmartphone,
-  error: CircleAlert,
-  headphones: Headphones,
-  keyboard_double_arrow_left: ChevronsLeft,
-  keyboard_double_arrow_right: ChevronsRight,
-  logout: LogOut,
-  more_horiz: Ellipsis,
-  open_in_full: Maximize2,
-  pause: Pause,
-  person: User,
-  play_arrow: Play,
-  progress_activity: LoaderCircle,
-  record_voice_over: Speech,
-  refresh: RefreshCw,
-  replay: RotateCcw,
-  restart_alt: RotateCcw,
-  search: Search,
-  settings: Settings,
-  skip_next: SkipForward,
-  skip_previous: SkipBack,
-  speed: Gauge,
-  stop: Square,
-  task_alt: CircleCheck,
-  toc: List,
-  upload: Upload,
-  visibility: Eye,
-  visibility_off: EyeOff,
-  warning: TriangleAlert,
-  // Direction D table (HANDOFF.md §2)
   House,
   LibraryBig,
   Menu,
@@ -136,21 +88,13 @@ const ICONS = {
   Search,
   Upload,
   ArrowLeft,
+  BookOpen,
 } as const satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
 
 /** The four transport icons are drawn filled (HANDOFF icon table). */
-const FILLED = new Set<IconName>([
-  "play_arrow",
-  "pause",
-  "skip_next",
-  "skip_previous",
-  "Play",
-  "Pause",
-  "SkipBack",
-  "SkipForward",
-]);
+const FILLED = new Set<IconName>(["Play", "Pause", "SkipBack", "SkipForward"]);
 
 /** Lucide icon at the requested size, stroke width 2. Decorative unless
  * `label` is given; forward the button's accessible name through `label`,

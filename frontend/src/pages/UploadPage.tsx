@@ -79,7 +79,7 @@ function RemoveButton({ name, onClick }: { name: string; onClick: () => void }) 
 
 function IndeterminateBar({ name }: { name: string }) {
   return (
-    <div role="progressbar" aria-label={name} className="h-1 overflow-hidden rounded-full bg-track">
+    <div role="progressbar" aria-label={name} className="h-1 overflow-hidden rounded-full bg-border">
       <div className="bar-indeterminate" />
     </div>
   );
@@ -106,7 +106,7 @@ function BookRow({
     return (
       <RowFrame
         row={row}
-        icon="task_alt"
+        icon="CircleCheck"
         iconClass="text-success"
         status={`Ready · ${chapters} chapter${chapters === 1 ? "" : "s"}`}
         statusClass="text-success"
@@ -118,7 +118,7 @@ function BookRow({
     return (
       <RowFrame
         row={row}
-        icon="warning"
+        icon="TriangleAlert"
         iconClass="text-warning"
         status="Added · scanned PDF, needs OCR"
         statusClass="text-warning"
@@ -130,7 +130,7 @@ function BookRow({
     return (
       <RowFrame
         row={row}
-        icon="error"
+        icon="TriangleAlert"
         iconClass="text-danger"
         status={`Couldn’t add · ${book?.error ?? "The file couldn’t be processed."}`}
         statusClass="text-danger"
@@ -142,8 +142,8 @@ function BookRow({
   return (
     <RowFrame
       row={row}
-      icon={converting ? "restart_alt" : "upload"}
-      iconClass="text-fg-2"
+      icon="RefreshCw"
+      iconClass="text-fg-2 animate-spin"
       status={converting ? "Converting Kindle file to EPUB…" : "Processing…"}
       statusClass="text-fg-2"
       bar={<IndeterminateBar name={row.name} />}
@@ -262,7 +262,7 @@ export function UploadPage() {
                 <RowFrame
                   key={row.key}
                   row={row}
-                  icon="upload"
+                  icon="Upload"
                   iconClass="text-fg-2"
                   status={`Uploading · ${row.progress}%`}
                   statusClass="text-fg-2"
@@ -273,7 +273,7 @@ export function UploadPage() {
                       aria-valuenow={row.progress}
                       aria-valuemin={0}
                       aria-valuemax={100}
-                      className="h-1 overflow-hidden rounded-full bg-track"
+                      className="h-1 overflow-hidden rounded-full bg-border"
                     >
                       <div
                         className="h-full rounded-full bg-accent transition-[width]"
@@ -288,7 +288,7 @@ export function UploadPage() {
                 <RowFrame
                   key={row.key}
                   row={row}
-                  icon="auto_stories"
+                  icon="BookOpen"
                   iconClass="text-fg-2"
                   status="Already in your library"
                   statusClass="text-fg-2"
@@ -298,7 +298,7 @@ export function UploadPage() {
                 <RowFrame
                   key={row.key}
                   row={row}
-                  icon="error"
+                  icon="TriangleAlert"
                   iconClass="text-danger"
                   status={`Couldn’t add · ${row.message}`}
                   statusClass="text-danger"

@@ -136,7 +136,7 @@ function AboutPanel() {
       )}
       <Link
         to={`/books/${book.id}`}
-        className="tap inline-flex h-10 w-fit items-center rounded-full border border-control-border px-4 text-base font-semibold text-fg no-underline hover:bg-raised"
+        className="tap inline-flex h-10 w-fit items-center rounded-full border border-border px-4 text-base font-semibold text-fg no-underline hover:bg-raised"
       >
         Open book
       </Link>

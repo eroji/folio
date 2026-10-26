@@ -317,8 +317,8 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col gap-8">
       <h1 className="font-display text-4xl">Settings</h1>
-      <div className="flex flex-wrap items-start gap-8 desktop:gap-12">
-        <nav aria-label="Settings sections" className="flex w-full flex-col gap-1 desktop:w-52">
+      <div className="flex flex-wrap items-start gap-8 lg:gap-12">
+        <nav aria-label="Settings sections" className="flex w-full flex-col gap-1 lg:w-52">
           {SECTIONS.map(({ id, label }) => (
             <a
               key={id}
@@ -335,7 +335,7 @@ export function SettingsPage() {
           ))}
         </nav>
 
-        <div className="flex w-full min-w-0 flex-1 flex-col gap-10 desktop:max-w-[760px]">
+        <div className="flex w-full min-w-0 flex-1 flex-col gap-10 lg:max-w-[760px]">
           {isPending ? (
             <div className="h-72 animate-pulse rounded-xl bg-surface" aria-busy="true" />
           ) : (
