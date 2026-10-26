@@ -8,7 +8,7 @@
  * pinned footer. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { usePlayer } from "../player/usePlayer";
+import { usePlayer, type PlayerContextValue } from "../player/usePlayer";
 import { Icon } from "./Icon";
 
 const SENTENCES = /[^.!?。！？…]+[.!?。！？…]*/g;
@@ -26,7 +26,28 @@ interface Sentence {
   segmentIdx: number;
 }
 
-const SCROLL_MS = 250; // auto-scroll target refresh throttle
+/** Characters spoken at the current position. While playing this measures the
+ * active element's clock directly — the provider's `time` only moves on the
+ * throttled (~4 Hz) `timeupdate` and the highlight would lag the audio. */
+function spokenChars(p: PlayerContextValue): number {
+  const current = p.segments[p.index];
+  if (!current) return 0;
+  const duration = p.status[current.id]?.duration_s ?? 0;
+  const t = p.playing ? p.elements[p.active]?.currentTime ?? p.time : p.time;
+  const share = duration > 0 ? Math.min(1, t / duration) : 0;
+  return current.char_start + share * Math.max(0, current.char_end - current.char_start);
+}
+
+/** Index of the sentence being spoken at character offset `spoken`. */
+function activeSentenceIndex(all: Sentence[], spoken: number): number {
+  let i = 0;
+  for (let j = 0; j < all.length; j += 1) {
+    if ((all[j]?.start ?? 0) <= spoken) i = j;
+    else break;
+  }
+  return i;
+}
+
 const SCROLL_ANIM_MS = 300; // ease-out animation toward the target
 const FONT_KEY = "folio-readalong-font";
 /** Text-size button steps applied to 22/26 px (phone 21/25). */
@@ -111,9 +132,12 @@ export function ReadAlong({
   const own = useReadAlongControls();
   const c = controls ?? own;
   const panel = useRef<HTMLDivElement>(null);
-  const lastScroll = useRef(0);
   const animation = useRef<number | null>(null);
   const jumpTo = useRef<(() => void) | null>(null);
+  const playerRef = useRef(player);
+  const allRef = useRef<Sentence[]>([]);
+  const activeRef = useRef(0);
+  const [, setActiveTick] = useState(0);
 
   const all = useMemo(
     () =>
@@ -128,15 +152,12 @@ export function ReadAlong({
     [player.segments],
   );
 
-  const current = player.segments[player.index];
-  const duration = current ? player.status[current.id]?.duration_s ?? 0 : 0;
-  const share = duration > 0 ? Math.min(1, player.time / duration) : 0;
-  const spoken = current ? current.char_start + share * Math.max(0, current.char_end - current.char_start) : 0;
-  let active = 0;
-  for (let i = 0; i < all.length; i += 1) {
-    if ((all[i]?.start ?? 0) <= spoken) active = i;
-    else break;
-  }
+  playerRef.current = player;
+  allRef.current = all;
+  // While playing this reads the live element clock (see spokenChars), so a
+  // render — from any source — always shows the sentence being spoken now.
+  const active = activeSentenceIndex(all, spokenChars(player));
+  activeRef.current = active;
   const activeSentence: Sentence | undefined = all[active];
 
   function scrollToCurrent() {
@@ -163,30 +184,33 @@ export function ReadAlong({
   }
   jumpTo.current = scrollToCurrent;
 
-  // Runs on every render (timeupdate bumps it); the throttle refreshes the
-  // target ≤ 4/s. Scrolls the panel only — never the window.
+  // While playing, measure the audio clock at rAF cadence. A re-render (and
+  // with it the scroll animation in the layout effect below) happens only
+  // when the sentence actually changes — never every frame, and never toward
+  // the stale timeupdate snapshot. The loop stops on pause/end/unmount.
   useEffect(() => {
-    if (!player.playing || !c.autoScroll || manual) return;
-    const now = Date.now();
-    if (now - lastScroll.current < SCROLL_MS) return;
-    lastScroll.current = now;
-    scrollToCurrent();
-  });
+    if (!player.playing) return;
+    let raf = requestAnimationFrame(function step() {
+      const next = activeSentenceIndex(allRef.current, spokenChars(playerRef.current));
+      if (next !== activeRef.current) setActiveTick((n) => n + 1);
+      raf = requestAnimationFrame(step);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [player.playing]);
 
   // A manual scroll pauses the follow until "Back to current" (or the
   // auto-scroll toggle is clicked off and on again).
   const [manual, setManual] = useState(false);
 
-  // The initial follow: place the current sentence as soon as the content
-  // mounts and whenever the segment, chapter or book changes while the
-  // follow is on — without requiring an auto-scroll toggle. The rAF defers
-  // the measurement until the new sentences have laid out.
+  // The follow: place the current sentence on mount, whenever the segment,
+  // chapter or book changes, and whenever the spoken sentence changes while
+  // playing — without requiring an auto-scroll toggle. useLayoutEffect runs
+  // after the new aria-current has been committed, so the geometry is right.
   useLayoutEffect(() => {
     if (!c.autoScroll || manual) return;
-    const raf = requestAnimationFrame(scrollToCurrent);
-    return () => cancelAnimationFrame(raf);
+    scrollToCurrent();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scrollToCurrent reads live geometry from the DOM and refs
-  }, [player.book?.id, player.chapter?.id, player.index, all.length, c.autoScroll, manual]);
+  }, [player.book?.id, player.chapter?.id, player.index, active, all.length, c.autoScroll, manual]);
 
   useEffect(() => stopAnimation, []);
 

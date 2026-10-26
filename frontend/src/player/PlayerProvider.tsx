@@ -74,6 +74,8 @@ export interface PlayerContextValue {
   /** Sum of the current chapter's known segment durations, in seconds. */
   chapterTotal: number;
   elements: readonly [HTMLAudioElement, HTMLAudioElement];
+  /** Index (into `elements`) of the element currently playing. */
+  active: 0 | 1;
   load: (bookId: string, chapterId?: string) => Promise<void>;
   play: () => Promise<void>;
   pause: () => void;
@@ -757,6 +759,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     chapterElapsed: elapsed(),
     chapterTotal: chapterTotal(),
     elements: els,
+    active: s.active,
     load,
     play,
     pause,

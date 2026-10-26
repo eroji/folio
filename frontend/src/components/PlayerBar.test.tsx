@@ -51,6 +51,12 @@ describe("PlayerBar", () => {
     expect(getPlayer().book).toBeNull();
   });
 
+  it("the 32 px cover stays clean: no percent badge in the player bar", async () => {
+    await loadBar();
+    const bar = await screen.findByRole("region", { name: "Now playing" });
+    expect(within(bar).queryByText(/^\d+%$/)).toBeNull();
+  });
+
   it("play/pause, skips and chapter steps drive the provider", async () => {
     const getPlayer = await loadBar();
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
