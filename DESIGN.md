@@ -84,8 +84,8 @@
   Chapter rows: played = secondary + `Check` + sr-only "Played"; playing = raised
   fill, accent `AudioLines`, "N% · M left".
 - **Player `/player`:** strong cover glow; left cover + chapter title; right tabs
-  UP NEXT / READ ALONG / ABOUT. Read along is lyrics-style Figtree (past 38 %,
-  current 26 px full white with `aria-current`, next 62 %), scrolls in its own
+  UP NEXT / READ ALONG / ABOUT. Read along is lyrics-style Figtree (already-read
+  32 %, current full white with `aria-current`, upcoming 68 %, all one size), scrolls in its own
   area, auto-scroll with a "Back to current" pill. The phone player is full-screen
   with a 72 px play/pause and sheet tabs.
 - **Search `/search?q=`:** type chips, polite result count, top-result surface
@@ -100,8 +100,16 @@
 - **Sign in `/login`:** accent glow, centered 380 px column, mark + "folio", 48 px
   pill inputs (password with `Eye`/`EyeOff`), 52 px white pill; one error alert
   that never says which field was wrong.
-- **Restyle-only screens** (Edit details, Find metadata, cover dialog, narrator
-  dialog, confirms, Admin, About tab, empty/loading/error/offline/needs-OCR/failed
+- **Edit details `/books/:id/edit`:** 600 px right-hand drawer over the book page
+  (Manage tab behind it), focus-trapped, with an unsaved-change count and discard
+  confirm. Groups: Cover (upload or link → in-drawer 2:3 crop, remove), Book
+  (title, subtitle, draggable author chips, series + number), Publication
+  (publisher, normalised date, language, genre), Identifiers (ISBN-10/13 checked
+  on blur), Tags (chips) and Description. A lock after a label means the field is
+  protected from automatic metadata; clicking it unlocks. Manage has no separate
+  Cover row; the narrator is set only from the book's ⋮ menu.
+- **Restyle-only screens** (Find metadata, narrator dialog, confirms, Admin,
+  About tab, empty/loading/error/offline/needs-OCR/failed
 
 Favicons and app icons are transparent (no dark tile) with the bookmark mark
 scaled up to ~61 % of the canvas.

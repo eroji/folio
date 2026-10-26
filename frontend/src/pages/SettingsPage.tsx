@@ -268,7 +268,7 @@ function VoicePreview({ id, name }: { id: string; name: string }) {
   );
 }
 
-/** One language row: "English en", 220 px pill select (Server default
+/** One language row: "English en", 250 px pill select (Server default
  * first, then the language's voices by display name) + Preview. A pinned
  * voice the server no longer lists reads "(no longer available)" until the
  * row changes; playback then falls back to the server default. */
@@ -311,7 +311,7 @@ function VoiceRow({
       <div className="flex items-center gap-2">
         <PillSelect
           ariaLabel={`Voice for ${label}`}
-          width="w-[220px]"
+          width="w-[250px]"
           value={value ?? ""}
           onChange={(next) => onChange(next === "" ? null : next)}
         >

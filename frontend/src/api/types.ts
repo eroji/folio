@@ -42,6 +42,9 @@ export interface Book {
   /** Server-computed: the caller is an admin or uploaded this book. Absent on
    * payloads predating M6 — fall back to `role === "admin"`. */
   can_edit?: boolean;
+  /** Field names protected from automatic updates (Edit details locks). Absent
+   * until the backend workstream lands the unlock endpoint. */
+  locked_fields?: string[];
   total_chars: number;
   est_duration_s: number | null;
   created_at: string;

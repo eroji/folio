@@ -157,3 +157,32 @@ export function useSetCoverUrl(id: string) {
     onSuccess: (data) => setCachedCover(queryClient, id, data),
   });
 }
+
+/** DELETE /books/{id}/cover → 204; the cover_url becomes null. */
+export function useDeleteCover(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.del(`/books/${id}/cover`),
+    onSuccess: () => {
+      queryClient.setQueryData<BookDetailResponse>(["book", id], (old) =>
+        old ? { ...old, book: { ...old.book, cover_url: null } } : old,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
+    },
+  });
+}
+
+/** POST /books/{id}/unlock {field}: removes one field from locked_fields. */
+export function useUnlockField(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (field: string) =>
+      api.post<{ book: Book }>(`/books/${id}/unlock`, { field }).then((data) => data.book),
+    onSuccess: (book) => {
+      queryClient.setQueryData<BookDetailResponse>(["book", id], (old) =>
+        old ? { ...old, book } : old,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
+    },
+  });
+}

@@ -231,7 +231,7 @@ describe("SettingsPage", () => {
       expect(screen.queryByText("zh-TW")).toBeNull();
       // Same width everywhere so the control column lines up.
       for (const select of selects)
-        expect(String(select.parentElement?.getAttribute("class"))).toContain("w-[220px]");
+        expect(String(select.parentElement?.getAttribute("class"))).toContain("w-[250px]");
     });
 
     it("lists Server default first and saves null when it is chosen", async () => {
