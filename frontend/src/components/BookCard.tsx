@@ -83,7 +83,7 @@ export function BookCard({
 }: {
   book: Book;
   progress?: Progress | null;
-  /** Home shows the percent pill; Library keeps the bar only. */
+  /** Cards show the percent pill; the book-page hero passes false. */
   showPercent?: boolean;
 }) {
   const finished = Boolean(progress?.finished_at);

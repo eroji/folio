@@ -4,8 +4,8 @@ import { Icon } from "./Icon";
  * at the top-right plus a 4px accent bar along the bottom edge; finished →
  * a round accent check in the corner; not started → nothing.
  * `aria-hidden` — the cover's accessible name carries the state instead.
- * The percent pill is Home-only (`showPercent`); the book page and Library
- * keep the progress bar and finished check. Covers below ~96 px wide
+ * The percent pill is hidden only on the book-page hero (`showPercent`);
+ * every card keeps it. Covers below ~96 px wide
  * (32 px player thumb, 56 px rows) render no badge at all. */
 export function CoverProgressBadge({
   percent,

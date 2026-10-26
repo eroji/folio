@@ -37,15 +37,17 @@ def _seed(db: Session, **fields: Any) -> Book:
     [
         (["Science fiction"], "Science fiction"),
         (["sci-fi"], "Science fiction"),
-        (["Detective and mystery stories"], "Mystery & thriller"),
+        (["Detective and mystery stories"], "Mystery"),
         (["Fantasy", "Science fiction"], "Fantasy"),  # first recognizable subject wins
         (["Cooking", "MYTHOLOGY"], "Myth & epic"),  # case-insensitive, skips noise
         (["Juvenile fiction"], "Children's"),
         (["Historical fiction"], "Historical fiction"),  # not "History" or "Literary fiction"
         (["non-fiction"], "Nonfiction"),
         (["Science"], "Science"),  # not "Science fiction"
-        (["Mystery", "Fiction"], "Mystery & thriller"),  # bare EPUB subject
-        (["Crime"], "Mystery & thriller"),
+        (["Mystery", "Fiction"], "Mystery"),  # bare EPUB subject
+        (["Thriller"], "Thriller"),
+        (["Suspense"], "Thriller"),
+        (["Crime"], "Mystery"),
         (["Horror"], "Gothic & horror"),
         (["Biography & memoir"], "Biography & memoir"),  # genre names map to themselves
         (["Cooking", "Travel"], None),  # unmapped → NULL
@@ -62,7 +64,8 @@ def test_genre_list_matches_the_handoff() -> None:
         "Literary fiction",
         "Science fiction",
         "Fantasy",
-        "Mystery & thriller",
+        "Mystery",
+        "Thriller",
         "Gothic & horror",
         "Romance",
         "Historical fiction",
@@ -155,13 +158,13 @@ async def test_list_group_genre_counts_order_and_cap(
 ) -> None:
     for i in range(13):
         _seed(db, title=f"F{i}", genre="Fantasy")
-    _seed(db, title="M1", genre="Mystery & thriller")
+    _seed(db, title="M1", genre="Mystery")
     _seed(db, title="N1")  # no genre
 
     body = (await auth_client.get("/api/v1/books", params={"group": "genre"})).json()
     groups = body["groups"]
-    assert [g["label"] for g in groups] == ["Fantasy", "Mystery & thriller", "No genre yet"]
-    assert [g["key"] for g in groups] == ["Fantasy", "Mystery & thriller", None]
+    assert [g["label"] for g in groups] == ["Fantasy", "Mystery", "No genre yet"]
+    assert [g["key"] for g in groups] == ["Fantasy", "Mystery", None]
     assert [g["count"] for g in groups] == [13, 1, 1]
     assert len(groups[0]["books"]) == 12  # first N per group
     assert {b["title"] for b in groups[1]["books"]} == {"M1"}
@@ -216,7 +219,7 @@ async def test_list_genre_filter(auth_client: httpx.AsyncClient, db: Session) ->
 def test_embedded_tags_derive_the_genre_on_import() -> None:
     book = Book(title="Salvation of a Saint", language="en", locked_fields=[])
     _apply_metadata(book, EmbeddedMetadata(tags=["Mystery", "Fiction"]))
-    assert book.genre == "Mystery & thriller"
+    assert book.genre == "Mystery"
 
 
 def test_embedded_tags_never_overwrite_a_locked_genre() -> None:

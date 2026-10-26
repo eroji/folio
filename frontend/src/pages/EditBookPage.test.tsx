@@ -127,6 +127,16 @@ describe("EditBookPage", () => {
     expect(patches[0]).toEqual({ genre: "Science fiction" });
   });
 
+  it("PATCHes tags edited after the book is processed", async () => {
+    renderEdit();
+    const add = await screen.findByLabelText("Add tags");
+    fireEvent.change(add, { target: { value: "Thriller" } });
+    fireEvent.keyDown(add, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ tags: ["Thriller"] });
+  });
+
   it("PATCHes free text typed under Other… genres", async () => {
     renderEdit();
     fireEvent.change(await screen.findByLabelText("Genre"), { target: { value: "__other__" } });

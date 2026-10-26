@@ -258,3 +258,6 @@ One line each: decision, why, what it costs.
 - Admin jobs show the user who triggered the job (`jobs.user_id`, migration 0010); null for worker/system jobs, pre-0010 rows and deleted users (FK `ON DELETE SET NULL`). Retry keeps the original attribution.
 
 - Genre is derived from the file's own `dc:subject`/Keywords tags on ingest (bare subjects like `Mystery` map to `Mystery & thriller`), not only from online provider subjects; manual genres stay locked. Migration 0011 backfills `books.genre` for books imported before this.
+
+- The fixed genre list is split into `Mystery` and `Thriller` (the handoff's combined "Mystery & thriller" is superseded). Tags map to Mystery (mystery/crime/detective) or Thriller (thriller/suspense/espionage); migration 0012 re-derives existing rows and falls back to Mystery.
+- Percent overlay: shown on Home and Library covers, hidden on the book-page hero (bar and finished check stay everywhere). Genre and tags remain editable after processing via Manage → Details → Edit details; manual genre/tags are locked against metadata refresh.
