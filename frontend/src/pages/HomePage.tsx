@@ -105,17 +105,28 @@ function chapterLength(seconds: number): string {
   return minutes < 60 ? `${minutes} min` : formatLength(seconds);
 }
 
-function NextChapterRow({ item, onStart }: { item: HomeNextItem; onStart: () => void }) {
+function NextChapterRow({
+  item,
+  phone,
+  onStart,
+}: {
+  item: HomeNextItem;
+  phone: boolean;
+  onStart: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onStart}
       className="tap flex min-w-0 items-center gap-3.5 rounded-lg px-1 py-1.5 text-left hover:bg-raised"
     >
-      <BookCover book={item.book} className="aspect-[2/3] w-9 shrink-0 rounded-xs" />
+      <BookCover
+        book={item.book}
+        className={clsx("shrink-0 rounded-md", phone ? "h-18 w-12" : "h-21 w-14")}
+      />
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate text-md font-semibold">
-          {item.chapter.idx + 1} · {item.chapter.title}
+          {item.chapter.number ?? item.chapter.idx + 1} · {item.chapter.title}
         </span>
         <span className="truncate text-base text-fg-2">
           {item.book.title}
@@ -304,6 +315,7 @@ export function HomePage() {
                   <NextChapterRow
                     key={item.chapter.id}
                     item={item}
+                    phone={phone}
                     onStart={() => void start(item.book.id, item.chapter.id)}
                   />
                 ))}

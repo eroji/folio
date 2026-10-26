@@ -88,6 +88,8 @@ export function useBookGroups(params: BookListParams & { group: BookGroup }, opt
 export interface HomeChapter {
   id: string;
   idx: number;
+  /** 1-based position among included chapters (next_chapters only). */
+  number?: number;
   title: string;
   duration_s?: number;
 }
