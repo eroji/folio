@@ -186,12 +186,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderDrawer(overrides: Partial<Book> = {}, reviewItems?: Candidate[], find?: boolean) {
+function renderDrawer(overrides: Partial<Book> = {}, reviewItems?: Candidate[]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onClose = vi.fn();
   render(
     <QueryClientProvider client={client}>
-      <EditDetailsDrawer book={makeBook(overrides)} onClose={onClose} initialReviewItems={reviewItems} initialFind={find} />
+      <EditDetailsDrawer book={makeBook(overrides)} onClose={onClose} initialReviewItems={reviewItems} />
     </QueryClientProvider>,
   );
   return { onClose };
@@ -376,12 +376,6 @@ describe("EditDetailsDrawer", () => {
     expect(searchUrls).toHaveLength(0);
     expect(screen.getByRole("button", { name: /96%/ }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Use all" })).toBeTruthy();
-  });
-
-  it("initialFind opens the pane and searches automatically", async () => {
-    renderDrawer({}, undefined, true);
-    expect(screen.getByRole("region", { name: "Find metadata" })).toBeTruthy();
-    await waitFor(() => expect(searchUrls).toHaveLength(1));
   });
 
   it("Cancel closes directly when nothing changed", () => {

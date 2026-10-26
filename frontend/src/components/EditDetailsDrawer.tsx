@@ -779,20 +779,17 @@ export function EditDetailsDrawer({
   book,
   onClose,
   initialReviewItems,
-  initialFind,
 }: {
   book: Book;
   onClose: () => void;
   /** "Review metadata matches" opens the pane with these results preloaded. */
   initialReviewItems?: Candidate[];
-  /** Manage → "Find metadata" opens the pane and auto-searches. */
-  initialFind?: boolean;
 }) {
   const [form, setForm] = useState<Form>(() => fromBook(book));
   const [isbnTouched, setIsbnTouched] = useState({ isbn10: false, isbn13: false });
   const [unlocked, setUnlocked] = useState<string[]>([]);
   const [discardOpen, setDiscardOpen] = useState(false);
-  const [findOpen, setFindOpen] = useState(Boolean(initialReviewItems?.length) || Boolean(initialFind));
+  const [findOpen, setFindOpen] = useState(Boolean(initialReviewItems?.length));
   const [items, setItems] = useState<Candidate[] | null>(initialReviewItems ?? null);
   const [selected, setSelected] = useState(initialReviewItems?.length ? 0 : -1);
   // The result driving the suggestion pills; null once the pane is closed with X.

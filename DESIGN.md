@@ -112,8 +112,9 @@
   (drawer 600 → 1040 px; overlay under 1100 px). Each result offers per-field
   accent suggestion pills with Use/Undo and "Use all" (locked fields excluded);
   used values are deferred until Save and save without locking, typed fields
-  still lock. Manage → Details also has a Find metadata entry point. The
-  narrator is set only from the book's ⋮ menu.
+  still lock. Manage has no Find button: the pane opens only from the drawer
+  (or the Review metadata matches banner). The narrator is set only from the
+  book's ⋮ menu.
 - **Restyle-only screens** (Find metadata, narrator dialog, confirms, Admin,
   About tab, empty/loading/error/offline/needs-OCR/failed
 

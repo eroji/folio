@@ -574,8 +574,8 @@ describe("BookDetailPage", () => {
     expect(screen.getByText(/Cover, title, author, description and other metadata./)).toBeTruthy();
     expect(screen.getByText(/2 fields you edited are protected from automatic updates/)).toBeTruthy();
 
-    // Manage offers both entry points: the drawer and Find metadata beside the form.
-    expect((await screen.findByRole("link", { name: /Find metadata/ })).getAttribute("href")).toBe(`/books/${ID}/edit`);
+    // Find metadata lives only inside the drawer (user override).
+    expect(screen.queryByRole("link", { name: /Find metadata/ })).toBeNull();
 
     const toggle = screen.getByRole("switch", { name: "Narrate One Way" });
     expect(toggle.getAttribute("aria-checked")).toBe("true");
@@ -809,17 +809,6 @@ describe("BookDetailPage", () => {
     });
     await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull());
     expect(screen.getByRole("tab", { name: "Manage" }).getAttribute("aria-selected")).toBe("true");
-  });
-
-  it("Find metadata in Manage opens the drawer at /edit with the pane active", async () => {
-    book = makeBook({ can_edit: true });
-    renderDetail();
-    fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    expect(await screen.findByRole("link", { name: /Edit details/ })).toBeTruthy();
-    fireEvent.click(await screen.findByRole("link", { name: /Find metadata/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
-    expect(within(dialog).getByRole("region", { name: "Find metadata" })).toBeTruthy();
-    expect(within(dialog).getByText("Pick a result on the left, then use the suggestions you want.")).toBeTruthy();
   });
 
   it("hides the banner when there are no candidates", async () => {
