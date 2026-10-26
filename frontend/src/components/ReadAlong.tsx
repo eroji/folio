@@ -1,6 +1,6 @@
 /** Read-along (handoff "Now playing, expanded"): the chapter as lyrics-style
- * sentences — past at 38% white, the current one full white and larger,
- * upcoming at 62%. The text scrolls inside its own area (never the window)
+ * sentences — already-read darker, the current one full white (same size),
+ * upcoming lighter. The text scrolls inside its own area (never the window)
  * and keeps the current sentence about a third from the top while auto-scroll
  * is on; a manual scroll pauses the follow and shows "Back to current".
  * Tapping a sentence seeks there. `useReadAlongControls` lifts the text-size
@@ -49,9 +49,11 @@ function activeSentenceIndex(all: Sentence[], spoken: number): number {
 }
 
 const SCROLL_ANIM_MS = 300; // ease-out animation toward the target
-const FONT_KEY = "folio-readalong-font";
-/** Text-size button steps applied to 22/26 px (phone 21/25). */
-const FONT_SCALES = [1, 1.15, 1.3];
+const FONT_KEY = "folio-readalong-font-v2";
+/** Text-size steps around the 20px (phone 19px) default. The default is the
+ * middle step so both A− and A+ work out of the box. */
+const FONT_SCALES = [0.9, 1, 1.15];
+const DEFAULT_FONT_STEP = 1;
 
 export interface ReadAlongControls {
   autoScroll: boolean;
@@ -64,8 +66,10 @@ export interface ReadAlongControls {
 export function useReadAlongControls(): ReadAlongControls {
   const [autoScroll, setAutoScroll] = useState(true);
   const [fontStep, setFontStep] = useState(() => {
-    const stored = Number(localStorage.getItem(FONT_KEY));
-    return Number.isInteger(stored) && stored >= 0 && stored < FONT_SCALES.length ? stored : 0;
+    const raw = localStorage.getItem(FONT_KEY);
+    const stored = raw === null ? NaN : Number(raw);
+    const valid = Number.isInteger(stored) && stored >= 0 && stored < FONT_SCALES.length;
+    return valid ? stored : DEFAULT_FONT_STEP;
   });
   const stepFont = useCallback(
     (delta: number) =>
@@ -239,8 +243,7 @@ export function ReadAlong({
   };
 
   const scale = FONT_SCALES[c.fontStep] ?? 1;
-  const base = (phone ? 21 : 22) * scale;
-  const currentSize = (phone ? 25 : 26) * scale;
+  const base = (phone ? 19 : 20) * scale;
 
   return (
     <div className={clsx("relative mx-auto flex min-h-0 w-full max-w-[620px] flex-col", className)}>
@@ -272,6 +275,7 @@ export function ReadAlong({
           "min-h-0 flex-1 overflow-y-auto overscroll-contain",
           phone ? "no-scrollbar" : "scroll-thin",
           phone && "fade-edges",
+          manual ? "pb-16" : "pb-12", // breathing room above the player bar / the pill
         )}
       >
         <div
@@ -285,29 +289,29 @@ export function ReadAlong({
               key={`${sentence.start}-${sentence.segmentIdx}`}
               aria-current={i === active ? "true" : undefined}
               onClick={() => tapSentence(sentence)}
-              style={i === active ? { fontSize: currentSize } : undefined}
               className={clsx("m-0 cursor-pointer", i < active ? "ra-past" : i === active ? "ra-current" : "ra-next")}
             >
               {sentence.text}
             </p>
           ))}
         </div>
-        {manual && c.autoScroll && (
-          <button
-            type="button"
-            onClick={() => {
-              setManual(false);
-              jumpTo.current?.();
-            }}
-            className="tap sticky bottom-3 left-1/2 z-10 -ml-[64px] h-9 w-32 rounded-full bg-raised text-sm font-semibold text-fg shadow-(--shadow-menu) hover:bg-border"
-          >
-            Back to current
-          </button>
-        )}
         <p className="sr-only" aria-live="polite">
           {activeSentence?.text}
         </p>
       </article>
+      {/* Outside the scroller: sticky inside it clipped against the player bar. */}
+      {manual && c.autoScroll && (
+        <button
+          type="button"
+          onClick={() => {
+            setManual(false);
+            jumpTo.current?.();
+          }}
+          className="tap absolute bottom-3 left-1/2 z-10 h-9 w-32 -translate-x-1/2 rounded-full bg-raised text-sm font-semibold text-fg shadow-(--shadow-menu) hover:bg-border"
+        >
+          Back to current
+        </button>
+      )}
     </div>
   );
 }

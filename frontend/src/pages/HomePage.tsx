@@ -125,7 +125,8 @@ function NextChapterRow({
     >
       <BookCover
         book={item.book}
-        className={clsx("shrink-0 rounded-md", phone ? "h-18 w-12" : "h-21 w-14")}
+        showPlaceholderText={false}
+        className={clsx("shrink-0 rounded-md", phone ? "aspect-[2/3] w-12" : "aspect-[2/3] w-14")}
       />
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate text-md font-semibold">
@@ -135,6 +136,9 @@ function NextChapterRow({
           {item.book.title}
           {item.chapter.duration_s != null && ` · ${chapterLength(item.chapter.duration_s)}`}
         </span>
+        {item.book.authors.length > 0 && (
+          <span className="truncate text-sm text-fg-2">{item.book.authors.join(", ")}</span>
+        )}
       </span>
     </button>
   );

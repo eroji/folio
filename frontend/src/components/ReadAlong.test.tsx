@@ -40,7 +40,7 @@ describe("ReadAlong", () => {
     return document.querySelector<HTMLElement>('article[aria-label="Read along"]')!;
   }
 
-  it("marks the current sentence larger and bright, past dimmer, upcoming mid", async () => {
+  it("marks the current sentence bright, past dimmer, upcoming mid — all the same size", async () => {
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer);
     act(() => {
@@ -49,7 +49,7 @@ describe("ReadAlong", () => {
     const current = document.querySelector('[aria-current="true"]');
     expect(current?.textContent).toContain(`Two ${CH1}-seg1 here`);
     expect(current?.className).toContain("ra-current");
-    expect(current?.getAttribute("style")).toContain("font-size: 26px");
+    expect(current?.getAttribute("style")).toBeNull(); // the highlight is colour only
     expect(document.querySelector(".ra-past")).toBeTruthy();
     expect(document.querySelector(".ra-next")).toBeTruthy();
     expect(document.querySelector(".sr-only")?.textContent).toContain(`Two ${CH1}-seg1 here`);
@@ -225,7 +225,7 @@ describe("ReadAlong", () => {
     expect(scrollTop()).toBeCloseTo(900 - 400 / 3, 0);
   });
 
-  it("reads at the handoff sizes in a 620px column that scrolls internally", () => {
+  it("reads at the default size in a 620px column that scrolls internally", () => {
     renderPlayer(<ReadAlong />);
     const box = panel();
     const column = box.parentElement!;
@@ -237,7 +237,7 @@ describe("ReadAlong", () => {
     expect(box.className).toContain("scroll-thin"); // desktop shows the styled scrollbar
     expect(box.className).not.toContain("no-scrollbar");
     const text = box.firstElementChild as HTMLElement;
-    expect(text.getAttribute("style")).toContain("font-size: 22px");
+    expect(text.getAttribute("style")).toContain("font-size: 20px");
     expect(text.getAttribute("style")).toContain("line-height: 1.55");
   });
 
@@ -246,33 +246,37 @@ describe("ReadAlong", () => {
     const box = panel();
     expect(box.className).toContain("no-scrollbar");
     expect(box.className).not.toContain("scroll-thin");
-    expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 21px");
+    expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 19px");
   });
 
-  it("the font-size buttons step the reading size, clamp at the ends, and persist", () => {
+  it("the font-size buttons start at the default (both directions available), clamp, and persist", () => {
     renderPlayer(<ReadAlong />);
     const box = panel();
     const inc = screen.getByRole("button", { name: /^Increase font size/ }) as HTMLButtonElement;
     const dec = screen.getByRole("button", { name: /^Decrease font size/ }) as HTMLButtonElement;
-    expect(box.dataset.fontStep).toBe("0");
-    expect(dec.disabled).toBe(true);
-    fireEvent.click(inc);
     expect(box.dataset.fontStep).toBe("1");
-    expect(localStorage.getItem("folio-readalong-font")).toBe("1");
+    expect(dec.disabled).toBe(false);
+    expect(inc.disabled).toBe(false);
     fireEvent.click(inc);
     expect(box.dataset.fontStep).toBe("2");
+    expect(localStorage.getItem("folio-readalong-font-v2")).toBe("2");
     expect(inc.disabled).toBe(true);
     fireEvent.click(inc); // stays clamped at the top
     expect(box.dataset.fontStep).toBe("2");
     fireEvent.click(dec);
     expect(box.dataset.fontStep).toBe("1");
-    expect(localStorage.getItem("folio-readalong-font")).toBe("1");
+    fireEvent.click(dec);
+    expect(box.dataset.fontStep).toBe("0");
+    expect(dec.disabled).toBe(true);
+    fireEvent.click(dec);
+    expect(box.dataset.fontStep).toBe("0");
+    expect(localStorage.getItem("folio-readalong-font-v2")).toBe("0");
   });
 
   it("the accessible labels name the current step", () => {
     renderPlayer(<ReadAlong />);
-    expect(screen.getByRole("button", { name: "Increase font size (size 1 of 3)" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Decrease font size (size 1 of 3)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Increase font size (size 2 of 3)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Decrease font size (size 2 of 3)" })).toBeTruthy();
   });
 
   it("uses the text_decrease / text_increase glyphs, not plus and minus", () => {
@@ -286,7 +290,7 @@ describe("ReadAlong", () => {
   });
 
   it("restores the persisted text size on mount", () => {
-    localStorage.setItem("folio-readalong-font", "2");
+    localStorage.setItem("folio-readalong-font-v2", "2");
     renderPlayer(<ReadAlong />);
     expect(panel().dataset.fontStep).toBe("2");
   });

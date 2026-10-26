@@ -134,6 +134,10 @@ describe("HomePage", () => {
     const next = await screen.findByRole("region", { name: "Next chapters" });
     expect(within(next).getByText("2 · The Keeper")).toBeTruthy();
     expect(within(next).getByText("Dune · 18 min")).toBeTruthy();
+    expect(within(next).getByText("Frank Herbert")).toBeTruthy(); // author under the book title
+    // The cover is a plain 2:3 tile: the fallback title never renders inside it.
+    const row = within(next).getByText("Dune · 18 min").closest("button")!;
+    expect(row.firstElementChild?.textContent).toBe("");
     expect(within(next).getByRole("button", { name: "Play next" })).toBeTruthy();
 
     const recent = await screen.findByRole("region", { name: "Recently added" });

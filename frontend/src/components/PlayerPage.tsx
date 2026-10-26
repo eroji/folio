@@ -121,7 +121,7 @@ function AboutPanel() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-4">
-        <BookCover book={book} className="aspect-[2/3] w-20 shrink-0 rounded-lg" />
+        <BookCover book={book} showPlaceholderText={false} className="aspect-[2/3] w-20 shrink-0 rounded-lg" />
         <div className="flex min-w-0 flex-col gap-1">
           <h2 className="font-display text-xl" lang={book.language}>
             {book.title}
@@ -174,7 +174,7 @@ function DesktopPlayer({ book }: { book: Book }) {
     <div className="mx-auto grid h-full min-h-0 w-full max-w-[1080px] grid-cols-1 gap-12 overflow-hidden pt-6 lg:grid-cols-[340px_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col items-center gap-6">
         <span className="relative block aspect-[2/3] w-full max-w-[300px] self-start overflow-hidden rounded-xl shadow-(--shadow-cover)">
-          <BookCover book={book} className="absolute inset-0 h-full w-full" />
+          <BookCover book={book} showPlaceholderText={false} className="absolute inset-0 h-full w-full" />
         </span>
         <div className="flex flex-col items-center gap-1.5 text-center">
           <h1 className="font-display text-2xl" lang={book.language}>
@@ -274,7 +274,7 @@ function PhoneSheet({
             <Icon name="ChevronDown" size={22} />
           </button>
           <Link to={`/books/${book.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 no-underline">
-            <BookCover book={book} className="aspect-[2/3] w-7 shrink-0 rounded-xs" />
+            <BookCover book={book} showPlaceholderText={false} className="aspect-[2/3] w-7 shrink-0 rounded-xs" />
             <span className="flex min-w-0 flex-col text-left">
               <span className="truncate text-md font-semibold text-fg">{player.chapter?.title}</span>
               <span className="truncate text-sm text-fg-2">{book.title}</span>
@@ -351,7 +351,7 @@ function PhonePlayer({ book }: { book: Book }) {
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-6 px-4">
         <span className="relative mx-auto block aspect-[2/3] w-[236px] shrink-0 overflow-hidden rounded-lg shadow-(--shadow-cover)">
-          <BookCover book={book} className="absolute inset-0 h-full w-full" />
+          <BookCover book={book} showPlaceholderText={false} className="absolute inset-0 h-full w-full" />
         </span>
         <div className="flex flex-col items-center gap-1.5 text-center">
           <h1 className="font-display text-xl" lang={book.language}>

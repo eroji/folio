@@ -28,7 +28,7 @@ export function MiniPlayer() {
         aria-label={`Open player: ${player.chapter?.title ?? book.title}, ${book.title}`}
         className="flex min-w-0 flex-1 items-center gap-3 no-underline"
       >
-        <BookCover book={book} className="aspect-[2/3] w-8 shrink-0 rounded-xs" />
+        <BookCover book={book} showPlaceholderText={false} className="aspect-[2/3] w-8 shrink-0 rounded-xs" />
         <span className="flex min-w-0 flex-col text-left">
           <span className="truncate text-md font-semibold text-fg">{player.chapter?.title}</span>
           <span className="truncate text-sm text-fg-2">{book.title}</span>

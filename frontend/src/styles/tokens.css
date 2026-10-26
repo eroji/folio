@@ -94,8 +94,8 @@ html {
 }
 
 /* Read-along text colors (lyrics style) */
-.ra-past { color: rgb(247 247 242 / 0.38); }
-.ra-next { color: rgb(247 247 242 / 0.62); }
+.ra-past { color: rgb(247 247 242 / 0.32); }
+.ra-next { color: rgb(247 247 242 / 0.68); }
 .ra-current { color: var(--color-fg); }
 
 /* Scroll areas on phone: no visible scrollbar, swipe only */

@@ -5,13 +5,17 @@ import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import type { Book, BookStatus, Progress } from "../api/types";
 
-/** Cover image or the flat raised placeholder with title/author (Direction D). */
+/** Cover image or the flat raised placeholder (Direction D). Thumbnails inside
+ * the player/next-chapter rows pass `showPlaceholderText={false}`: at 32–56px
+ * the title would wrap into an unreadable sliver. */
 export function BookCover({
   book,
   className,
+  showPlaceholderText = true,
 }: {
   book: Book;
   className?: string;
+  showPlaceholderText?: boolean;
 }) {
   if (book.cover_url) {
     return (
@@ -19,23 +23,27 @@ export function BookCover({
         src={book.cover_url}
         alt=""
         loading="lazy"
-        className={clsx("bg-raised object-cover", className)}
+        className={clsx("overflow-hidden bg-raised object-cover", className)}
       />
     );
   }
   return (
     <div
       className={clsx(
-        "bg-raised flex flex-col justify-end gap-1 p-3 text-fg",
+        "flex flex-col justify-end gap-1 overflow-hidden bg-raised p-3 text-fg",
         className,
       )}
       aria-hidden
     >
-      <p className="line-clamp-4 font-display text-sm font-semibold leading-tight">
-        {book.title}
-      </p>
-      {book.authors[0] && (
-        <p className="line-clamp-1 text-xs opacity-80">{book.authors[0]}</p>
+      {showPlaceholderText && (
+        <>
+          <p className="line-clamp-4 font-display text-sm font-semibold leading-tight">
+            {book.title}
+          </p>
+          {book.authors[0] && (
+            <p className="line-clamp-1 text-xs opacity-80">{book.authors[0]}</p>
+          )}
+        </>
       )}
     </div>
   );

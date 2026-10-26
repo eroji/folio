@@ -48,7 +48,7 @@ describe("PlayerPage (desktop)", () => {
       return node!;
     });
     expect(current.className).toContain("ra-current");
-    expect(current.getAttribute("style")).toContain("font-size: 26px"); // larger than the 22px base
+    expect(current.getAttribute("style")).toBeNull(); // colour only, same size as the rest
     const past = document.querySelector(".ra-past");
     const next = document.querySelector(".ra-next");
     expect(past?.textContent).toContain(`One ${CH1}-seg0 here`);
