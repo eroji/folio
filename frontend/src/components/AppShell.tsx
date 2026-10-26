@@ -71,8 +71,8 @@ function SideNavItem({ to, icon, label, collapsed }: { to: string; icon: IconNam
       aria-label={collapsed ? label : undefined}
       className={({ isActive }) =>
         clsx(
-          "flex min-h-12 shrink-0 items-center gap-4 rounded-xl px-3.5 text-lg no-underline",
-          collapsed && "flex-col justify-center gap-0 px-0 py-1",
+          "flex min-h-12 shrink-0 items-center rounded-xl px-3.5 text-lg no-underline",
+          collapsed ? "flex-col justify-center gap-0 px-0 py-0.5 leading-none" : "gap-4",
           isActive ? "bg-raised font-bold text-fg" : "font-medium text-fg hover:bg-raised/60",
         )
       }
