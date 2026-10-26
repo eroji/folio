@@ -27,7 +27,7 @@ function makeBook(overrides: Partial<Book> = {}): Book {
     isbn10: null,
     isbn13: null,
     tags: [],
-    genre: "Science fiction",
+    genre: "Science Fiction",
     narrator_voice: null,
     cover_url: null,
     status: "ready",
@@ -160,7 +160,7 @@ describe("LibraryPage", () => {
 
     await waitFor(() => {
       const shelves = [
-        screen.getByRole("region", { name: "Science fiction" }),
+        screen.getByRole("region", { name: "Science Fiction" }),
         screen.getByRole("region", { name: "Classics" }),
         screen.getByRole("region", { name: "No genre yet" }),
       ];
@@ -170,7 +170,7 @@ describe("LibraryPage", () => {
       expect(sections.indexOf(shelves[1]!)).toBeLessThan(sections.indexOf(shelves[2]!));
     });
     expect(
-      within(screen.getByRole("region", { name: "Science fiction" })).getByText("2"),
+      within(screen.getByRole("region", { name: "Science Fiction" })).getByText("2"),
     ).toBeTruthy();
     const seeAll = screen.getAllByRole("link", { name: "See all" });
     expect(seeAll[0]?.getAttribute("href")).toContain("/library?group=none&genre=");
@@ -193,7 +193,7 @@ describe("LibraryPage", () => {
         makeBook({
           id: "22222222-2222-2222-2222-222222222222",
           title: "Neuromancer",
-          genre: "Science fiction",
+          genre: "Science Fiction",
         }),
         makeBook({
           id: "33333333-3333-3333-3333-333333333333",

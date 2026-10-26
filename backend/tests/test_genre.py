@@ -35,21 +35,21 @@ def _seed(db: Session, **fields: Any) -> Book:
 @pytest.mark.parametrize(
     ("subjects", "want"),
     [
-        (["Science fiction"], "Science fiction"),
-        (["sci-fi"], "Science fiction"),
+        (["Science fiction"], "Science Fiction"),
+        (["sci-fi"], "Science Fiction"),
         (["Detective and mystery stories"], "Mystery"),
         (["Fantasy", "Science fiction"], "Fantasy"),  # first recognizable subject wins
         (["Cooking", "MYTHOLOGY"], "Myth & epic"),  # case-insensitive, skips noise
-        (["Juvenile fiction"], "Children's"),
-        (["Historical fiction"], "Historical fiction"),  # not "History" or "Literary fiction"
+        (["Juvenile fiction"], "Children"),
+        (["Historical fiction"], "Historical Fiction"),  # not "History" or "Fiction"
         (["non-fiction"], "Nonfiction"),
         (["Science"], "Science"),  # not "Science fiction"
         (["Mystery", "Fiction"], "Mystery"),  # bare EPUB subject
         (["Thriller"], "Thriller"),
         (["Suspense"], "Thriller"),
         (["Crime"], "Mystery"),
-        (["Horror"], "Gothic & horror"),
-        (["Biography & memoir"], "Biography & memoir"),  # genre names map to themselves
+        (["Horror"], "Horror"),
+        (["Biography"], "Biography"),  # genre names map to themselves
         (["Cooking", "Travel"], None),  # unmapped → NULL
         ([], None),
     ],
@@ -61,26 +61,23 @@ def test_genre_from_subjects(subjects: list[str], want: str | None) -> None:
 def test_genre_list_matches_the_handoff() -> None:
     assert GENRES == (
         "Classics",
-        "Literary fiction",
-        "Science fiction",
+        "Fiction",
+        "Science Fiction",
         "Fantasy",
         "Mystery",
         "Thriller",
-        "Gothic & horror",
+        "Horror",
         "Romance",
-        "Historical fiction",
+        "Historical Fiction",
         "Myth & epic",
         "Poetry",
         "Drama",
-        "Biography & memoir",
+        "Biography",
         "History",
         "Science",
         "Philosophy",
         "Nonfiction",
-        "Children's",
-        "Japanese literature",
-        "Korean literature",
-        "Chinese literature",
+        "Children",
     )
 
 

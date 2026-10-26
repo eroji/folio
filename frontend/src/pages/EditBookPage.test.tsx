@@ -121,10 +121,10 @@ describe("EditBookPage", () => {
 
   it("PATCHes a genre chosen from the configured list", async () => {
     renderEdit();
-    fireEvent.change(await screen.findByLabelText("Genre"), { target: { value: "Science fiction" } });
+    fireEvent.change(await screen.findByLabelText("Genre"), { target: { value: "Science Fiction" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]).toEqual({ genre: "Science fiction" });
+    expect(patches[0]).toEqual({ genre: "Science Fiction" });
   });
 
   it("PATCHes tags edited after the book is processed", async () => {

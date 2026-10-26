@@ -685,14 +685,14 @@ describe("BookDetailPage", () => {
       tags: ["Mystery"],
       description: "A ledger.",
       published_date: "1965",
-      genre: "Science fiction",
+      genre: "Science Fiction",
     });
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "About" }));
     expect(await screen.findByText("Publisher")).toBeTruthy();
     expect(screen.getByText("Seabed Press")).toBeTruthy();
     expect(screen.getByText("Genre")).toBeTruthy();
-    expect(screen.getByText("Science fiction")).toBeTruthy();
+    expect(screen.getByText("Science Fiction")).toBeTruthy();
     expect(screen.getByText("1965")).toBeTruthy();
     expect(screen.getByText("9781234567890")).toBeTruthy();
     expect(screen.queryByText("Series")).toBeNull(); // empty rows are hidden

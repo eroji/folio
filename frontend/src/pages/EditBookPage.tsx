@@ -19,26 +19,23 @@ const OTHER = "__other__";
 /** Mirrors backend config.GENRES (handoff §5.1): suggestions, free text allowed. */
 export const GENRES = [
   "Classics",
-  "Literary fiction",
-  "Science fiction",
+  "Fiction",
+  "Science Fiction",
   "Fantasy",
   "Mystery",
   "Thriller",
-  "Gothic & horror",
+  "Horror",
   "Romance",
-  "Historical fiction",
+  "Historical Fiction",
   "Myth & epic",
   "Poetry",
   "Drama",
-  "Biography & memoir",
+  "Biography",
   "History",
   "Science",
   "Philosophy",
   "Nonfiction",
-  "Children's",
-  "Japanese literature",
-  "Korean literature",
-  "Chinese literature",
+  "Children",
 ];
 
 const inputClass = "tap h-10 w-full rounded-full border border-border bg-raised px-4 text-md";

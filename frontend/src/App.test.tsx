@@ -59,7 +59,7 @@ function mockFetch(): void {
         const q = url.searchParams.get("q");
         const matched = q ? [] : [makeBook()];
         body = url.searchParams.get("group")
-          ? { groups: [{ key: "Science fiction", label: "Science fiction", count: matched.length, books: matched }] }
+          ? { groups: [{ key: "Science Fiction", label: "Science Fiction", count: matched.length, books: matched }] }
           : { items: matched, total: matched.length, page: 1, page_size: 24 };
       } else {
         body = {};
@@ -107,7 +107,7 @@ describe("routes", () => {
   it('renders the grouped library at "/library"', async () => {
     renderApp("/library");
     await screen.findByRole("heading", { name: "Library" });
-    expect(await screen.findByRole("region", { name: "Science fiction" })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Science Fiction" })).toBeTruthy();
   });
 
   it('redirects "/library?q=…" to "/search?q=…"', async () => {

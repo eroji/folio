@@ -261,3 +261,5 @@ One line each: decision, why, what it costs.
 
 - The fixed genre list is split into `Mystery` and `Thriller` (the handoff's combined "Mystery & thriller" is superseded). Tags map to Mystery (mystery/crime/detective) or Thriller (thriller/suspense/espionage); migration 0012 re-derives existing rows and falls back to Mystery.
 - Percent overlay: shown on Home and Library covers, hidden on the book-page hero (bar and finished check stay everywhere). Genre and tags remain editable after processing via Manage → Details → Edit details; manual genre/tags are locked against metadata refresh.
+
+- Genre labels shortened per request: Literary fiction→Fiction, Science fiction→Science Fiction, Gothic & horror→Horror, Historical fiction→Historical Fiction, Biography & memoir→Biography, Children's→Children; Japanese/Korean/Chinese literature removed. Migration 0013 renames rows and re-derives the removed buckets from tags (else NULL). The handoff list is superseded again.

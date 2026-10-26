@@ -65,26 +65,23 @@ class Settings(BaseSettings):
 #: A suggestion list — the column accepts any short free text.
 GENRES: tuple[str, ...] = (
     "Classics",
-    "Literary fiction",
-    "Science fiction",
+    "Fiction",
+    "Science Fiction",
     "Fantasy",
     "Mystery",
     "Thriller",
-    "Gothic & horror",
+    "Horror",
     "Romance",
-    "Historical fiction",
+    "Historical Fiction",
     "Myth & epic",
     "Poetry",
     "Drama",
-    "Biography & memoir",
+    "Biography",
     "History",
     "Science",
     "Philosophy",
     "Nonfiction",
-    "Children's",
-    "Japanese literature",
-    "Korean literature",
-    "Chinese literature",
+    "Children",
 )
 
 
