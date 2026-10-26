@@ -14,6 +14,9 @@ import { usePlayer } from "../player/usePlayer";
 export const BOOK_ID = "11111111-1111-1111-1111-111111111111";
 export const CH1 = "c1111111-1111-1111-1111-111111111111";
 export const CH2 = "c2222222-2222-2222-2222-222222222222";
+/** A second book so tests can load one book after the other. */
+export const BOOK2_ID = "22222222-2222-2222-2222-222222222222";
+export const CH3 = "c3333333-3333-3333-3333-333333333333";
 
 export function makeBook(): Book {
   return {
@@ -87,9 +90,12 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
     { id: CH1, idx: 0, title: "Chapter One", char_count: 600 },
     { id: CH2, idx: 1, title: "Chapter Two", char_count: 600 },
   ];
-  const byChapter = fixture.segmentsByChapter ?? {
-    [CH1]: makeSegments(CH1, 2),
-    [CH2]: makeSegments(CH2, 2),
+  const byChapter: Record<string, Segment[]> = {
+    [CH3]: makeSegments(CH3, 2),
+    ...(fixture.segmentsByChapter ?? {
+      [CH1]: makeSegments(CH1, 2),
+      [CH2]: makeSegments(CH2, 2),
+    }),
   };
   const all = Object.values(byChapter).flat();
   const prepareCalls: InstalledFetch["prepareCalls"] = [];
@@ -141,7 +147,16 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
       }
       const segments = url.match(/\/books\/[^/]+\/chapters\/([^/]+)\/segments$/);
       if (segments) return jsonResponse({ items: byChapter[segments[1]!] ?? [] });
-      if (url.match(/\/books\/[^/]+$/)) return jsonResponse({ book: makeBook(), chapters, progress: fixture.progress ?? null });
+      if (url.match(/\/books\/[^/]+$/)) {
+        if (url.includes(BOOK2_ID)) {
+          return jsonResponse({
+            book: { ...makeBook(), id: BOOK2_ID, title: "Dune Messiah" },
+            chapters: [{ id: CH3, idx: 0, title: "Chapter One", char_count: 1200 }],
+            progress: null,
+          });
+        }
+        return jsonResponse({ book: makeBook(), chapters, progress: fixture.progress ?? null });
+      }
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );

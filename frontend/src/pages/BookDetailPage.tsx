@@ -271,13 +271,13 @@ export function BookDetailPage() {
   if (isPending || !data) {
     return (
       <div className="animate-pulse" aria-busy="true">
-        <div className="flex flex-wrap items-start gap-12 pt-2">
-          <div className="flex min-w-[260px] basis-[340px] flex-col gap-5">
+        <div className="grid grid-cols-1 items-start gap-12 pt-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-5">
             <div className="aspect-[2/3] w-full max-w-[300px] rounded-lg bg-raised" />
             <div className="h-9 w-2/3 rounded bg-raised" />
             <div className="h-4 w-1/2 rounded bg-raised" />
           </div>
-          <div className="min-w-0 flex-1 space-y-2 pt-10">
+          <div className="min-w-0 space-y-2 pt-10">
             {Array.from({ length: 6 }, (_, i) => (
               <div key={i} className="h-12 rounded-lg bg-raised" />
             ))}
@@ -308,7 +308,9 @@ export function BookDetailPage() {
   const series = book.series ? `${book.series}${book.series_index != null ? ` #${book.series_index}` : ""}` : null;
   const author = book.authors[0] ?? "";
   const authorHref = `/search?q=${encodeURIComponent(author)}`;
-  const progressChapter = progress ? data.chapters.find((chapter) => chapter.id === progress.chapter_id) ?? null : null;
+  // Resume candidates come from the included list only: a saved chapter that
+  // was later excluded must not resume (the player starts at the beginning).
+  const progressChapter = progress ? included.find((chapter) => chapter.id === progress.chapter_id) ?? null : null;
   const currentIndex = loadedHere ? player.chapters.findIndex((chapter) => chapter.id === player.chapter?.id) : -1;
   const currentId = loadedHere ? player.chapter?.id ?? null : progressChapter?.id ?? null;
   const resumeChapter = loadedHere ? player.chapter : progressChapter;
@@ -341,12 +343,9 @@ export function BookDetailPage() {
 
   async function playFrom(chapterId?: string) {
     // The chapter that is about to start: the clicked one, else the loaded
-    // one, else the saved/first one. Only used for the pending indicator;
-    // navigation below keeps its original semantics.
-    const target =
-      chapterId ??
-      (player.book?.id === id ? player.chapter?.id : progress?.chapter_id ?? firstChapter?.id) ??
-      null;
+    // one, else the saved (included) or first one. Only used for the pending
+    // indicator; navigation below keeps its original semantics.
+    const target = chapterId ?? resumeChapter?.id ?? firstChapter?.id ?? null;
     if (target) setPendingChapterId(target);
     if (player.book?.id !== id) await player.load(id, chapterId);
     if (chapterId) await player.goToChapter(chapterId);
@@ -371,7 +370,7 @@ export function BookDetailPage() {
       if (firstChapter) void restartFromStart(firstChapter.id);
       return;
     }
-    void playFrom(resumeChapter?.id ?? progress?.chapter_id ?? firstChapter?.id);
+    void playFrom(resumeChapter?.id ?? firstChapter?.id);
   }
 
   const preparingHere = !playingHere && (player.preparing || pendingChapterId !== null);
@@ -383,7 +382,7 @@ export function BookDetailPage() {
         ? "Preparing…"
         : finished
           ? "Play again"
-          : progress || loadedHere
+          : resumeChapter || loadedHere
             ? resumeNumber > 0
               ? `Resume Chapter ${resumeNumber}`
               : "Resume"
@@ -749,8 +748,8 @@ export function BookDetailPage() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-wrap items-start gap-12 pt-2">
-          <div className="flex min-w-[260px] shrink grow-0 basis-[340px] flex-col gap-5">
+        <div className="grid grid-cols-1 items-start gap-12 pt-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-5">
             {cover("w-full max-w-[300px]")}
             <div className="flex flex-col gap-2" lang={book.language}>
               <h1 className="font-display text-3xl">{book.title}</h1>
@@ -788,7 +787,7 @@ export function BookDetailPage() {
               {bookMenu("inline")}
             </div>
           </div>
-          <div className="flex min-w-0 flex-[999_1_420px] flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
             <TabList tabs={tabs} active={tab} onSelect={setTab} />
             {tabPanel}
           </div>

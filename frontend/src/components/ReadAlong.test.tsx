@@ -179,6 +179,50 @@ describe("ReadAlong", () => {
     expect(screen.getByRole("button", { name: "Auto-scroll on" }).getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("follows the current sentence on segment change without toggling auto-scroll", async () => {
+    vi.useFakeTimers();
+    const { starts, run } = stubFrames();
+    const getPlayer = renderPlayer(<ReadAlong />);
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    const box = panel();
+    const scrollTop = stubPanelGeometry(box);
+    const before = starts.length;
+    act(() => {
+      getPlayer().seekSegment(1, 0); // current segment changes while paused
+    });
+    expect(starts.length).toBeGreaterThan(before); // the follow ran without any toggle
+    run(1000); // the layout effect's frame calls scrollToCurrent
+    run(1300);
+    run(1600); // animation finished
+    expect(scrollTop()).toBeCloseTo(900 - 400 / 3, 0);
+  });
+
+  it("reads at the handoff sizes in a 620px column that scrolls internally", () => {
+    renderPlayer(<ReadAlong />);
+    const box = panel();
+    const column = box.parentElement!;
+    expect(column.className).toContain("max-w-[620px]");
+    expect(column.className).toContain("min-h-0");
+    expect(box.className).toContain("min-h-0");
+    expect(box.className).toContain("flex-1");
+    expect(box.className).toContain("overflow-y-auto");
+    expect(box.className).toContain("scroll-thin"); // desktop shows the styled scrollbar
+    expect(box.className).not.toContain("no-scrollbar");
+    const text = box.firstElementChild as HTMLElement;
+    expect(text.getAttribute("style")).toContain("font-size: 22px");
+    expect(text.getAttribute("style")).toContain("line-height: 1.55");
+  });
+
+  it("hides the scrollbar and uses the phone sizes in the sheet", () => {
+    renderPlayer(<ReadAlong phone />);
+    const box = panel();
+    expect(box.className).toContain("no-scrollbar");
+    expect(box.className).not.toContain("scroll-thin");
+    expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 21px");
+  });
+
   it("the text-size button cycles the reading size and persists it", () => {
     renderPlayer(<ReadAlong />);
     const box = panel();

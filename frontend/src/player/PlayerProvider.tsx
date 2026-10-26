@@ -375,32 +375,52 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   async function load(bookId: string, chapterId?: string) {
     if (s.book?.id === bookId && s.segments.length > 0 && (!chapterId || s.chapters[s.chapterIdx]?.id === chapterId)) return;
+    const switching = s.book !== null && s.book.id !== bookId;
     try {
       const detail = await queryClient.fetchQuery({ queryKey: ["book", bookId], queryFn: () => fetchBookDetail(bookId) });
+      if (switching) {
+        // Never carry the previous book's position into the new one.
+        silence();
+        s.chapterIdx = 0;
+        s.segments = [];
+        s.index = 0;
+        s.status = {};
+        s.time = 0;
+        s.offset = 0;
+      }
       s.book = detail.book;
       // Excluded chapters are returned for the book-settings UI but must never
       // be opened by the player (their segments endpoint 404s by design).
-      s.chapters = detail.chapters.filter((chapter) => !chapter.excluded);
+      // All chapter indices below come from this included list — indexing the
+      // unfiltered detail.chapters made a saved chapter land N included
+      // chapters too deep once N chapters were excluded (the 16 % bug).
+      const included = detail.chapters.filter((chapter) => !chapter.excluded);
+      s.chapters = included;
       s.finished = Boolean(detail.progress?.finished_at);
       s.finishedMarked = s.finished;
       s.resumePrompt = null;
       const saved = detail.progress;
+      // Resume only when the saved chapter is included in *this* book;
+      // otherwise start fresh at the first included chapter, segment 0.
+      const ci = saved ? included.findIndex((c) => c.id === saved.chapter_id) : -1;
+      const canResume = ci >= 0;
       s.lastDevice =
-        saved && saved.device_label !== deviceLabel() ? { label: saved.device_label, at: saved.updated_at } : null;
-      const ci = saved ? detail.chapters.findIndex((c) => c.id === saved.chapter_id) : -1;
-      const idx = ci >= 0 ? ci : chapterId ? Math.max(0, detail.chapters.findIndex((c) => c.id === chapterId)) : 0;
-      s.resumeLoading = Boolean(saved);
+        canResume && saved && saved.device_label !== deviceLabel()
+          ? { label: saved.device_label, at: saved.updated_at }
+          : null;
+      const idx = canResume ? ci : chapterId ? Math.max(0, included.findIndex((c) => c.id === chapterId)) : 0;
+      s.resumeLoading = canResume;
       await openChapter(idx, false); // open the saved chapter first
       s.resumeLoading = false;
-      if (saved) {
+      if (canResume && saved) {
         const local = readPosition(bookId);
-        if (local && ci >= 0 && saved.device_label !== deviceLabel() && secondsAhead(saved, local, detail.book) > AHEAD_PROMPT_S) {
+        if (local && saved.device_label !== deviceLabel() && secondsAhead(saved, local, detail.book) > AHEAD_PROMPT_S) {
           const segment = s.segments.find((seg) => seg.id === saved.segment_id);
           const secondsPerChar =
             detail.book.est_duration_s && detail.book.total_chars ? detail.book.est_duration_s / detail.book.total_chars : 1 / 15;
           s.resumePrompt = {
             device: saved.device_label,
-            chapter: detail.chapters[ci]!.title,
+            chapter: included[ci]!.title,
             time: formatTime(saved.offset_s + (segment ? segment.char_start * secondsPerChar : 0)),
             onContinue: () => void applyResume(saved),
             onStartHere: () => void applyResume(local),
