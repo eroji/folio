@@ -5,7 +5,7 @@
  * centered column with a back + ⋮ header. The ⋮ menu is the only place a
  * book's narrator is chosen. Playback drives the shared player state only. */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useMatch, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { languageName, useBook, useDeleteBook, useReprocessBook, useSetChapterExcluded } from "../api/books";
@@ -28,8 +28,8 @@ import { BookCover } from "../components/BookCard";
 import { BookMenu } from "../components/BookMenu";
 import { ChapterRow } from "../components/ChapterRow";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { CoverEditor } from "../components/CoverEditor";
 import { CoverProgressBadge } from "../components/CoverProgressBadge";
+import { EditDetailsDrawer } from "../components/EditDetailsDrawer";
 import { EmptyState } from "../components/EmptyState";
 import { FindMetadata } from "../components/FindMetadata";
 import { Icon } from "../components/Icon";
@@ -99,41 +99,6 @@ function TabList({ tabs, active, onSelect }: { tabs: readonly Tab[]; active: Tab
   );
 }
 
-function CoverDialog({ book, onClose }: { book: Parameters<typeof CoverEditor>[0]["book"]; onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-40 grid place-items-center p-4"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          onClose();
-        }
-      }}
-    >
-      <button type="button" tabIndex={-1} aria-hidden className="absolute inset-0 cursor-default bg-bg/70" onClick={onClose} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Change cover"
-        className="relative max-h-full w-full max-w-lg overflow-y-auto rounded-lg border border-border bg-surface p-4 shadow-(--shadow-menu)"
-      >
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="font-display text-xl">Change cover</h2>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="tap grid size-11 place-items-center rounded-full text-fg-2 hover:bg-raised"
-          >
-            <Icon name="X" size={20} />
-          </button>
-        </div>
-        <CoverEditor book={book} />
-      </div>
-    </div>
-  );
-}
-
 /** Settings-style Manage row: title + explanation left, controls right. */
 function ManageRow({
   title,
@@ -168,6 +133,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function BookDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
+  const location = useLocation();
+  // /books/:id/edit renders this page with the Edit details drawer on top.
+  const editing = useMatch("/books/:id/edit") !== null;
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -182,14 +150,15 @@ export function BookDetailPage() {
   const update = useUpdateBook(id);
   const candidates = useMetadataCandidates(id);
 
-  const [tab, setTab] = useState<Tab>("Chapters");
+  const [tab, setTab] = useState<Tab>(() =>
+    (location.state as { tab?: Tab } | null)?.tab === "Manage" ? "Manage" : "Chapters",
+  );
   const [findOpen, setFindOpen] = useState(false);
   const [reviewItems, setReviewItems] = useState<Candidate[] | null>(null);
   const [pendingChapterId, setPendingChapterId] = useState<string | null>(null);
   const [showAllChapters, setShowAllChapters] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [coverOpen, setCoverOpen] = useState(false);
   const [narratorOpen, setNarratorOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [toast, setToast] = useState<{ message: string; undo?: boolean } | null>(null);
@@ -297,6 +266,8 @@ export function BookDetailPage() {
   // predating it fall back to admin-only. The server enforces either way.
   const canManage = book.can_edit ?? user?.role === "admin";
   const tabs = canManage ? TABS : (TABS.filter((name) => name !== "Manage") as readonly Tab[]);
+  // The edit route always shows the Manage tab underneath the drawer.
+  const activeTab: Tab = editing && canManage ? "Manage" : tab;
   const firstChapter = included[0];
   const notPlayable = book.status === "needs_ocr" || book.status === "failed" || !firstChapter;
   const loadedHere = player.book?.id === id;
@@ -308,6 +279,7 @@ export function BookDetailPage() {
   const series = book.series ? `${book.series}${book.series_index != null ? ` #${book.series_index}` : ""}` : null;
   const author = book.authors[0] ?? "";
   const authorHref = `/search?q=${encodeURIComponent(author)}`;
+  const lockedCount = (book.locked_fields ?? []).length;
   // Resume candidates come from the included list only: a saved chapter that
   // was later excluded must not resume (the player starts at the beginning).
   const progressChapter = progress ? included.find((chapter) => chapter.id === progress.chapter_id) ?? null : null;
@@ -560,7 +532,14 @@ export function BookDetailPage() {
     <div className="flex max-w-[680px] flex-col pt-2">
       <ManageRow
         title="Details"
-        description="Title, author, description and other metadata. Fields you edited by hand are protected from automatic updates."
+        description={
+          <>
+            Cover, title, author, description and other metadata.
+            {lockedCount > 0 && (
+              <> {lockedCount === 1 ? "1 field you edited is" : `${lockedCount} fields you edited are`} protected from automatic updates.</>
+            )}
+          </>
+        }
       >
         <Link to={`/books/${id}/edit`} className={outlinePill}>
           <Icon name="Pencil" size={18} />
@@ -584,16 +563,6 @@ export function BookDetailPage() {
           <FindMetadata book={book} initialItems={reviewItems ?? undefined} />
         </div>
       )}
-
-      <ManageRow title="Cover" description="Upload an image or paste a link, then crop to 2:3.">
-        <span className="relative block aspect-[2/3] w-11 shrink-0 overflow-hidden rounded-xs bg-raised">
-          <BookCover book={book} className="absolute inset-0 h-full w-full" />
-        </span>
-        <button type="button" onClick={() => setCoverOpen(true)} className={outlinePill}>
-          <Icon name="Image" size={18} />
-          Change cover
-        </button>
-      </ManageRow>
 
       <section className="flex flex-col gap-1.5 border-t border-border py-4">
         <div className="flex items-baseline justify-between gap-3">
@@ -678,10 +647,10 @@ export function BookDetailPage() {
   );
 
   const tabPanel = (
-    <div role="tabpanel" id="book-panel" aria-labelledby={`book-tab-${tab}`} tabIndex={-1}>
-      {tab === "Chapters" && chapterList}
-      {tab === "About" && aboutPanel}
-      {tab === "Manage" && canManage && managePanel}
+    <div role="tabpanel" id="book-panel" aria-labelledby={`book-tab-${activeTab}`} tabIndex={-1}>
+      {activeTab === "Chapters" && chapterList}
+      {activeTab === "About" && aboutPanel}
+      {activeTab === "Manage" && canManage && managePanel}
     </div>
   );
 
@@ -742,7 +711,7 @@ export function BookDetailPage() {
           </div>
           {primaryButton(true)}
           <div className="flex flex-col gap-4">
-            <TabList tabs={tabs} active={tab} onSelect={setTab} />
+            <TabList tabs={tabs} active={activeTab} onSelect={setTab} />
             {tabPanel}
           </div>
         </div>
@@ -787,7 +756,7 @@ export function BookDetailPage() {
             </div>
           </div>
           <div className="flex min-w-0 flex-col gap-5">
-            <TabList tabs={tabs} active={tab} onSelect={setTab} />
+            <TabList tabs={tabs} active={activeTab} onSelect={setTab} />
             {tabPanel}
           </div>
         </div>
@@ -850,7 +819,15 @@ export function BookDetailPage() {
           }
         />
       )}
-      {coverOpen && <CoverDialog book={book} onClose={() => setCoverOpen(false)} />}
+      {editing && canManage && (
+        <EditDetailsDrawer
+          book={book}
+          onClose={() => {
+            setTab("Manage");
+            navigate(`/books/${id}`, { replace: true, state: { tab: "Manage" } });
+          }}
+        />
+      )}
       {narratorOpen && (
         <NarratorVoiceDialog
           value={book.narrator_voice}

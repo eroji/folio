@@ -7,7 +7,6 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { SearchPage } from "./pages/SearchPage";
 import { UploadPage } from "./pages/UploadPage";
 import { BookDetailPage } from "./pages/BookDetailPage";
-import { EditBookPage } from "./pages/EditBookPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { PlayerPage } from "./components/PlayerPage";
@@ -36,7 +35,8 @@ export function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/books/:id" element={<BookDetailPage />} />
-          <Route path="/books/:id/edit" element={<EditBookPage />} />
+          {/* The edit route renders the book page with the Edit details drawer. */}
+          <Route path="/books/:id/edit" element={<BookDetailPage />} />
           <Route path="/settings" element={<Navigate to="/settings/playback" replace />} />
           <Route path="/settings/:section" element={<SettingsPage />} />
           <Route path="/player" element={<PlayerPage />} />

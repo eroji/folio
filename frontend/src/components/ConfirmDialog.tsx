@@ -4,6 +4,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "Cancel",
   danger,
   busy,
   onCancel,
@@ -12,6 +13,7 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel: string;
+  cancelLabel?: string;
   danger?: boolean;
   busy: boolean;
   onCancel: () => void;
@@ -35,7 +37,7 @@ export function ConfirmDialog({
             onClick={onCancel}
             className="tap inline-flex h-10 flex-1 items-center justify-center rounded-full border border-border px-4 text-base font-semibold text-fg hover:bg-raised"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             type="button"

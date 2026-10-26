@@ -9,6 +9,7 @@ import CheckCircle from "@material-symbols/svg-400/rounded/check_circle.svg?reac
 import Close from "@material-symbols/svg-400/rounded/close.svg?react";
 import DarkMode from "@material-symbols/svg-400/rounded/dark_mode.svg?react";
 import Delete from "@material-symbols/svg-400/rounded/delete.svg?react";
+import DragIndicator from "@material-symbols/svg-400/rounded/drag_indicator.svg?react";
 import Edit from "@material-symbols/svg-400/rounded/edit.svg?react";
 import Forward from "@material-symbols/svg-400/rounded/forward.svg?react";
 import GraphicEq from "@material-symbols/svg-400/rounded/graphic_eq.svg?react";
@@ -21,7 +22,9 @@ import KeyboardArrowRight from "@material-symbols/svg-400/rounded/keyboard_arrow
 import KeyboardArrowUp from "@material-symbols/svg-400/rounded/keyboard_arrow_up.svg?react";
 import KeyboardDoubleArrowDown from "@material-symbols/svg-400/rounded/keyboard_double_arrow_down.svg?react";
 import LibraryBooks from "@material-symbols/svg-400/rounded/library_books.svg?react";
+import LinkIcon from "@material-symbols/svg-400/rounded/link.svg?react";
 import List from "@material-symbols/svg-400/rounded/list.svg?react";
+import Lock from "@material-symbols/svg-400/rounded/lock.svg?react";
 import Logout from "@material-symbols/svg-400/rounded/logout.svg?react";
 import Menu from "@material-symbols/svg-400/rounded/menu.svg?react";
 import MenuBook from "@material-symbols/svg-400/rounded/menu_book.svg?react";
@@ -83,6 +86,9 @@ const OUTLINED = {
   Eye: Visibility,
   EyeOff: VisibilityOff,
   TriangleAlert: Warning,
+  Lock,
+  Link: LinkIcon,
+  GripVertical: DragIndicator,
   Search,
   Upload,
   ArrowLeft: ArrowBack,

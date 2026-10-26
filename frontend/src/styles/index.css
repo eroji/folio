@@ -52,3 +52,14 @@
   background: var(--color-accent);
   animation: bar-indeterminate 1.2s ease-in-out infinite;
 }
+
+/* Edit details drawer: slides in from the right (instant under reduced
+ * motion via the global override in tokens.css). */
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+.drawer-in {
+  animation: drawer-in 250ms ease-out;
+}

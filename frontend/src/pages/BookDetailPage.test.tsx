@@ -120,6 +120,7 @@ let saveCalls: Record<string, unknown>[] = [];
 let chapterPatchBodies: Record<string, unknown>[] = [];
 let chapterPatchFails = false;
 let reprocessCalls = 0;
+let unlocks: string[] = [];
 let prepareStatuses: Record<string, string> = {};
 let media: { played: HTMLMediaElement[]; paused: HTMLMediaElement[] };
 
@@ -138,6 +139,7 @@ beforeEach(() => {
   chapterPatchBodies = [];
   chapterPatchFails = false;
   reprocessCalls = 0;
+  unlocks = [];
   prepareStatuses = {};
   localStorage.clear();
   installMockEventSource();
@@ -240,6 +242,11 @@ beforeEach(() => {
         reprocessCalls += 1;
         return jsonResponse(200, {});
       }
+      if (url.includes(`/books/${ID}/unlock`) && method === "POST") {
+        unlocks.push(String(body.field));
+        book = { ...book, locked_fields: (book.locked_fields ?? []).filter((field) => field !== body.field) };
+        return jsonResponse(200, { book });
+      }
       if (method === "PATCH" && url.includes(`/books/${ID}`)) {
         book = { ...book, ...(body as Partial<Book>) };
         return jsonResponse(200, { book });
@@ -275,11 +282,11 @@ function WhereAmI() {
   return <p>at {location.pathname}{location.search}</p>;
 }
 
-function renderDetail() {
+function renderDetail(path = `/books/${ID}`) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/books/${ID}`]}>
+      <MemoryRouter initialEntries={[path]}>
         <PlayerProvider>
           <AuthProvider>
             <Routes>
@@ -287,6 +294,7 @@ function renderDetail() {
               <Route path="/library" element={<WhereAmI />} />
               <Route path="/search" element={<WhereAmI />} />
               <Route path="/books/:id" element={<BookDetailPage />} />
+              <Route path="/books/:id/edit" element={<BookDetailPage />} />
               <Route path="/player" element={<WhereAmI />} />
             </Routes>
           </AuthProvider>
@@ -561,11 +569,12 @@ describe("BookDetailPage", () => {
   });
 
   it("shows Manage to an uploader with all sections", async () => {
-    book = makeBook({ can_edit: true });
+    book = makeBook({ can_edit: true, locked_fields: ["title", "genre"] });
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
     expect((await screen.findByRole("link", { name: /Edit details/ })).getAttribute("href")).toBe(`/books/${ID}/edit`);
-    expect(screen.getByText(/protected from automatic updates/)).toBeTruthy();
+    expect(screen.getByText(/Cover, title, author, description and other metadata./)).toBeTruthy();
+    expect(screen.getByText(/2 fields you edited are protected from automatic updates/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Find metadata" }));
     expect(await screen.findByRole("button", { name: "Search" })).toBeTruthy();
@@ -591,17 +600,41 @@ describe("BookDetailPage", () => {
     expect(await screen.findByText("at /library")).toBeTruthy();
   });
 
-  it("opens the Change cover dialog with upload, URL and crop controls", async () => {
+  it("has no Cover row in Manage — the cover lives in the Edit details drawer", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Change cover" }));
-    const dialog = await screen.findByRole("dialog", { name: "Change cover" });
-    expect(within(dialog).getByRole("textbox", { name: "Cover image URL" })).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Fetch URL" })).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Close" })).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    expect(screen.queryByRole("dialog", { name: "Change cover" })).toBeNull();
+    expect(await screen.findByText("Details")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Change cover" })).toBeNull();
+    expect(screen.queryByText("Upload an image or paste a link, then crop to 2:3.")).toBeNull();
+  });
+
+  it("opens the Edit details drawer over the Manage tab at /books/:id/edit and focuses Title", async () => {
+    book = makeBook({ can_edit: true });
+    renderDetail(`/books/${ID}/edit`);
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    expect(screen.getByRole("tab", { name: "Manage" }).getAttribute("aria-selected")).toBe("true");
+    // The page underneath shows the Manage tab.
+    expect(within(dialog).getByRole("textbox", { name: "Title" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete book" })).toBeTruthy();
+    expect(document.activeElement).toBe(within(dialog).getByRole("textbox", { name: "Title" }));
+  });
+
+  it("closing the drawer lands on the Manage tab of the book page", async () => {
+    book = makeBook({ can_edit: true });
+    renderDetail(`/books/${ID}/edit`);
+    const dialog = await screen.findByRole("dialog", { name: "Edit details" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull());
+    expect(screen.getByRole("tab", { name: "Manage" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("button", { name: "Delete book" })).toBeTruthy();
+  });
+
+  it("does not open the drawer for users without can_edit", async () => {
+    book = makeBook({ can_edit: false });
+    renderDetail(`/books/${ID}/edit`);
+    expect(await screen.findByRole("tab", { name: "Chapters" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull();
   });
 
   it("collapses the Manage chapter list to four with Show all and Show less", async () => {
