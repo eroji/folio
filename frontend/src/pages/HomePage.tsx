@@ -96,7 +96,7 @@ function CardText({
 
 function continueMeta(item: HomeContinueItem): string {
   const left = `${formatLength(item.time_left_s)} left`;
-  return item.chapter ? `Ch. ${item.chapter.idx + 1} · ${left}` : left;
+  return item.chapter ? `Ch. ${item.chapter.number ?? item.chapter.idx + 1} · ${left}` : left;
 }
 
 /** Reference copy for chapter lengths: "18 min", but "2 h 36 m" beyond an hour. */

@@ -132,6 +132,7 @@ async def test_home_shelves_and_shape(auth_client: httpx.AsyncClient, db: Sessio
     assert [i["book"]["title"] for i in body["continue"]] == ["Newest", "AtLastChapter", "Older"]
     newest = body["continue"][0]
     assert (newest["chapter"]["idx"], newest["chapter"]["title"]) == (1, "Ch 2")
+    assert newest["chapter"]["number"] == 2  # no exclusions: number == idx + 1
     assert newest["chapter"]["id"]
     assert newest["time_left_s"] == pytest.approx(3600.0)  # 7200 s at 50 %
     assert newest["progress"]["percent"] == 50.0
@@ -144,6 +145,22 @@ async def test_home_shelves_and_shape(auth_client: httpx.AsyncClient, db: Sessio
     assert by_book["Older"]["idx"] == 1 and by_book["Older"]["number"] == 2
 
     assert [b["title"] for b in body["recent"]] == ["Fresh", "Newest", "AtLastChapter", "Older"]
+
+
+async def test_home_continue_number_skips_excluded(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    """The chapter being played is numbered by its 1-based position among the
+    included chapters, matching the book page (not the source ``idx + 1``)."""
+    user = _user(db)
+    # Included chapters are idx 1, 4 and 5, so the one being played shows as "2".
+    _listening_book(db, user, "Gaps", chapters=6, at=4, exclude=(0, 2, 3))
+
+    body = (await auth_client.get("/api/v1/me/home")).json()
+    chapter = body["continue"][0]["chapter"]
+    assert chapter["idx"] == 4
+    assert chapter["number"] == 2
+    assert chapter["title"] == "Ch 5"
 
 
 async def test_home_next_chapter_number_skips_excluded(
