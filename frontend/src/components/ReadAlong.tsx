@@ -36,7 +36,8 @@ export interface ReadAlongControls {
   autoScroll: boolean;
   setAutoScroll: (value: boolean) => void;
   fontStep: number;
-  cycleFont: () => void;
+  decFont: () => void;
+  incFont: () => void;
 }
 
 export function useReadAlongControls(): ReadAlongControls {
@@ -45,16 +46,52 @@ export function useReadAlongControls(): ReadAlongControls {
     const stored = Number(localStorage.getItem(FONT_KEY));
     return Number.isInteger(stored) && stored >= 0 && stored < FONT_SCALES.length ? stored : 0;
   });
-  const cycleFont = useCallback(
-    () =>
+  const stepFont = useCallback(
+    (delta: number) =>
       setFontStep((current) => {
-        const next = (current + 1) % FONT_SCALES.length;
+        const next = Math.max(0, Math.min(FONT_SCALES.length - 1, current + delta));
         localStorage.setItem(FONT_KEY, String(next));
         return next;
       }),
     [],
   );
-  return { autoScroll, setAutoScroll, fontStep, cycleFont };
+  return {
+    autoScroll,
+    setAutoScroll,
+    fontStep,
+    decFont: () => stepFont(-1),
+    incFont: () => stepFont(1),
+  };
+}
+
+/** The A− / A+ pair used by the read-along toolbar and the phone sheet strip. */
+export function FontSizeButtons({ controls }: { controls: ReadAlongControls }) {
+  const step = ` (size ${controls.fontStep + 1} of ${FONT_SCALES.length})`;
+  const button = "tap grid size-9 shrink-0 place-items-center rounded-full border border-border text-fg hover:bg-raised disabled:opacity-40";
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Decrease font size${step}`}
+        title="Decrease font size"
+        onClick={controls.decFont}
+        disabled={controls.fontStep === 0}
+        className={button}
+      >
+        <Icon name="Minus" size={18} />
+      </button>
+      <button
+        type="button"
+        aria-label={`Increase font size${step}`}
+        title="Increase font size"
+        onClick={controls.incFont}
+        disabled={controls.fontStep === FONT_SCALES.length - 1}
+        className={button}
+      >
+        <Icon name="Plus" size={18} />
+      </button>
+    </>
+  );
 }
 
 export function ReadAlong({
@@ -187,15 +224,7 @@ export function ReadAlong({
         <div className="flex shrink-0 items-center justify-between gap-3 pb-3">
           <span className="text-sm text-fg-2">Follows the narration</span>
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              aria-label="Text size"
-              title="Text size"
-              onClick={c.cycleFont}
-              className="tap grid size-9 shrink-0 place-items-center rounded-full border border-border text-fg hover:bg-raised"
-            >
-              <Icon name="AlignLeft" size={18} />
-            </button>
+            <FontSizeButtons controls={c} />
             <button
               type="button"
               aria-pressed={c.autoScroll}

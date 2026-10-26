@@ -128,7 +128,8 @@ describe("PlayerPage (phone)", () => {
     expect(within(playback).getByRole("button", { name: "Auto-scroll on" }).getAttribute("aria-pressed")).toBe("true");
     expect(within(playback).getByRole("button", { name: "Back 15 seconds" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back to player" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Text size" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Increase font size/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Decrease font size/ })).toBeTruthy();
 
     fireEvent.click(within(playback).getByRole("button", { name: "Auto-scroll on" }));
     expect(within(playback).getByRole("button", { name: "Auto-scroll off" }).getAttribute("aria-pressed")).toBe("false");

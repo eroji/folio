@@ -223,17 +223,30 @@ describe("ReadAlong", () => {
     expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 21px");
   });
 
-  it("the text-size button cycles the reading size and persists it", () => {
+  it("the font-size buttons step the reading size, clamp at the ends, and persist", () => {
     renderPlayer(<ReadAlong />);
     const box = panel();
-    const size = screen.getByRole("button", { name: "Text size" });
+    const inc = screen.getByRole("button", { name: /^Increase font size/ }) as HTMLButtonElement;
+    const dec = screen.getByRole("button", { name: /^Decrease font size/ }) as HTMLButtonElement;
     expect(box.dataset.fontStep).toBe("0");
-    fireEvent.click(size);
+    expect(dec.disabled).toBe(true);
+    fireEvent.click(inc);
     expect(box.dataset.fontStep).toBe("1");
     expect(localStorage.getItem("folio-readalong-font")).toBe("1");
-    fireEvent.click(size);
-    fireEvent.click(size); // wraps back to the default
-    expect(box.dataset.fontStep).toBe("0");
+    fireEvent.click(inc);
+    expect(box.dataset.fontStep).toBe("2");
+    expect(inc.disabled).toBe(true);
+    fireEvent.click(inc); // stays clamped at the top
+    expect(box.dataset.fontStep).toBe("2");
+    fireEvent.click(dec);
+    expect(box.dataset.fontStep).toBe("1");
+    expect(localStorage.getItem("folio-readalong-font")).toBe("1");
+  });
+
+  it("the accessible labels name the current step", () => {
+    renderPlayer(<ReadAlong />);
+    expect(screen.getByRole("button", { name: "Increase font size (size 1 of 3)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Decrease font size (size 1 of 3)" })).toBeTruthy();
   });
 
   it("restores the persisted text size on mount", () => {
