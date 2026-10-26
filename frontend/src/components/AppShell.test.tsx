@@ -157,17 +157,17 @@ describe("AppShell", () => {
     expect(within(sidebar).queryByRole("link", { name: "Folio home" })).toBeNull();
   });
 
-  it("moves the full-size logo into the top bar only while collapsed", async () => {
+  it("keeps the logo at one fixed shell position in both modes", async () => {
     localStorage.setItem("folio-sidebar-collapsed", "true");
     renderShell();
     await boot();
-    const topBar = screen.getAllByRole("banner")[0]!;
-    expect(within(topBar).getByRole("link", { name: "Folio home" })).toBeTruthy();
-    expect(within(navs()[0]!).queryByRole("link", { name: "Folio home" })).toBeNull();
+    const logo = screen
+      .getAllByRole("link", { name: "Folio home" })
+      .find((el) => el.parentElement?.className.includes("absolute left-[60px]"));
+    expect(logo).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
     await waitFor(() => expect(localStorage.getItem("folio-sidebar-collapsed")).toBe("false"));
-    expect(within(navs()[0]!).getByRole("link", { name: "Folio home" })).toBeTruthy();
-    expect(within(topBar).queryByRole("link", { name: "Folio home" })).toBeNull();
+    expect(logo!.isConnected).toBe(true);
   });
 
   it("links Add books to Upload and lists in-progress books from /me/continue", async () => {

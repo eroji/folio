@@ -113,7 +113,6 @@ function Sidebar({
         >
           <Icon name="Menu" size={22} />
         </button>
-        {!collapsed && <Logo size={29} textClass="text-[23px]" />}
       </div>
       {NAV.map((item) => (
         <SideNavItem key={item.to} {...item} collapsed={collapsed} />
@@ -262,8 +261,12 @@ function BottomNav() {
  * search pill. <768px: phone header with the logo, Search and the avatar. */
 function TopBar({ collapsed }: { collapsed: boolean }) {
   return (
-    <header className="hidden h-14 shrink-0 items-center gap-4 px-10 md:flex">
-      {collapsed && <Logo size={29} textClass="text-[23px]" />}
+    <header
+      className={clsx(
+        "hidden h-14 shrink-0 items-center gap-4 px-10 md:flex",
+        collapsed && "pl-28",
+      )}
+    >
       <TopBarSearch />
       <div className="ml-auto shrink-0">
         <AccountMenu />
@@ -354,8 +357,12 @@ function Shell() {
       ? coverGlow(bookGlowQuery.data?.book, false)
       : { className: "bg-page-glow" as const };
   return (
-    <div className="flex min-h-dvh">
+    <div className="relative flex min-h-dvh">
       <Sidebar collapsed={collapsed} onToggle={toggleSidebar} inProgress={continueData?.items ?? []} />
+      {/* Fixed at the same coordinates in both modes: the rail narrows around it. */}
+      <div className="absolute left-[60px] top-0 z-30 hidden h-14 items-center md:flex">
+        <Logo size={29} textClass="text-[23px]" />
+      </div>
       <div className={clsx("flex min-w-0 flex-1 flex-col", glow.className)} style={glow.style}>
         <TopBar collapsed={collapsed} />
         <PhoneHeader />
