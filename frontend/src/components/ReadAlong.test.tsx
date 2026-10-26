@@ -122,6 +122,30 @@ describe("ReadAlong", () => {
     expect(windowScroll).not.toHaveBeenCalled();
   });
 
+  it("follows the audio clock at rAF cadence: no animation within a sentence, highlight moves within one frame", async () => {
+    vi.useFakeTimers();
+    const { starts, run } = stubFrames();
+    const getPlayer = renderPlayer(<ReadAlong />);
+    await play(getPlayer, true);
+    stubPanelGeometry(panel());
+    const el = getPlayer().elements[0];
+    // Still inside the first sentence: the loop runs, but no scroll
+    // animation starts and no re-render moves the highlight.
+    const before = starts.length;
+    act(() => {
+      el.currentTime = 1;
+    });
+    run(1000);
+    expect(starts.length).toBe(before);
+    // Past the boundary: one frame later the highlight has followed, without
+    // a single timeupdate event — the position comes from the element clock.
+    act(() => {
+      el.currentTime = 6;
+    });
+    run(1033);
+    expect(document.querySelector('[aria-current="true"]')?.textContent).toContain(`Two ${CH1}-seg0 here`);
+  });
+
   it("a manual scroll pauses the follow and shows Back to current", async () => {
     vi.useFakeTimers();
     const { starts, caf, run } = stubFrames();

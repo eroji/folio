@@ -338,10 +338,11 @@ describe("LibraryPage", () => {
     ).toBeTruthy();
   });
 
-  it("carries progress in the card name, not a visible percent (D cover bar)", async () => {
+  it("shows the percent overlay on the cover and carries progress in the card name", async () => {
     mockApi([makeBook()], { continueItems: [{ book: makeBook(), progress: makeProgress() }] });
     renderLibrary();
     const cards = await screen.findAllByRole("link", { name: /Dune.*25% listened/ });
-    expect(cards.every((card) => within(card).queryByText("25%") === null)).toBe(true);
+    // The pill is aria-hidden: the name still comes from coverName.
+    expect(cards.every((card) => within(card).queryByText("25%") !== null)).toBe(true);
   });
 });
