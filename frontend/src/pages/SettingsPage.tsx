@@ -1,8 +1,9 @@
-/** Settings (Direction D §4): title, left section tabs (Playback and
- * Voices only — the app is dark, there is no Theme), rows with dividers,
- * steppers and switches. The tabs are a roving-tabindex tablist and only
- * the selected section renders. Every change saves immediately; a failed
- * save reverts the control and shows an inline error under its row. */
+/** Settings (Direction D §4, voices redesign): title, left section tabs
+ * driven by the URL (/settings/playback, /settings/voices; /settings
+ * redirects to playback), rows with dividers, steppers and switches. The
+ * tabs are a roving-tabindex tablist of links; on phones they sit side by
+ * side above the content. Every change saves immediately; a failed save
+ * reverts the control and shows an inline error under its row. */
 import {
   useEffect,
   useRef,
@@ -11,26 +12,21 @@ import {
   type ReactNode,
 } from "react";
 import clsx from "clsx";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useListeningSettings, useUpdateSettings } from "../api/settings";
 import {
+  baseLanguage,
   groupVoicesByLanguage,
   previewVoice,
-  useRefreshVoices,
   useVoices,
   voiceLabel,
+  voiceOnServer,
   type Voice,
 } from "../api/voices";
 import { Icon } from "../components/Icon";
 import { Switch } from "../components/Switch";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5] as const;
-const LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "ja", label: "Japanese" },
-  { code: "ko", label: "Korean" },
-  { code: "zh", label: "Chinese, Simplified" },
-  { code: "zh-TW", label: "Chinese, Traditional" },
-] as const;
 
 const SKIP_MIN = 5;
 const SKIP_MAX = 120;
@@ -41,11 +37,45 @@ const SECTIONS = [
   { id: "voices", label: "Voices" },
 ] as const;
 
+/** Row order for language rows; anything else follows alphabetically. */
+const LANG_ORDER = ["en", "ja", "ko", "zh"];
+
+function languageLabel(code: string): string {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code; // unknown tag: show it raw
+  }
+}
+
+/** The voice pinned for a base language, folding legacy variant keys
+ * ("zh-TW") saved before pins were keyed by base language. */
+function pinnedVoice(voices: Record<string, string | null>, base: string): string | null {
+  if (voices[base]) return voices[base];
+  for (const [key, value] of Object.entries(voices)) {
+    if (value && baseLanguage(key) === base) return value;
+  }
+  return null;
+}
+
+/** The voices map to save when one language changes: every key of that
+ * base language is replaced by the single base-language entry. */
+function withPinned(
+  voices: Record<string, string | null>,
+  base: string,
+  value: string | null,
+): Record<string, string | null> {
+  const next: Record<string, string | null> = {};
+  for (const [key, kept] of Object.entries(voices)) {
+    if (baseLanguage(key) !== base) next[key] = kept;
+  }
+  next[base] = value;
+  return next;
+}
+
 const selectPill =
   "select-pill tap h-10 border border-border bg-raised text-base text-fg";
 const selectChevron = "pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-fg-2";
-const outlinedPill =
-  "tap inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border px-4 text-base font-semibold text-fg hover:bg-raised disabled:opacity-50";
 
 function skipValid(value: string): boolean {
   const n = Number(value);
@@ -192,7 +222,7 @@ function SkipStepper({
 }
 
 /** 40 px outlined pill button speaking a sample of one voice (Play → Pause). */
-function VoicePreview({ voice }: { voice: string }) {
+function VoicePreview({ id, name }: { id: string; name: string }) {
   const [playing, setPlaying] = useState(false);
   const sample = useRef<{ url: string; audio: HTMLAudioElement } | null>(null);
 
@@ -212,7 +242,7 @@ function VoicePreview({ voice }: { voice: string }) {
       return;
     }
     try {
-      const url = await previewVoice(voice);
+      const url = await previewVoice(id);
       const audio = new Audio(url);
       sample.current = { url, audio };
       setPlaying(true);
@@ -229,8 +259,8 @@ function VoicePreview({ voice }: { voice: string }) {
     <button
       type="button"
       onClick={toggle}
-      aria-label={`Preview ${voice}`}
-      title={`Preview ${voice}`}
+      aria-label={`Preview ${name}`}
+      title={`Preview ${name}`}
       className="tap grid size-10 shrink-0 place-items-center rounded-full border border-border bg-transparent text-fg hover:bg-raised"
     >
       <Icon name={playing ? "Pause" : "Play"} size={18} />
@@ -238,26 +268,36 @@ function VoicePreview({ voice }: { voice: string }) {
   );
 }
 
-/** One language row: "English en", 180 px voice pill select + Preview. A
- * saved voice the engine no longer lists reads "(no longer available)". */
+/** One language row: "English en", 220 px pill select (Server default
+ * first, then the language's voices by display name) + Preview. A pinned
+ * voice the server no longer lists reads "(no longer available)" until the
+ * row changes; playback then falls back to the server default. */
 function VoiceRow({
   code,
   label,
   value,
   options,
+  serverDefault,
+  serverDefaultName,
   error,
   onChange,
 }: {
   code: string;
   label: string;
-  value: string | undefined;
+  value: string | null;
   options: Voice[];
+  serverDefault: string | null | undefined;
+  serverDefaultName: string | null;
   error: boolean;
-  onChange: (voice: string) => void;
+  onChange: (voice: string | null) => void;
 }) {
-  const empty = options.length === 0;
   const listed = options.some((voice) => voice.id === value);
-  const selected = value ?? options.find((voice) => voice.available)?.id ?? options[0]?.id ?? "";
+  const pinned = value && !listed ? value : null;
+  const previewId = value ?? serverDefault ?? "";
+  const preview = options.find((voice) => voice.id === previewId);
+  const previewName = preview
+    ? voiceLabel(preview)
+    : voiceLabel({ id: previewId, language: code, description: null, available: true });
 
   return (
     <Row
@@ -271,41 +311,44 @@ function VoiceRow({
       <div className="flex items-center gap-2">
         <PillSelect
           ariaLabel={`Voice for ${label}`}
-          width="w-[180px]"
-          value={selected}
-          disabled={empty}
-          onChange={onChange}
+          width="w-[220px]"
+          value={value ?? ""}
+          onChange={(next) => onChange(next === "" ? null : next)}
         >
-          {empty ? (
-            <option value="">No voices available for this language</option>
-          ) : (
-            <>
-              {value && !listed && <option value={value}>{value} (no longer available)</option>}
-              {options.map((voice) => (
-                <option key={voice.id} value={voice.id} disabled={!voice.available}>
-                  {voiceLabel(voice)}
-                  {voice.available ? "" : " (no longer available)"}
-                </option>
-              ))}
-            </>
+          <option value="">Server default{serverDefaultName ? ` (${serverDefaultName})` : ""}</option>
+          {pinned && (
+            <option value={pinned}>
+              {voiceLabel({ id: pinned, language: code, description: null, available: false })}{" "}
+              (no longer available)
+            </option>
           )}
+          {[...options]
+            .sort((a, b) => voiceLabel(a).localeCompare(voiceLabel(b)))
+            .map((voice) => (
+              <option key={voice.id} value={voice.id} disabled={!voiceOnServer(voice)}>
+                {voiceLabel(voice)}
+                {voiceOnServer(voice) ? "" : " (no longer available)"}
+              </option>
+            ))}
         </PillSelect>
-        {!empty && selected && <VoicePreview voice={selected} />}
+        {previewId && <VoicePreview id={previewId} name={previewName} />}
       </div>
     </Row>
   );
 }
 
 export function SettingsPage() {
-  const refresh = useRefreshVoices();
   const { settings, isPending } = useListeningSettings();
   const { update, status } = useUpdateSettings();
   const { data: voices } = useVoices();
-  const { mutate } = refresh;
-  const [section, setSection] = useState<string>("playback");
-  const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const params = useParams<{ section?: string }>();
+  const navigate = useNavigate();
+  const tabRefs = useRef(new Map<string, HTMLButtonElement | HTMLAnchorElement>());
+  const section: string = SECTIONS.some((item) => item.id === params.section)
+    ? params.section!
+    : "playback";
 
-  /** roving-tabindex tablist: arrows / Home / End move selection and focus. */
+  /** roving-tabindex tablist: arrows / Home / End move selection, focus and URL. */
   function onTabKeyDown(event: ReactKeyboardEvent, index: number) {
     const last = SECTIONS.length - 1;
     let next = -1;
@@ -316,16 +359,13 @@ export function SettingsPage() {
     if (next < 0) return;
     event.preventDefault();
     const id = SECTIONS[next]!.id;
-    setSection(id);
+    navigate(`/settings/${id}`);
     tabRefs.current.get(id)?.focus();
   }
 
   /** The row a failed save is attributed to; the coalesced PUT covers every
    * key changed since the last success, so the error shows under the last one. */
   const [errorKey, setErrorKey] = useState<string | null>(null);
-  useEffect(() => {
-    void mutate(); // Settings re-queries the engine when opened (spec "Discovery").
-  }, [mutate]);
 
   const saveFailed = status === "error";
   const change = (key: string, patch: Parameters<typeof update>[0]) => {
@@ -335,36 +375,49 @@ export function SettingsPage() {
 
   // The engine's "tts" entry is its internal fallback, not a real voice.
   const items = (voices?.items ?? []).filter((voice) => voice.id !== "tts");
-  const availableCount = items.filter((voice) => voice.available).length;
   const groups = groupVoicesByLanguage(items);
+  // Only languages with at least one voice get a row; zh-CN/zh-TW/… fold
+  // into the single "zh" group by baseLanguage.
+  const languages = Object.keys(groups)
+    .filter((code) => code !== "any")
+    .sort((a, b) => {
+      const rank = (code: string) => {
+        const index = LANG_ORDER.indexOf(code);
+        return index < 0 ? LANG_ORDER.length : index;
+      };
+      return rank(a) - rank(b) || a.localeCompare(b);
+    });
 
   return (
     <div className="flex flex-col gap-8 pt-6">
       <h1 className="font-display text-3xl">Settings</h1>
       <div className="flex flex-wrap items-start gap-8 lg:gap-12">
-        <div role="tablist" aria-label="Settings sections" className="flex w-full flex-col gap-1 lg:w-52">
+        <div
+          role="tablist"
+          aria-label="Settings sections"
+          className="flex w-full flex-row gap-1 lg:w-52 lg:flex-col"
+        >
           {SECTIONS.map(({ id, label }, index) => (
-            <button
+            <Link
               key={id}
               ref={(node) => {
                 if (node) tabRefs.current.set(id, node);
                 else tabRefs.current.delete(id);
               }}
-              type="button"
+              to={`/settings/${id}`}
               role="tab"
               id={`settings-tab-${id}`}
               aria-selected={section === id}
               aria-controls="settings-panel"
               tabIndex={section === id ? 0 : -1}
-              onClick={() => setSection(id)}
               onKeyDown={(event) => onTabKeyDown(event, index)}
               className={clsx(
-                "tap flex h-11 items-center rounded-full px-4 text-left text-md",
+                "tap flex h-11 flex-1 items-center justify-center rounded-full px-4 text-md lg:flex-none lg:justify-start",
                 section === id ? "bg-raised font-bold text-fg" : "font-medium text-fg-2 hover:bg-raised",
               )}
             >
               {label}
-            </button>
+            </Link>
           ))}
         </div>
 
@@ -377,46 +430,40 @@ export function SettingsPage() {
         >
           {section === "voices" ? (
             <section id="voices" aria-labelledby="voices-h" className="flex flex-col">
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
-                <h2 id="voices-h" className="font-display text-xl">
-                  Voices
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => refresh.mutate()}
-                  disabled={refresh.isPending}
-                  className={outlinedPill}
-                >
-                  <Icon name="RefreshCw" size={18} />
-                  Refresh voices
-                </button>
-              </div>
+              <h2 id="voices-h" className="pb-2 font-display text-xl">
+                Voices
+              </h2>
               <p className="pb-2 text-base text-fg-2">
-                Your narrator for each book language. A book’s own narrator setting overrides these.
-                {voices && (
-                  <>
-                    {" "}
-                    {availableCount} {availableCount === 1 ? "voice" : "voices"} from your TTS server.
-                  </>
-                )}
+                Your narrator for each language. You can still pick a different narrator for any
+                book from its ⋮ menu.
               </p>
               {isPending || !voices ? (
                 <div className="h-40 animate-pulse rounded-xl bg-surface" aria-busy="true" />
+              ) : languages.length === 0 ? (
+                <p className="py-4 text-base text-fg-2">No voices on this server.</p>
               ) : (
                 <div>
-                  {LANGUAGES.map(({ code, label }) => (
-                    <VoiceRow
-                      key={code}
-                      code={code}
-                      label={label}
-                      value={settings.voices[code]}
-                      options={groups[code.split("-")[0]!.toLowerCase()] ?? []}
-                      error={saveFailed && errorKey === `voice-${code}`}
-                      onChange={(voice) =>
-                        change(`voice-${code}`, { voices: { ...settings.voices, [code]: voice } })
-                      }
-                    />
-                  ))}
+                  {languages.map((code) => {
+                    const serverDefault = voices.defaults?.[code];
+                    const serverDefaultVoice = serverDefault
+                      ? items.find((voice) => voice.id === serverDefault)
+                      : undefined;
+                    return (
+                      <VoiceRow
+                        key={code}
+                        code={code}
+                        label={languageLabel(code)}
+                        value={pinnedVoice(settings.voices, code)}
+                        options={groups[code] ?? []}
+                        serverDefault={serverDefault}
+                        serverDefaultName={serverDefaultVoice ? voiceLabel(serverDefaultVoice) : null}
+                        error={saveFailed && errorKey === `voice-${code}`}
+                        onChange={(voice) =>
+                          change(`voice-${code}`, { voices: withPinned(settings.voices, code, voice) })
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
             </section>

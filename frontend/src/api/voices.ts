@@ -10,10 +10,28 @@ export interface Voice {
   available: boolean;
   /** Admin override or name derived from the id ("ashley-en" -> "Ashley"). */
   display_name?: string | null;
+  /** Fields the backend adds with the voices redesign; optional so this
+   * compiles before the merge. `on_server` supersedes `available`. */
+  on_server?: boolean;
+  is_default?: boolean;
+  books_count?: number;
+  language_overridden?: boolean;
 }
 
 export interface VoicesResponse {
   items: Voice[];
+  /** Server default voice per base language; null when the server has none. */
+  defaults?: Record<string, string | null>;
+}
+
+/** Whether the engine can still speak this voice. */
+export function voiceOnServer(voice: Voice): boolean {
+  return voice.on_server ?? voice.available;
+}
+
+/** "zh-TW" / "zh_Hans" / "zh" -> "zh"; lower-case base of a language tag. */
+export function baseLanguage(code: string): string {
+  return code.split(/[-_]/)[0]!.toLowerCase();
 }
 
 /** Human label for a voice: `display_name` when present, else the id without
@@ -56,7 +74,7 @@ export function useRefreshVoices() {
 export function groupVoicesByLanguage(voices: Voice[]): Record<string, Voice[]> {
   const groups: Record<string, Voice[]> = {};
   for (const voice of voices) {
-    const key = voice.language ? voice.language.split("-")[0]!.toLowerCase() : "any";
+    const key = voice.language ? baseLanguage(voice.language) : "any";
     (groups[key] ??= []).push(voice);
   }
   return groups;

@@ -7,6 +7,7 @@ import { createContext, useEffect, useMemo, useReducer, useRef, type ReactNode }
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { fetchBookDetail, fetchSegments, prepareAudio, type PreparedSegment, type Segment } from "../api/audio";
+import { baseLanguage } from "../api/voices";
 import {
   continueQueryKey,
   deviceLabel,
@@ -284,7 +285,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (toppingUp.current) return;
     toppingUp.current = true;
     try {
-      const voice = settingsRef.current.voices[s.book.language];
+      // Pins are keyed by base language; a zh-TW book reads the zh pin.
+      const voice = settingsRef.current.voices[baseLanguage(s.book.language)] ?? undefined;
       const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, voice);
       s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
       preloadNext();

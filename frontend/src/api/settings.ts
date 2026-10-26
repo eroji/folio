@@ -8,7 +8,9 @@ import { api } from "./client";
 
 export interface ListeningSettings {
   speed: number;
-  voices: Record<string, string>;
+  /** Pinned narrator per base language ("en", "ja", "ko", "zh");
+   * null = follow the server default. */
+  voices: Record<string, string | null>;
   skip_back: number;
   skip_forward: number;
   auto_next: boolean;
@@ -34,7 +36,8 @@ const VOICE_PREFIX = "folio-voice-";
 function mirror(patch: Partial<ListeningSettings>): void {
   if (patch.speed !== undefined) localStorage.setItem(SPEED_KEY, String(patch.speed));
   for (const [language, voice] of Object.entries(patch.voices ?? {})) {
-    localStorage.setItem(`${VOICE_PREFIX}${language}`, voice);
+    if (voice) localStorage.setItem(`${VOICE_PREFIX}${language}`, voice);
+    else localStorage.removeItem(`${VOICE_PREFIX}${language}`); // null = server default
   }
 }
 
