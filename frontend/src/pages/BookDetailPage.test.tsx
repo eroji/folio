@@ -313,7 +313,7 @@ async function openMore() {
 
 async function openNarratorDialog() {
   await openMore();
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Narrator voice…" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Narrator voice" }));
   return screen.findByRole("dialog", { name: "Narrator voice" });
 }
 
@@ -331,13 +331,13 @@ describe("BookDetailPage", () => {
     const pause = await screen.findByRole("button", { name: "Pause" });
     fireEvent.click(pause);
     await vi.waitFor(() => expect(media.paused.length).toBeGreaterThan(0));
-    expect(await screen.findByRole("button", { name: "Resume Chapter 1" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Resume" })).toBeTruthy();
   });
 
-  it("shows Resume Chapter N when progress exists and plays from the saved chapter", async () => {
+  it("shows Resume when progress exists and plays from the saved chapter", async () => {
     progress = makeProgress({ percent: 40, chapter_id: "c2", segment_id: "s4" });
     renderDetail();
-    const resume = await screen.findByRole("button", { name: "Resume Chapter 2" });
+    const resume = await screen.findByRole("button", { name: "Resume" });
     fireEvent.click(resume);
     await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s3")).toBe(true));
   });
@@ -399,6 +399,8 @@ describe("BookDetailPage", () => {
     expect(screen.getByText("Finished")).toBeTruthy();
     expect(within(screen.getByRole("button", { name: /One Way/ })).getByText("Played")).toBeTruthy();
     expect(within(screen.getByRole("button", { name: /The Other/ })).getByText("Played")).toBeTruthy();
+    // Played rows show the check only — no duration.
+    expect(screen.queryByText("5:00")).toBeNull();
   });
 
   it("marks finished from the ⋮ menu, shows the undo toast, and undo unmarks", async () => {
@@ -449,7 +451,7 @@ describe("BookDetailPage", () => {
 
     // Cancel does not delete anything.
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await screen.findByRole("button", { name: "Resume Chapter 2" });
+    await screen.findByRole("button", { name: "Resume" });
     expect(vi.mocked(fetch).mock.calls.some(([url, init]) => init?.method === "DELETE" && String(url).includes("/progress"))).toBe(false);
 
     // Confirm deletes, clears the local position and starts playback at chapter 1.
@@ -488,7 +490,9 @@ describe("BookDetailPage", () => {
     const played = await screen.findByRole("button", { name: /One Way/ });
     expect(within(played).getByText("Played")).toBeTruthy();
     expect(played.querySelector("svg")).toBeTruthy(); // the check icon
+    expect(within(played).queryByText("5:00")).toBeNull(); // played rows show the check, not the length
     const current = screen.getByRole("button", { name: /The Other/ });
+    expect(within(current).getByText("5:00")).toBeTruthy(); // the current row keeps its length
     expect(current.getAttribute("aria-current")).toBe("true");
     expect(current.getAttribute("aria-label") ?? current.textContent).toMatch(/Playing,/);
     expect(within(current).queryByText("Played")).toBeNull();
@@ -694,7 +698,7 @@ describe("BookDetailPage", () => {
     await screen.findByRole("button", { name: "Play" });
     expect(screen.queryByRole("button", { name: /Narrator voice/ })).toBeNull();
     await openMore();
-    expect(await screen.findByRole("menuitem", { name: "Narrator voice…" })).toBeTruthy();
+    expect(await screen.findByRole("menuitem", { name: "Narrator voice" })).toBeTruthy();
   });
 
   it("opens the narrator dialog from the ⋮ menu and saves the choice with a PATCH", async () => {
@@ -844,6 +848,6 @@ describe("BookDetailPage", () => {
     expect(await screen.findByRole("button", { name: "Back" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "More options for this book" })).toBeTruthy();
     expect(screen.getByText("10 m · 2 chapters · 38% listened")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Resume Chapter 2" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Resume" })).toBeTruthy();
   });
 });
