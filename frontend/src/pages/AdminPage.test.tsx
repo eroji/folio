@@ -1,14 +1,16 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminPage } from "./AdminPage";
 import type { Job } from "../api/types";
 
 function makeJob(overrides: Partial<Job> = {}): Job {
   return {
-    id: 7,
+    id: "7",
     type: "ingest",
     book_id: "11111111-1111-1111-1111-111111111111",
+    book_title: "Dune",
     priority: 0,
     status: "failed",
     attempts: 3,
@@ -70,7 +72,7 @@ function bodyOf(call: readonly unknown[] | undefined): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  jobs = [makeJob(), makeJob({ id: 8, status: "done", error: null })];
+  jobs = [makeJob(), makeJob({ id: "8", status: "done", error: null })];
   retryFails = false;
   clearFails = false;
   cache = { files: 1234, bytes: 1288490188, tts: { status: "ok", latency_ms: 42 } };
@@ -112,11 +114,11 @@ beforeEach(() => {
         return new Response(null, { status: 204 });
       }
       if (url.includes("/voices")) return jsonResponse(200, voices);
-      const retry = url.match(/\/admin\/jobs\/(\d+)\/retry$/);
+      const retry = url.match(/\/admin\/jobs\/([^/]+)\/retry$/);
       if (retry && method === "POST") {
         if (retryFails) return jsonResponse(500, { error: { code: "nope", message: "nope" } });
-        jobs = jobs.map((job) => (job.id === Number(retry[1]) ? { ...job, status: "queued", error: null } : job));
-        return jsonResponse(202, { job: jobs.find((job) => job.id === Number(retry[1])) });
+        jobs = jobs.map((job) => (job.id === retry[1] ? { ...job, status: "queued", error: null } : job));
+        return jsonResponse(202, { job: jobs.find((job) => job.id === retry[1]) });
       }
       if (url.includes("/admin/cache/clear") && method === "POST") {
         if (clearFails) return jsonResponse(500, { error: { code: "nope", message: "nope" } });
@@ -146,7 +148,9 @@ function renderAdmin() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <AdminPage />
+      <MemoryRouter>
+        <AdminPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -258,6 +262,18 @@ describe("AdminPage", () => {
     expect(within(panel).getByText(/42 ms/)).toBeTruthy();
   });
 
+  it("shows the book title and a human status instead of raw ids", async () => {
+    renderAdmin();
+    const links = await screen.findAllByRole("link", { name: "Dune" });
+    expect(links[0]!.getAttribute("href")).toBe("/books/11111111-1111-1111-1111-111111111111");
+    expect(screen.queryByText("11111111-1111-1111-1111-111111111111")).toBeNull();
+    expect(screen.queryByText("7")).toBeNull();
+    expect(screen.getByText("Failed")).toBeTruthy();
+    expect(screen.getAllByText(/^Ingest/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/2 jobs/)).toBeTruthy();
+    expect(screen.getByText(/1 failed/)).toBeTruthy();
+  });
+
   it("shows Retry only on failed jobs and requeues with POST", async () => {
     renderAdmin();
     const retryButton = await screen.findByRole("button", { name: "Retry job 7" });
@@ -268,7 +284,7 @@ describe("AdminPage", () => {
       expect(findCall("/admin/jobs/7/retry", "POST")).toBeTruthy();
     });
     // Optimistic refresh: the refetched row shows the new status.
-    expect(await screen.findByText("queued")).toBeTruthy();
+    expect(await screen.findByText("Queued")).toBeTruthy();
   });
 
   it("shows an inline error when retry fails", async () => {

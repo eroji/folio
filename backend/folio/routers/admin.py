@@ -51,12 +51,24 @@ class JobPublic(BaseModel):
     error: str | None
     created_at: datetime
     finished_at: datetime | None
+    book_title: str | None = None
 
 
 @router.get("/jobs")
 def list_jobs(db: Annotated[DbSession, Depends(get_session)]) -> dict[str, Any]:
-    jobs = db.scalars(select(Job).order_by(Job.created_at.desc()).limit(JOBS_PAGE_SIZE)).all()
-    return {"items": [JobPublic.model_validate(j) for j in jobs]}
+    """Newest first, with the book title so the table reads without UUIDs."""
+    rows = db.execute(
+        select(Job, Book.title)
+        .outerjoin(Book, Job.book_id == Book.id)
+        .order_by(Job.created_at.desc())
+        .limit(JOBS_PAGE_SIZE)
+    ).all()
+    items = []
+    for job, title in rows:
+        item = JobPublic.model_validate(job)
+        item.book_title = title
+        items.append(item)
+    return {"items": items}
 
 
 @router.get("/users")

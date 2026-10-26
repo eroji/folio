@@ -5,11 +5,13 @@
  * render flat on the page background with divider rows, like Settings' rows. */
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import clsx from "clsx";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { Job, User } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
+import { timeAgo } from "../components/PlayerControls";
 import { AdminVoices } from "./AdminVoices";
 
 /** Body of GET /admin/cache (plan M6 Task A2). */
@@ -39,7 +41,38 @@ const SECTIONS = [
 
 const cellButton = "tap grid size-10 place-items-center rounded-full text-fg hover:bg-raised disabled:opacity-40";
 const sectionTitle = "pb-2 font-display text-xl";
-const pill = "rounded-full bg-raised px-2.5 py-0.5 text-xs text-fg-2";
+const pill = "rounded-full bg-raised px-2.5 py-0.5 text-xs font-semibold";
+
+/** Human labels + tones for the job statuses the queue writes. */
+const JOB_STATUS: Record<string, { label: string; tone: string }> = {
+  queued: { label: "Queued", tone: "text-fg-2" },
+  running: { label: "Running", tone: "text-accent" },
+  processing: { label: "Processing", tone: "text-accent" },
+  done: { label: "Done", tone: "text-fg-2" },
+  failed: { label: "Failed", tone: "text-danger" },
+};
+
+function jobStatus(job: Job): { label: string; tone: string } {
+  return JOB_STATUS[job.status] ?? { label: job.status, tone: "text-fg-2" };
+}
+
+function jobType(type: string): string {
+  const words = type.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** "42s" / "3m 12s"; still-running jobs say so instead of a fake duration. */
+function jobTook(job: Job): string {
+  if (!job.finished_at) return job.status === "queued" ? "—" : "Running";
+  const seconds = Math.max(
+    0,
+    Math.round((Date.parse(job.finished_at) - Date.parse(job.created_at)) / 1000),
+  );
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest > 0 ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
 
 /** Screen 9: job queue with retry, TTS status, audio cache controls, users. */
 export function AdminPage() {
@@ -51,9 +84,15 @@ export function AdminPage() {
   const jobsQuery = useQuery({
     queryKey: ["admin", "jobs"],
     queryFn: () => api.get<Job[] | { items: Job[] }>("/admin/jobs"),
+    // The queue moves while the section is open; keep the table live.
+    refetchInterval: section === "jobs" ? 5000 : false,
   });
   // T2 owns this endpoint; accept a bare array or an items envelope.
   const jobs = jobsQuery.data ? (Array.isArray(jobsQuery.data) ? jobsQuery.data : jobsQuery.data.items) : [];
+  const failedCount = jobs.filter((job) => job.status === "failed").length;
+  const activeCount = jobs.filter((job) =>
+    ["queued", "running", "processing"].includes(job.status),
+  ).length;
 
   const cacheQuery = useQuery({
     queryKey: ["admin", "cache"],
@@ -133,7 +172,18 @@ export function AdminPage() {
         >
           {section === "jobs" && (
             <section aria-label="Jobs" className="flex flex-col gap-2">
-              <h2 className={sectionTitle}>Jobs</h2>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h2 className={sectionTitle}>Jobs</h2>
+                {jobs.length > 0 && (
+                  <p className="text-sm text-fg-2">
+                    {jobs.length} {jobs.length === 1 ? "job" : "jobs"}
+                    {failedCount > 0 && (
+                      <span className="text-danger"> · {failedCount} failed</span>
+                    )}
+                    {activeCount > 0 && <span> · {activeCount} in progress</span>}
+                  </p>
+                )}
+              </div>
               {jobsQuery.isPending && (
                 <div className="animate-pulse space-y-2" aria-busy="true">
                   {[0, 1, 2].map((i) => (
@@ -159,12 +209,10 @@ export function AdminPage() {
                   <table className="w-full text-left text-base">
                     <thead className="border-b border-border text-xs uppercase tracking-wide text-fg-2">
                       <tr>
-                        <th className="px-3 py-2 font-medium">ID</th>
-                        <th className="px-3 py-2 font-medium">Type</th>
-                        <th className="px-3 py-2 font-medium">Status</th>
                         <th className="px-3 py-2 font-medium">Book</th>
-                        <th className="px-3 py-2 font-medium">Attempts</th>
-                        <th className="px-3 py-2 font-medium">Created</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                        <th className="px-3 py-2 font-medium">Started</th>
+                        <th className="px-3 py-2 font-medium">Took</th>
                         <th className="px-3 py-2 font-medium">Error</th>
                         <th className="px-3 py-2 font-medium">
                           <span className="sr-only">Actions</span>
@@ -172,34 +220,60 @@ export function AdminPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {jobs.map((job) => (
-                        <tr key={job.id} className="border-t border-border first:border-0">
-                          <td className="px-3 py-2 tabular">{job.id}</td>
-                          <td className="px-3 py-2">{job.type}</td>
-                          <td className="px-3 py-2">
-                            <span className={pill}>{job.status}</span>
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs">{job.book_id?.slice(0, 8) ?? "—"}</td>
-                          <td className="px-3 py-2 tabular">{job.attempts}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{new Date(job.created_at).toLocaleString()}</td>
-                          <td className="max-w-60 truncate px-3 py-2 text-fg-2" title={job.error ?? undefined}>
-                            {job.error ?? "—"}
-                          </td>
-                          <td className="px-2 py-1 text-right">
-                            {job.status === "failed" && (
-                              <button
-                                type="button"
-                                aria-label={`Retry job ${job.id}`}
-                                disabled={retry.isPending}
-                                onClick={() => retry.mutate(job.id)}
-                                className={cellButton}
-                              >
-                                <Icon name="RefreshCw" size={18} />
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {jobs.map((job) => {
+                        const status = jobStatus(job);
+                        return (
+                          <tr key={job.id} className="border-t border-border first:border-0">
+                            <td className="px-3 py-2">
+                              {job.book_id ? (
+                                <Link
+                                  to={`/books/${job.book_id}`}
+                                  className="font-semibold text-fg no-underline hover:underline"
+                                >
+                                  {job.book_title ?? "Untitled book"}
+                                </Link>
+                              ) : (
+                                <span className="text-fg-2">—</span>
+                              )}
+                              <span className="block text-xs text-fg-2" title={`Job ${job.id}`}>
+                                {jobType(job.type)}
+                                {job.attempts > 1 && ` · attempt ${job.attempts}`}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={clsx(pill, status.tone)}>{status.label}</span>
+                            </td>
+                            <td
+                              className="whitespace-nowrap px-3 py-2 text-fg-2"
+                              title={new Date(job.created_at).toLocaleString()}
+                            >
+                              {timeAgo(job.created_at)}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 tabular text-fg-2">
+                              {jobTook(job)}
+                            </td>
+                            <td
+                              className="max-w-60 truncate px-3 py-2 text-danger"
+                              title={job.error ?? undefined}
+                            >
+                              {job.error ?? <span className="text-fg-2">—</span>}
+                            </td>
+                            <td className="px-2 py-1 text-right">
+                              {job.status === "failed" && (
+                                <button
+                                  type="button"
+                                  aria-label={`Retry job ${job.id}`}
+                                  disabled={retry.isPending}
+                                  onClick={() => retry.mutate(job.id)}
+                                  className={cellButton}
+                                >
+                                  <Icon name="RefreshCw" size={18} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

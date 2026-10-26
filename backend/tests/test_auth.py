@@ -294,6 +294,7 @@ async def test_admin_jobs_lists_newest_first(admin_client: httpx.AsyncClient, db
     assert response.status_code == 200
     jobs = response.json()["items"]
     assert [j["status"] for j in jobs] == ["done", "done", "done"]
+    assert [j["book_title"] for j in jobs] == [book.title, book.title, book.title]
     dates = [j["created_at"] for j in jobs]
     assert dates == sorted(dates, reverse=True)
 

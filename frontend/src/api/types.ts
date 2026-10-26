@@ -119,9 +119,11 @@ export interface Candidate {
 
 /** Row of GET /admin/jobs (Job model, plan T1/T2). */
 export interface Job {
-  id: number;
+  id: string;
   type: string;
   book_id: string | null;
+  /** Joined from the book row so the admin table reads without UUIDs. */
+  book_title?: string | null;
   priority: number;
   status: string;
   attempts: number;
