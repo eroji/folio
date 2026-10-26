@@ -101,12 +101,76 @@ function renderAdmin() {
   );
 }
 
+async function openSection(label: string): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole("tab", { name: label }));
+  return screen.getByRole("tabpanel");
+}
+
 describe("AdminPage", () => {
+  it("renders only the selected section, Jobs by default", async () => {
+    renderAdmin();
+    expect((await screen.findByRole("tab", { name: "Jobs" })).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Cache" }).getAttribute("aria-selected")).toBe("false");
+    expect(await screen.findByRole("button", { name: "Retry job 7" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Clear cache" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Users" })).toBeNull();
+    expect(screen.queryAllByLabelText(/^Display name for /)).toHaveLength(0);
+  });
+
+  it("switching tabs swaps the sections", async () => {
+    renderAdmin();
+    await screen.findByRole("button", { name: "Retry job 7" });
+
+    await openSection("Voice names");
+    expect(await screen.findByLabelText("Display name for ashley-en")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry job 7" })).toBeNull();
+
+    await openSection("Jobs");
+    expect(await screen.findByRole("button", { name: "Retry job 7" })).toBeTruthy();
+    expect(screen.queryAllByLabelText(/^Display name for /)).toHaveLength(0);
+  });
+
+  it("arrow keys and Home/End move selection and focus between the tabs", async () => {
+    renderAdmin();
+    const jobsTab = await screen.findByRole("tab", { name: "Jobs" });
+    fireEvent.keyDown(jobsTab, { key: "ArrowDown" });
+    const cacheTab = screen.getByRole("tab", { name: "Cache" });
+    expect(cacheTab.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(cacheTab);
+    expect(await screen.findByRole("button", { name: "Clear cache" })).toBeTruthy();
+
+    fireEvent.keyDown(cacheTab, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Users" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Users" }));
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Users" }), { key: "ArrowLeft" });
+    expect(screen.getByRole("tab", { name: "Cache" }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Cache" }), { key: "End" });
+    expect(screen.getByRole("tab", { name: "Voice names" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Voice names" }));
+
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Voice names" }), { key: "Home" });
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Jobs" }));
+  });
+
+  it("uses the Settings layout container and section-title heading scale", () => {
+    renderAdmin();
+    const heading = screen.getByRole("heading", { name: "Admin", level: 1 });
+    expect(heading.className).toContain("text-3xl");
+    expect(String(heading.parentElement?.className)).toContain("pt-6");
+    const grid = screen.getByRole("tablist").parentElement;
+    expect(String(grid?.className)).toContain("flex-wrap items-start gap-8 lg:gap-12");
+    expect(String(screen.getByRole("tablist").className)).toContain("lg:w-52");
+    expect(String(screen.getByRole("tabpanel").className)).toContain("lg:max-w-[760px]");
+  });
+
   it("renders cache size and TTS status with latency", async () => {
     renderAdmin();
-    expect(await screen.findByText(/1,234 files · 1\.2 GiB/)).toBeTruthy();
-    expect(screen.getByText(/TTS:/)).toBeTruthy();
-    expect(screen.getByText(/42 ms/)).toBeTruthy();
+    const panel = await openSection("Cache");
+    expect(await within(panel).findByText(/1,234 files · 1\.2 GiB/)).toBeTruthy();
+    expect(within(panel).getByText(/TTS:/)).toBeTruthy();
+    expect(within(panel).getByText(/42 ms/)).toBeTruthy();
   });
 
   it("shows Retry only on failed jobs and requeues with POST", async () => {
@@ -135,21 +199,23 @@ describe("AdminPage", () => {
 
   it("clears the cache and refreshes the stats", async () => {
     renderAdmin();
-    fireEvent.click(await screen.findByRole("button", { name: "Clear cache" }));
+    const panel = await openSection("Cache");
+    fireEvent.click(await within(panel).findByRole("button", { name: "Clear cache" }));
     await vi.waitFor(() => {
       const call = vi
         .mocked(fetch)
         .mock.calls.find(([url, init]) => String(url).includes("/admin/cache/clear") && init?.method === "POST");
       expect(call).toBeTruthy();
     });
-    expect(await screen.findByText(/0 files · 0 B/)).toBeTruthy();
+    expect(await within(panel).findByText(/0 files · 0 B/)).toBeTruthy();
   });
 
   it("shows an inline error when the cache clear fails", async () => {
     clearFails = true;
     renderAdmin();
-    fireEvent.click(await screen.findByRole("button", { name: "Clear cache" }));
-    expect(await screen.findByRole("alert")).toBeTruthy();
+    const panel = await openSection("Cache");
+    fireEvent.click(await within(panel).findByRole("button", { name: "Clear cache" }));
+    expect(await within(panel).findByRole("alert")).toBeTruthy();
   });
 
   it("shows the empty state when there are no jobs", async () => {
@@ -160,7 +226,8 @@ describe("AdminPage", () => {
 
   it("lists users read-only", async () => {
     renderAdmin();
-    const section = await screen.findByRole("region", { name: "Users" });
+    const panel = await openSection("Users");
+    const section = await within(panel).findByRole("region", { name: "Users" });
     expect(await within(section).findByText("Admin User")).toBeTruthy();
     expect(within(section).getAllByText("admin").length).toBe(2); // username + role badge
     expect(within(section).queryByRole("button")).toBeNull();
@@ -168,7 +235,8 @@ describe("AdminPage", () => {
 
   it("prefills voice names with the effective name and flags overrides", async () => {
     renderAdmin();
-    const section = await screen.findByRole("region", { name: "Voice names" });
+    const panel = await openSection("Voice names");
+    const section = await within(panel).findByRole("region", { name: "Voice names" });
     expect((await within(section).findByLabelText("Display name for ashley-en") as HTMLInputElement).value).toBe(
       "Ashley",
     );
@@ -178,7 +246,8 @@ describe("AdminPage", () => {
 
   it("saves edited and untouched overrides and shows the saved indicator", async () => {
     renderAdmin();
-    const section = await screen.findByRole("region", { name: "Voice names" });
+    const panel = await openSection("Voice names");
+    const section = await within(panel).findByRole("region", { name: "Voice names" });
     fireEvent.change(await within(section).findByLabelText("Display name for ashley-en"), {
       target: { value: "Ash" },
     });
@@ -196,7 +265,8 @@ describe("AdminPage", () => {
 
   it("clearing an override removes it from the saved map", async () => {
     renderAdmin();
-    const section = await screen.findByRole("region", { name: "Voice names" });
+    const panel = await openSection("Voice names");
+    const section = await within(panel).findByRole("region", { name: "Voice names" });
     fireEvent.change(await within(section).findByLabelText("Display name for ashley-ja"), { target: { value: "" } });
     fireEvent.click(within(section).getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
