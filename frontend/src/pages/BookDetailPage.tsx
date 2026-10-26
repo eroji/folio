@@ -21,7 +21,7 @@ import {
   useBookProgress,
 } from "../api/progress";
 import { useListeningSettings } from "../api/settings";
-import { voiceLabel } from "../api/voices";
+import { baseLanguage, voiceLabel } from "../api/voices";
 import { useAuth } from "../auth/AuthProvider";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { BookCover } from "../components/BookCard";
@@ -301,7 +301,7 @@ export function BookDetailPage() {
   const notPlayable = book.status === "needs_ocr" || book.status === "failed" || !firstChapter;
   const loadedHere = player.book?.id === id;
   const playingHere = loadedHere && player.playing;
-  const voice = book.narrator_voice ?? settings.voices[book.language] ?? null;
+  const voice = book.narrator_voice ?? settings.voices[baseLanguage(book.language)] ?? null;
   const secondsPerChar = book.total_chars > 0 && book.est_duration_s ? book.est_duration_s / book.total_chars : 1 / 15;
   const chapterSeconds = (chapter: Chapter) => chapter.char_count * secondsPerChar;
   const length = book.est_duration_s ? formatLength(book.est_duration_s) : null;

@@ -37,7 +37,8 @@ export function App() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/books/:id" element={<BookDetailPage />} />
           <Route path="/books/:id/edit" element={<EditBookPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings" element={<Navigate to="/settings/playback" replace />} />
+          <Route path="/settings/:section" element={<SettingsPage />} />
           <Route path="/player" element={<PlayerPage />} />
           <Route path="/admin" element={<AdminRoute />} />
         </Route>
