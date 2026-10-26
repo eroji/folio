@@ -572,7 +572,7 @@ export function BookDetailPage() {
         <p className="pb-1 text-base text-fg-2">Turn off front matter you don’t want read aloud.</p>
         {/* Manage lists every chapter, excluded ones included, so it keeps
             the original source numbering (chapter.idx + 1). */}
-        {(showAllChapters ? data.chapters : data.chapters.slice(0, 4)).map((chapter) => (
+        {(showAllChapters ? data.chapters : data.chapters.slice(0, 10)).map((chapter) => (
           <div key={chapter.id} className="flex min-h-11 items-center justify-between gap-3">
             <span className={clsx("min-w-0 flex-1 truncate text-md", chapter.excluded ? "text-fg-2" : "text-fg")}>
               {chapter.idx + 1} · {chapter.title}
@@ -592,7 +592,7 @@ export function BookDetailPage() {
             {setChapter.error.message}
           </p>
         )}
-        {data.chapters.length > 4 && (
+        {data.chapters.length > 10 && (
           <button
             type="button"
             onClick={() => setShowAllChapters((value) => !value)}

@@ -269,3 +269,5 @@ One line each: decision, why, what it costs.
 - Edit details drawer: an invalid ISBN checksum disables Save immediately, but the inline error text appears only after the field is blurred (clicking Save blurs first in a real browser, so the user always sees why) — matches the "validate on blur" handoff rule without letting a silent invalid value sit next to an enabled Save.
 - ConfirmDialog gained an optional `cancelLabel` prop (default "Cancel") for the drawer's "Discard changes?" (Discard / Keep editing) — one prop is smaller than a second near-identical dialog; costs: none for existing callers.
 - Edit details drawer: CoverEditor.tsx lost its last importers (the Manage Cover row and EditBookPage are gone) but the file stays for now — it belongs to the covers workstream; costs: one dead module until the phase-7 cleanup deletes it.
+
+- Manage → Chapters to narrate shows the first **10** chapters before "Show all N" (handoff said four; user override).

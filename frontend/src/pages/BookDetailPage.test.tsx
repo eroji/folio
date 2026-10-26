@@ -637,7 +637,7 @@ describe("BookDetailPage", () => {
     expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull();
   });
 
-  it("collapses the Manage chapter list to four with Show all and Show less", async () => {
+  it("collapses the Manage chapter list to ten with Show all and Show less", async () => {
     book = makeBook({ can_edit: true });
     chapters = Array.from({ length: 17 }, (_, index) => ({
       id: `c${index + 1}`,
@@ -648,11 +648,12 @@ describe("BookDetailPage", () => {
     renderDetail();
     fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
     expect(await screen.findByText("17 of 17 on")).toBeTruthy();
-    expect(screen.queryByRole("switch", { name: "Narrate Chapter 16" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Narrate Chapter 10" })).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "Narrate Chapter 11" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Show all 17" }));
     expect(await screen.findByRole("switch", { name: "Narrate Chapter 17" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show less" }));
-    expect(screen.queryByRole("switch", { name: "Narrate Chapter 16" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Narrate Chapter 11" })).toBeNull();
   });
 
   it("updates the Chapters tab and the on-count when a chapter is excluded", async () => {
