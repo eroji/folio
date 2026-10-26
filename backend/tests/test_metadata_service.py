@@ -243,6 +243,16 @@ def test_apply_sanitizes_html_description(db: Session, settings: Settings) -> No
     assert "alert(1)" in book.description  # text kept, markup stripped
 
 
+def test_apply_strips_invisible_characters_from_description(
+    db: Session, settings: Settings
+) -> None:
+    book = _book(db)
+    candidate = _candidate(description="a\xa0b\x9dc\u200bd")
+    applied = metadata_service.apply_candidate(db, book, candidate, ["description"], settings)
+    assert applied == ["description"]
+    assert _reload(db, book.id).description == "a bcd"  # NBSP→space, junk dropped
+
+
 # --- auto_fetch --------------------------------------------------------------
 
 

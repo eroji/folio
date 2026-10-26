@@ -84,7 +84,7 @@ async def test_patch_every_field_roundtrips_through_get(
     assert body["isbn13"] == "9780306406157"
     assert body["tags"] == ["classic", "audio"]
     assert body["narrator_voice"] == "serena"
-    assert "locked_fields" not in body  # still not exposed
+    assert set(body["locked_fields"]) == set(ALL_FIELDS)  # exposed for the lock icons
     assert set(reload_book(db, book_id).locked_fields) == set(ALL_FIELDS)
 
 
@@ -247,6 +247,62 @@ async def test_description_html_is_stripped(
     )
     assert response.status_code == 200, response.text
     assert response.json()["book"]["description"] == "bold &amp; alert(1)text"
+
+
+async def test_description_control_characters_are_stripped(
+    auth_client: httpx.AsyncClient, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    response = await auth_client.patch(
+        f"/api/v1/books/{book_id}",
+        json={"description": "a\xa0b\x9dc\u200bd\nnext"},
+        headers=csrf(auth_client),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["book"]["description"] == "a bcd\nnext"
+
+
+async def test_unlock_removes_the_field_and_is_idempotent(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    url = f"/api/v1/books/{book_id}"
+    await auth_client.patch(url, json={"title": "T", "subtitle": "S"}, headers=csrf(auth_client))
+    response = await auth_client.post(
+        f"{url}/unlock", json={"field": "title"}, headers=csrf(auth_client)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["book"]["locked_fields"] == ["subtitle"]
+    again = await auth_client.post(
+        f"{url}/unlock", json={"field": "title"}, headers=csrf(auth_client)
+    )
+    assert again.status_code == 200, again.text
+    assert reload_book(db, book_id).locked_fields == ["subtitle"]
+
+
+async def test_unlock_validates_field_permissions_and_csrf(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    url = f"/api/v1/books/{book_id}"
+    for bad in [{"field": "cover"}, {"field": "locked_fields"}, {"field": ""}]:
+        response = await auth_client.post(f"{url}/unlock", json=bad, headers=csrf(auth_client))
+        assert response.status_code == 422, bad
+        assert response.json()["error"]["code"] == "validation_failed"
+    missing = await auth_client.post(f"{url}/unlock", json={"field": "title"})
+    assert missing.status_code == 403
+    assert missing.json()["error"]["code"] == "csrf_failed"
+    await auth_client.post("/api/v1/test/login", json={"username": "someoneelse", "role": "user"})
+    denied = await auth_client.post(
+        f"{url}/unlock", json={"field": "title"}, headers=csrf(auth_client)
+    )
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "forbidden"
+    unknown = await auth_client.post(
+        f"/api/v1/books/{UUID(int=0)}/unlock", json={"field": "title"}, headers=csrf(auth_client)
+    )
+    assert unknown.status_code == 404
+    assert reload_book(db, book_id).locked_fields == []  # nothing was ever written
 
 
 async def test_language_series_index_and_length_validation(

@@ -550,6 +550,51 @@ async def test_cover_404_when_the_files_are_gone(
     assert (await admin_client.get(f"/api/v1/books/{book.id}/cover")).status_code == 404
 
 
+# --- DELETE /{book_id}/cover -------------------------------------------------
+
+
+async def test_delete_cover_removes_files_and_clears_fields(
+    admin_client: httpx.AsyncClient, db: Session, settings: Settings
+) -> None:
+    book = _book(db)
+    stored = await admin_client.post(
+        f"/api/v1/books/{book.id}/cover",
+        files={"file": ("c.png", _image_bytes("PNG"), "image/png")},
+        headers=_csrf(admin_client),
+    )
+    assert stored.status_code == 200
+    response = await admin_client.delete(
+        f"/api/v1/books/{book.id}/cover", headers=_csrf(admin_client)
+    )
+    assert response.status_code == 204
+    assert not response.content
+    assert (await admin_client.get(f"/api/v1/books/{book.id}/cover")).status_code == 404
+    db.expire_all()
+    book = db.get(Book, book.id)
+    assert book is not None and book.cover_key is None and book.cover_rgb is None
+    assert (await admin_client.get(f"/api/v1/books/{book.id}")).json()["book"]["cover_url"] is None
+    for width in (200, 600, None):
+        assert cover_path(settings, book.id, width) is None
+    again = await admin_client.delete(f"/api/v1/books/{book.id}/cover", headers=_csrf(admin_client))
+    assert again.status_code == 204  # idempotent without a cover
+
+
+async def test_delete_cover_permissions_csrf_and_unknown_book(
+    admin_client: httpx.AsyncClient, auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    book = _book(db, uploaded_by=make_user(db, username="someoneelse").id)
+    missing = await auth_client.delete(f"/api/v1/books/{book.id}/cover")
+    assert missing.status_code == 403
+    assert missing.json()["error"]["code"] == "csrf_failed"
+    denied = await auth_client.delete(f"/api/v1/books/{book.id}/cover", headers=_csrf(auth_client))
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "forbidden"
+    unknown = await admin_client.delete(
+        f"/api/v1/books/{uuid4()}/cover", headers=_csrf(admin_client)
+    )
+    assert unknown.status_code == 404
+
+
 # --- pipeline integration ----------------------------------------------------
 
 

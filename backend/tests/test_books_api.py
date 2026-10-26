@@ -218,7 +218,9 @@ async def test_detail_shape(
     body = (await auth_client.get(f"/api/v1/books/{book_id}")).json()
     assert body["progress"] is None
     assert body["book"]["cover_url"] is None
-    assert "uploaded_by" not in body["book"] and "locked_fields" not in body["book"]
+    assert "uploaded_by" not in body["book"] and body["book"]["locked_fields"] == []
+    listed = (await auth_client.get("/api/v1/books")).json()["items"][0]
+    assert listed["locked_fields"] == []  # exposed in every book payload
     assert [c["idx"] for c in body["chapters"]] == list(range(len(body["chapters"])))
     assert (await auth_client.get(f"/api/v1/books/{UUID(int=0)}")).status_code == 404
 
