@@ -252,9 +252,21 @@ function Field({
   );
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+function Group({
+  title,
+  children,
+  divider = true,
+}: {
+  title: string;
+  children: ReactNode;
+  /** Off for the first group, which follows the Find metadata pill. */
+  divider?: boolean;
+}) {
   return (
-    <section aria-label={title} className="flex flex-col gap-3.5 border-t border-border py-5 first:border-t-0">
+    <section
+      aria-label={title}
+      className={clsx("flex flex-col gap-3.5 py-5", divider && "border-t border-border")}
+    >
       <h3 className="eyebrow">{title}</h3>
       {children}
     </section>
@@ -417,7 +429,7 @@ function CoverGroup({ book }: { book: Book }) {
 
   if (crop) {
     return (
-      <Group title="Cover">
+      <Group title="Cover" divider={false}>
         <div className="flex flex-wrap items-start gap-5">
           <canvas
             ref={canvasRef}
@@ -508,7 +520,7 @@ function CoverGroup({ book }: { book: Book }) {
   }
 
   return (
-    <Group title="Cover">
+    <Group title="Cover" divider={false}>
       <div className="flex flex-wrap items-center gap-5">
         {book.cover_url ? (
           <img src={book.cover_url} alt="" className="aspect-[2/3] w-24 shrink-0 rounded-md bg-raised object-cover" />
