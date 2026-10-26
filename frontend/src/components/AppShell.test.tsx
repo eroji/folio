@@ -281,4 +281,20 @@ describe("AppShell", () => {
     expect(within(mini).getByRole("link", { name: /Open player/ })).toBeTruthy();
     expect(within(mini).queryByRole("button", { name: "Stop and close player" })).toBeNull();
   });
+
+  it("locks the document scroll on /player", async () => {
+    renderShell({ entry: "/player" });
+    await boot();
+    const main = document.querySelector("main")!;
+    expect(main.className).toContain("overflow-hidden");
+    expect(main.className).toContain("100dvh");
+  });
+
+  it("keeps other pages scrolling with the document", async () => {
+    renderShell({ entry: "/" });
+    await boot();
+    const main = document.querySelector("main")!;
+    expect(main.className).not.toContain("overflow-hidden");
+    expect(main.className).toContain("flex-1");
+  });
 });

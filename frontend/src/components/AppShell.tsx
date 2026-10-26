@@ -369,8 +369,15 @@ function Shell() {
         <PhoneHeader />
         <main
           className={clsx(
-            "min-w-0 flex-1 px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:px-10 lg:pb-12",
-            player.book && "pb-[calc(10rem+env(safe-area-inset-bottom))] lg:pb-[calc(72px+3rem)]",
+            "min-w-0 px-4 lg:px-10",
+            onPlayerPage
+              ? // The player owns the viewport: top bar + this box = 100dvh, so
+                // the document never scrolls and only the panels do.
+                "h-[calc(100dvh-3.5rem)] min-h-0 overflow-hidden pb-[calc(72px+env(safe-area-inset-bottom))] lg:pb-[72px]"
+              : clsx(
+                  "flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-12",
+                  player.book && "pb-[calc(10rem+env(safe-area-inset-bottom))] lg:pb-[calc(72px+3rem)]",
+                ),
           )}
         >
           <Outlet />

@@ -448,7 +448,9 @@ export function BookDetailPage() {
           : "No chapters are set to narrate. Include chapters under Manage."}
       </p>
     ) : (
-      <ol className="flex flex-col gap-0.5">
+      // Bounded internal scroll so a long chapter list never grows the
+      // page into a second scrollbar; the cover column stays put.
+      <ol className="scroll-thin flex max-h-[60vh] flex-col gap-0.5 overflow-y-auto overscroll-contain">
         {/* Excluded chapters have no row here at all — they are only
             listed under Manage, where they are re-enabled. Included
             ones are numbered 1..N in playback order. */}

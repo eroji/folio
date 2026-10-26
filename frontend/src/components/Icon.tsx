@@ -32,7 +32,6 @@ import PlayArrowFilled from "@material-symbols/svg-400/rounded/play_arrow-fill.s
 import Public from "@material-symbols/svg-400/rounded/public.svg?react";
 import RecordVoiceOver from "@material-symbols/svg-400/rounded/record_voice_over.svg?react";
 import Refresh from "@material-symbols/svg-400/rounded/refresh.svg?react";
-import Remove from "@material-symbols/svg-400/rounded/remove.svg?react";
 import Replay from "@material-symbols/svg-400/rounded/replay.svg?react";
 import Search from "@material-symbols/svg-400/rounded/search.svg?react";
 import Settings from "@material-symbols/svg-400/rounded/settings.svg?react";
@@ -40,6 +39,8 @@ import Shield from "@material-symbols/svg-400/rounded/shield.svg?react";
 import SkipNextFilled from "@material-symbols/svg-400/rounded/skip_next-fill.svg?react";
 import SkipPreviousFilled from "@material-symbols/svg-400/rounded/skip_previous-fill.svg?react";
 import Speed from "@material-symbols/svg-400/rounded/speed.svg?react";
+import TextDecrease from "@material-symbols/svg-400/rounded/text_decrease.svg?react";
+import TextIncrease from "@material-symbols/svg-400/rounded/text_increase.svg?react";
 import Upload from "@material-symbols/svg-400/rounded/upload.svg?react";
 import Visibility from "@material-symbols/svg-400/rounded/visibility.svg?react";
 import VisibilityOff from "@material-symbols/svg-400/rounded/visibility_off.svg?react";
@@ -51,7 +52,8 @@ const OUTLINED = {
   LibraryBig: LibraryBooks,
   Menu,
   Plus: Add,
-  Minus: Remove,
+  TextDecrease,
+  TextIncrease,
   RotateCcw: Replay,
   RotateCw: Forward,
   Gauge: Speed,

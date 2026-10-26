@@ -95,15 +95,41 @@ describe("PlayerPage (desktop)", () => {
     expect(grid?.className).toContain("pt-6");
   });
 
-  it("scrolls the panes internally instead of the window", async () => {
+  it("has exactly one scroll container per tab and never scrolls the document", async () => {
     await renderAtPlayer();
-    const pane = screen.getByRole("tabpanel");
-    expect(pane.className).toContain("overflow-y-auto");
-    expect(pane.className).toContain("scroll-thin");
-    expect(pane.getAttribute("style")).toContain("min(560px");
+    const viewport = document.querySelector('[class*="overflow-hidden"][class*="h-full"]');
+    expect(viewport).toBeTruthy(); // the player owns the viewport box
+    const panel = screen.getByRole("tabpanel");
+    expect(panel.className).toContain("overflow-hidden"); // the read panel itself never scrolls
+    expect(panel.className).not.toContain("overflow-y-auto");
     const box = document.querySelector('article[aria-label="Read along"]')!;
+    expect(box.className).toContain("min-h-0");
+    expect(box.className).toContain("flex-1");
     expect(box.className).toContain("overflow-y-auto");
     expect(box.className).toContain("scroll-thin");
+    expect(document.querySelectorAll('[class*="overflow-y-auto"]').length).toBe(1);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Up next" }));
+    const nextPanel = screen.getByRole("tabpanel");
+    expect(nextPanel.className).toContain("overflow-y-auto");
+    expect(nextPanel.className).toContain("scroll-thin");
+    expect(document.querySelectorAll('[class*="overflow-y-auto"]').length).toBe(1);
+  });
+
+  it("the follow effect scrolls the read-along panel itself", async () => {
+    const getPlayer = await renderAtPlayer();
+    const box = document.querySelector<HTMLElement>('article[aria-label="Read along"]')!;
+    let scrollTop = 0;
+    Object.defineProperty(box, "scrollTop", { configurable: true, get: () => scrollTop, set: (v: number) => (scrollTop = v) });
+    Object.defineProperty(box, "clientHeight", { configurable: true, get: () => 400 });
+    for (const node of box.querySelectorAll("p")) {
+      Object.defineProperty(node, "offsetTop", { configurable: true, get: () => 900 });
+    }
+    act(() => {
+      getPlayer().seekChapter(15); // segment change triggers the follow
+    });
+    await waitFor(() => expect(scrollTop).toBeGreaterThan(0));
+    await waitFor(() => expect(scrollTop).toBeCloseTo(900 - 400 / 3, 0));
   });
 });
 
