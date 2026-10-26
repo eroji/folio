@@ -121,6 +121,9 @@ function ManageRow({
 
 const outlinePill =
   "tap inline-flex h-10 items-center gap-2 rounded-full border border-border bg-transparent px-4 text-base font-semibold text-fg no-underline hover:bg-raised disabled:opacity-50";
+/** Edit details: the filled secondary pill it had before the drawer change. */
+const detailsPill =
+  "tap inline-flex h-10 items-center gap-2 rounded-full border border-border bg-raised px-4 text-base font-semibold text-fg no-underline hover:bg-border disabled:opacity-50";
 
 const STATUS_LABELS: Record<string, string> = {
   uploading: "Uploading",
@@ -537,7 +540,7 @@ export function BookDetailPage() {
           </>
         }
       >
-        <Link to={`/books/${id}/edit`} className={outlinePill}>
+        <Link to={`/books/${id}/edit`} className={detailsPill}>
           <Icon name="Pencil" size={18} />
           Edit details
         </Link>

@@ -1,7 +1,6 @@
 /** Edit details drawer (handoff "Find metadata inside the drawer"): a right-side
- * drawer over the book page. "Find metadata" widens it from 600 px to 1040 px
- * and slides in a 400 px results pane on the left; the form stays on the right
- * with unsaved edits intact. The selected result offers per-field suggestion
+ * drawer over the book page. "Find metadata" slides a 400 px results pane out
+ * to the left of the fixed 600 px form, so nothing in the form moves. The selected result offers per-field suggestion
  * pills; "Use" fills the field and marks it as metadata-sourced (saved via
  * metadata_fields so it is not locked), "Undo" restores the previous value.
  * Nothing is written until Save; a used cover is PUT first, then the PATCH.
@@ -1041,22 +1040,25 @@ export function EditDetailsDrawer({
         aria-labelledby="edit-details-title"
         onKeyDown={onKeyDown}
         className={clsx(
-          "drawer-in relative flex h-full w-full flex-col border-l border-border bg-surface shadow-[-24px_0_60px_rgb(0_0_0/0.5)] transition-[max-width] duration-[250ms]",
-          findOpen ? "max-w-[1040px]" : "max-w-[600px]",
+          "drawer-in relative flex h-full w-full flex-col overflow-hidden border-l border-border bg-surface shadow-[-24px_0_60px_rgb(0_0_0/0.5)] transition-[max-width] duration-[250ms]",
+          findOpen && wide ? "max-w-[1000px]" : "max-w-[600px]",
         )}
       >
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 justify-end">
           {findOpen && (
             <section
               role="region"
               aria-label="Find metadata"
               className={clsx(
-                "flex w-[400px] max-w-full shrink-0 flex-col border-r border-border bg-bg",
+                "find-pane-in flex h-full w-[400px] max-w-full shrink-0 flex-col border-r border-border bg-bg",
                 !wide && "absolute inset-y-0 left-0 z-10",
               )}
             >
-              <div className="flex shrink-0 items-center justify-between gap-2 pt-[22px] pr-4 pb-2.5 pl-6">
-                <h3 className="font-display text-xl">Find metadata</h3>
+              <div className="flex shrink-0 items-center justify-between gap-2 pt-[22px] pr-4 pb-1 pl-6">
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <h3 className="font-display text-xl">Find metadata</h3>
+                  <span className="text-[13px] text-fg-2">Pick a result, then use the suggestions in the form.</span>
+                </div>
                 <button
                   type="button"
                   aria-label="Close find metadata"
@@ -1151,20 +1153,14 @@ export function EditDetailsDrawer({
             </section>
           )}
 
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-full w-full max-w-[600px] min-w-0 shrink-0 flex-col">
             <header className="flex shrink-0 items-start justify-between gap-3 pt-[18px] pr-5 pb-3.5 pl-7">
               <div className="flex min-w-0 flex-col gap-0.5">
                 <h2 id="edit-details-title" className="font-display text-xl">
                   Edit details
                 </h2>
                 <span className="text-[13px] text-fg-2">
-                  {findOpen ? (
-                    "Pick a result on the left, then use the suggestions you want."
-                  ) : (
-                    <>
-                      Fields you change here <span className="whitespace-nowrap">(marked with a <Icon name="Lock" size={12} className="inline align-[-1px]" />)</span> are protected from automatic updates.
-                    </>
-                  )}
+                  Fields you change here <span className="whitespace-nowrap">(marked with a <Icon name="Lock" size={12} className="inline align-[-1px]" />)</span> are protected from automatic updates.
                 </span>
               </div>
               <button type="button" aria-label="Close" onClick={attemptClose} className="tap grid size-10 shrink-0 place-items-center rounded-full text-fg hover:bg-raised">
@@ -1180,14 +1176,16 @@ export function EditDetailsDrawer({
                 </p>
               )}
 
-              {!findOpen && (
-                <div className="pt-4">
+              <div className="pt-4">
+                {findOpen ? (
+                  <div aria-hidden className="h-9" /> // keeps the form from jumping when the pane opens
+                ) : (
                   <button type="button" onClick={() => setFindOpen(true)} className={outlinePill}>
                     <Icon name="Globe" size={18} />
                     Find metadata
                   </button>
-                </div>
-              )}
+                )}
+              </div>
 
               {suggestion && suggestionCount > 0 && (
                 <div className={clsx("mb-4 mt-4 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border px-3.5 py-3", accentTint)}>
@@ -1361,22 +1359,22 @@ export function EditDetailsDrawer({
                 </Field>
               </Group>
             </div>
+
+            <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border py-3.5 pr-5 pl-7">
+              <span aria-live="polite" className="text-[13px] text-fg-2">
+                {changeCount === 0 ? "" : `${changeCount} unsaved change${changeCount === 1 ? "" : "s"}`}
+              </span>
+              <div className="flex gap-2.5">
+                <button type="button" onClick={attemptClose} className={footerPill}>
+                  Cancel
+                </button>
+                <button type="button" onClick={save} disabled={changeCount === 0 || invalid || update.isPending || coverPut.isPending} className={footerPrimary}>
+                  Save
+                </button>
+              </div>
+            </footer>
           </div>
         </div>
-
-        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border py-3.5 pr-5 pl-7">
-          <span aria-live="polite" className="text-[13px] text-fg-2">
-            {changeCount === 0 ? "" : `${changeCount} unsaved change${changeCount === 1 ? "" : "s"}`}
-          </span>
-          <div className="flex gap-2.5">
-            <button type="button" onClick={attemptClose} className={footerPill}>
-              Cancel
-            </button>
-            <button type="button" onClick={save} disabled={changeCount === 0 || invalid || update.isPending || coverPut.isPending} className={footerPrimary}>
-              Save
-            </button>
-          </div>
-        </footer>
 
         {discardOpen && (
           <ConfirmDialog

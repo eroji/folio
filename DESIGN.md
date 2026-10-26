@@ -108,8 +108,9 @@
   on blur), Tags (chips) and Description. A lock after a label means the field is
   protected from automatic metadata; clicking it unlocks. Manage has no separate
   Cover row; **Find metadata** (provider search + apply, including the saved
-  "Review metadata matches" flow) opens a 400 px results pane beside the form
-  (drawer 600 → 1040 px; overlay under 1100 px). Each result offers per-field
+  "Review metadata matches" flow) slides a 400 px results pane out beside the
+  fixed 600 px form (drawer 600 → 1000 px; overlay under 1100 px) so the form
+  does not move. The Manage "Edit details" pill is filled (`bg-raised`). Each result offers per-field
   accent suggestion pills with Use/Undo and "Use all" (locked fields excluded);
   used values are deferred until Save and save without locking, typed fields
   still lock. Manage has no Find button: the pane opens only from the drawer

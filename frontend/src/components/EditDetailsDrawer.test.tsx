@@ -245,10 +245,10 @@ describe("EditDetailsDrawer", () => {
     const find = screen.getByRole("button", { name: "Find metadata" }) as HTMLButtonElement;
     expect(find.disabled).toBe(false);
     fireEvent.click(find);
-    expect(panel().className).toContain("max-w-[1040px]");
+    expect(panel().className).toContain("max-w-[1000px]");
     expect(screen.getByRole("region", { name: "Find metadata" })).toBeTruthy();
     expect((screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement).value).toBe("Messiah");
-    expect(screen.getByText("Pick a result on the left, then use the suggestions you want.")).toBeTruthy();
+    expect(screen.getByText("Pick a result, then use the suggestions in the form.")).toBeTruthy();
     await screen.findByRole("button", { name: /96%/ });
     fireEvent.click(screen.getByRole("button", { name: "Close find metadata" }));
     expect(screen.queryByRole("region", { name: "Find metadata" })).toBeNull();

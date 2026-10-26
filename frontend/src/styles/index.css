@@ -63,3 +63,19 @@
 .drawer-in {
   animation: drawer-in 250ms ease-out;
 }
+
+@keyframes find-pane-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+.find-pane-in {
+  animation: find-pane-in 250ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-in,
+  .find-pane-in {
+    animation: none;
+  }
+}

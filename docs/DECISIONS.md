@@ -280,3 +280,5 @@ One line each: decision, why, what it costs.
 - POST /books/{id}/metadata/apply is no longer called by the UI (suggestions + PATCH replace it); the now-unused useApplyMetadata hook was deleted — the endpoint can go with a later backend cleanup.
 
 - Find metadata opens only from the Edit details drawer's own pill (user override); the only other way in is the "Review metadata matches" banner, which deep-links into the same pane with saved candidates.
+
+- Find metadata keeps the Edit details form completely still: the drawer grows 600→1000 px (400 pane + fixed 600 form), a placeholder holds the Find button's space while the pane is open, the pane slides in, and overlay mode keeps the 600 px panel. The form hint no longer swaps text (the instruction lives in the pane). The Manage Edit details pill is filled with `bg-raised` again (user: it looked transparent).
