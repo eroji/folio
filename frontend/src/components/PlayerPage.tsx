@@ -14,7 +14,7 @@ import { BookCover } from "./BookCard";
 import { ChapterRow } from "./ChapterRow";
 import { Icon } from "./Icon";
 import { ChapterNavButton, ChapterScrubber, PlayButton, SkipButton, SleepButton, SpeedButton, iconButton } from "./PlayerControls";
-import { ReadAlong, useReadAlongControls } from "./ReadAlong";
+import { FontSizeButtons, ReadAlong, useReadAlongControls } from "./ReadAlong";
 import { ResumePrompt } from "./ResumePrompt";
 
 type PanelTab = "next" | "read" | "about";
@@ -279,15 +279,7 @@ function PhoneSheet({
               <span className="truncate text-sm text-fg-2">{book.title}</span>
             </span>
           </Link>
-          <button
-            type="button"
-            aria-label="Text size"
-            title="Text size"
-            onClick={controls.cycleFont}
-            className="tap grid size-9 shrink-0 place-items-center rounded-full border border-border text-fg hover:bg-raised"
-          >
-            <Icon name="AlignLeft" size={18} />
-          </button>
+          <FontSizeButtons controls={controls} />
         </div>
         <PlayerTabs tab={tab} onSelect={onSelect} className="mt-1" />
       </div>
