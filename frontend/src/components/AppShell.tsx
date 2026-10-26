@@ -99,7 +99,7 @@ function Sidebar({
     <nav
       aria-label="Main"
       className={clsx(
-        "sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-bg px-3 pt-2 pb-4 md:flex",
+        "sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto px-3 pt-2 pb-4 md:flex",
         collapsed ? "w-20" : "w-[240px]",
       )}
     >
@@ -357,13 +357,13 @@ function Shell() {
       ? coverGlow(bookGlowQuery.data?.book, false)
       : { className: "bg-page-glow" as const };
   return (
-    <div className="relative flex min-h-dvh">
+    <div className={clsx("relative flex min-h-dvh", glow.className)} style={glow.style}>
       <Sidebar collapsed={collapsed} onToggle={toggleSidebar} inProgress={continueData?.items ?? []} />
       {/* Fixed at the same coordinates in both modes: the rail narrows around it. */}
       <div className="absolute left-[60px] top-0 z-30 hidden h-14 items-center md:flex">
         <Logo size={29} textClass="text-[23px]" />
       </div>
-      <div className={clsx("flex min-w-0 flex-1 flex-col", glow.className)} style={glow.style}>
+      <div className="flex min-w-0 flex-1 flex-col">
         <TopBar collapsed={collapsed} />
         <PhoneHeader />
         <main
