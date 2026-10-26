@@ -165,6 +165,28 @@ describe("AdminPage", () => {
     expect(String(screen.getByRole("tabpanel").className)).toContain("lg:max-w-[760px]");
   });
 
+  it("renders section panels flat on the page background like Settings", async () => {
+    const expectFlat = (el: Element | null | undefined) => {
+      const cls = String(el?.className ?? "");
+      expect(cls).not.toContain("bg-surface");
+      expect(cls).not.toMatch(/(^|\s)rounded-/);
+      expect(cls).not.toContain("border border-border");
+    };
+    renderAdmin();
+    const panel = await openSection("Jobs");
+    await within(panel).findByRole("button", { name: "Retry job 7" });
+    expectFlat(panel.querySelector("table")?.parentElement);
+
+    await openSection("Cache");
+    expectFlat((await within(panel).findByText(/1,234 files/)).parentElement);
+
+    await openSection("Users");
+    expectFlat(await within(panel).findByRole("list"));
+
+    await openSection("Voice names");
+    for (const list of await within(panel).findAllByRole("list")) expectFlat(list);
+  });
+
   it("renders cache size and TTS status with latency", async () => {
     renderAdmin();
     const panel = await openSection("Cache");

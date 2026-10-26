@@ -1,7 +1,8 @@
 /** Admin (Direction D §4, same layout as Settings): title, left section
  * pills (roving-tabindex tablist) and one tabpanel — only the selected
  * section renders. The root wrapper and the two-column grid use exactly
- * Settings' classes so both pages share one content column. */
+ * Settings' classes so both pages share one content column, and the panels
+ * render flat on the page background with divider rows, like Settings' rows. */
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import clsx from "clsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -185,7 +186,7 @@ export function AdminPage() {
                 </p>
               )}
               {!jobsQuery.isPending && jobs.length > 0 && (
-                <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+                <div className="overflow-x-auto">
                   <table className="w-full text-left text-base">
                     <thead className="border-b border-border text-xs uppercase tracking-wide text-fg-2">
                       <tr>
@@ -243,7 +244,7 @@ export function AdminPage() {
               {cacheQuery.isPending && <div className="h-9 animate-pulse rounded-md bg-raised" aria-busy="true" />}
               {cacheQuery.error instanceof Error && <p role="alert" className="text-sm text-danger">{cacheQuery.error.message}</p>}
               {stats && (
-                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface p-4 text-base">
+                <div className="flex flex-wrap items-center gap-3 text-base">
                   <p className="tabular">
                     {stats.files.toLocaleString()} files · {formatBytes(stats.bytes)}
                   </p>
@@ -279,7 +280,7 @@ export function AdminPage() {
                 <p className="text-sm text-fg-2">No users have signed in yet.</p>
               )}
               {usersQuery.data && usersQuery.data.items.length > 0 && (
-                <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+                <ul className="divide-y divide-border">
                   {usersQuery.data.items.map((user) => (
                     <li key={user.id} className="tap flex min-h-9 items-center gap-3 px-4 py-1 text-base">
                       <span className="min-w-0 flex-1 truncate font-medium">{user.display_name}</span>
@@ -317,7 +318,7 @@ export function AdminPage() {
               )}
               {voiceNamesQuery.data && voiceNamesQuery.data.items.length > 0 && (
                 <>
-                  <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+                  <ul className="divide-y divide-border">
                     {voiceNamesQuery.data.items.map((item) => (
                       <li key={item.id} className="flex min-h-9 items-center gap-3 px-4 py-2">
                         <label className="min-w-0 flex-1">
