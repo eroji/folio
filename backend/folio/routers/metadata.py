@@ -23,7 +23,7 @@ from folio.errors import ApiError
 from folio.metadata import Candidate
 from folio.metadata import service as metadata_service
 from folio.metadata.match import score_candidate
-from folio.metadata.service import search_book
+from folio.metadata.service import genre_from_subjects, search_book
 from folio.models import Book, MetadataCandidate, User
 from folio.routers.books import _public
 from folio.security import require_csrf
@@ -82,7 +82,13 @@ def metadata_search(
     for candidate in candidates:
         candidate.score = score_candidate(book, candidate)
     candidates.sort(key=lambda candidate: candidate.score, reverse=True)
-    return {"items": [dataclasses.asdict(candidate) for candidate in candidates]}
+    items = []
+    for candidate in candidates:
+        item = dataclasses.asdict(candidate)
+        # The drawer offers a Genre suggestion without duplicating the mapping.
+        item["suggested_genre"] = genre_from_subjects(candidate.tags)
+        items.append(item)
+    return {"items": items}
 
 
 @router.post("/{book_id}/metadata/apply")

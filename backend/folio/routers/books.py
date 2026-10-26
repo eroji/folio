@@ -113,6 +113,10 @@ class BookPatch(BaseModel):
     tags: list[str] | None = None
     genre: str | None = Field(default=None, max_length=80)
     narrator_voice: str | None = Field(default=None, max_length=64)
+    # Fields whose value came from a metadata suggestion (Edit details drawer).
+    # They are written like any other field but stay unlocked: the provider,
+    # not the user, owns the value.
+    metadata_fields: list[str] | None = None
 
 
 class ChapterPatch(BaseModel):
@@ -426,16 +430,25 @@ def patch_book(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_session)],
 ) -> dict[str, Any]:
-    """Edit metadata; every provided field is appended to locked_fields so
-    no later automatic fetch overwrites it (spec: Metadata → Editing)."""
+    """Edit metadata; hand-typed fields are appended to locked_fields so no
+    later automatic fetch overwrites them. ``metadata_fields`` lists the fields
+    that came from a suggestion and stay unlocked (spec: Metadata → Editing)."""
     require_csrf(request, request.state.session_row)
     book = _get_book(db, book_id)
     if not can_edit_book(user, book):
         raise ApiError("forbidden", "You can only edit books you uploaded.", 403)
+    metadata_fields = set(patch.metadata_fields or [])
+    if not metadata_fields <= set(BookPatch.model_fields):
+        _fail()
     values = _patch_values(patch)
     for name, value in values.items():
         setattr(book, name, value)
-    book.locked_fields = list(dict.fromkeys([*book.locked_fields, *patch.model_fields_set]))
+    changed = patch.model_fields_set - {"metadata_fields"}
+    locked = [name for name in book.locked_fields if name not in metadata_fields]
+    for name in changed:
+        if name not in metadata_fields and name not in locked:
+            locked.append(name)
+    book.locked_fields = locked
     db.commit()
     return {"book": _public(book, user)}
 

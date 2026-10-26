@@ -104,6 +104,7 @@ def test_search_book_merges_and_dedupes_by_isbn(
                 "title": "Shared",
                 "author_name": ["Ann"],
                 "isbn": ["9781111111117"],
+                "subject": ["Mystery"],
             }
         ]
     }
@@ -393,6 +394,7 @@ async def test_metadata_search_endpoint_returns_candidates(
                 "title": "Found Book",
                 "author_name": ["Ann"],
                 "isbn": ["9781111111117"],
+                "subject": ["Mystery"],
             }
         ]
     }
@@ -410,6 +412,7 @@ async def test_metadata_search_endpoint_returns_candidates(
     items = response.json()["items"]
     assert items[0]["source"] == "openlibrary"
     assert items[0]["title"] == "Found Book"
+    assert items[0]["suggested_genre"] == "Mystery"
 
 
 async def test_metadata_search_scores_candidates_against_the_book(
@@ -432,6 +435,7 @@ async def test_metadata_search_scores_candidates_against_the_book(
                 "title": "Found Book",
                 "author_name": ["Ann"],
                 "isbn": ["9781111111117"],
+                "subject": ["Mystery"],
             }
         ]
     }

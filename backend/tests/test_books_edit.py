@@ -108,6 +108,45 @@ async def test_partial_patch_leaves_other_fields_untouched(
     assert set(locked) == set(ALL_FIELDS) and len(locked) == len(ALL_FIELDS)
 
 
+async def test_metadata_fields_are_written_without_being_locked(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    url = f"/api/v1/books/{book_id}"
+    # Genre starts locked (a prior manual edit).
+    await auth_client.patch(url, json={"genre": "Fantasy"}, headers=csrf(auth_client))
+    response = await auth_client.patch(
+        url,
+        json={
+            "title": "Typed Title",
+            "genre": "Mystery",
+            "metadata_fields": ["genre"],
+        },
+        headers=csrf(auth_client),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()["book"]
+    assert body["genre"] == "Mystery"
+    assert body["title"] == "Typed Title"
+    # The typed field is locked, the metadata-sourced one is not (and its old lock is gone).
+    assert body["locked_fields"] == ["title"]
+    assert reload_book(db, book_id).locked_fields == ["title"]
+
+
+async def test_metadata_fields_must_name_real_fields(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    response = await auth_client.patch(
+        f"/api/v1/books/{book_id}",
+        json={"title": "X", "metadata_fields": ["not_a_field"]},
+        headers=csrf(auth_client),
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_failed"
+    assert reload_book(db, book_id).title != "X"
+
+
 async def test_invalid_isbn_checksums_are_rejected(
     auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
 ) -> None:
