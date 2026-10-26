@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from folio.config import Settings
@@ -17,8 +18,8 @@ from folio.tts import TtsError, Voice
 if TYPE_CHECKING:
     from folio.tts.client import TtsClient
 
-# base_url -> (monotonic expiry, voices)
-_CACHE: dict[str, tuple[float, list[Voice]]] = {}
+# base_url -> (monotonic expiry, voices, wall-clock time of that discovery)
+_CACHE: dict[str, tuple[float, list[Voice], datetime]] = {}
 
 
 def _language(field: Any, voice_id: str, settings: Settings) -> str | None:
@@ -96,8 +97,14 @@ def discover_voices(settings: Settings, client: TtsClient, refresh: bool = False
         voices = client.list_voices()
     except TtsError:
         voices = _fallback(settings)
-    _CACHE[key] = (now + settings.tts_voices_ttl, voices)
+    _CACHE[key] = (now + settings.tts_voices_ttl, voices, datetime.now(UTC))
     return voices
+
+
+def last_refreshed(settings: Settings) -> datetime | None:
+    """When the engine list was last fetched ('{N} voices, checked … ago')."""
+    hit = _CACHE.get((settings.tts_base_url or "").rstrip("/"))
+    return hit[2] if hit is not None else None
 
 
 def reset_voice_cache() -> None:

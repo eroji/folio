@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
+from factories import make_book
 from fastapi import FastAPI
 from mock_tts import SILENT_OPUS
 from sqlalchemy import select
@@ -115,20 +116,31 @@ async def test_voices_list_parses_the_real_engine_shape(
     response = await vclient.get("/api/v1/voices")
     assert response.status_code == 200
     assert seen == ["/v1/audio/voices"]
-    items = response.json()["items"]
-    # The engine's ``tts`` fallback entry is not a real voice: omitted from the list.
+    body = response.json()
+    items = body["items"]
+    # The engine's ``tts`` fallback entry is not a real voice: hidden from listeners.
     assert [item["id"] for item in items] == [v for v in ENGINE_VOICES["voices"] if v != "tts"]
     by_id = {item["id"]: item for item in items}
     assert "tts" not in by_id
     assert by_id["ashley-en"] == {
         "id": "ashley-en",
         "language": "en",
-        "description": "Studio voice",
-        "available": True,
-        # All four ashley voices derive "Ashley" -> the language disambiguates.
         "display_name": "Ashley",
+        "is_default": True,  # first (only) on-server en voice: automatic default
+        "books_count": 0,
+        "on_server": True,
+        "language_overridden": False,
     }
     assert by_id["ashley-kr"]["language"] == "ko"  # kr -> ko (docs/TTS.md)
+    # No explicit defaults stored: each language's first on-server voice is its default.
+    assert body["defaults"] == {
+        "en": "ashley-en",
+        "ja": "ashley-ja",
+        "ko": "ashley-kr",
+        "zh": "ashley-zh",
+    }
+    assert body["count"] == 4
+    assert body["refreshed_at"] is not None
 
 
 async def test_voices_requires_session() -> None:
@@ -137,6 +149,66 @@ async def test_voices_requires_session() -> None:
         transport=httpx.ASGITransport(app=app), base_url="https://testserver"
     ) as client:
         assert (await client.get("/api/v1/voices")).status_code == 401
+
+
+@pytest.fixture()
+async def aclient(db: Session, tts_handler: _Handlers) -> AsyncIterator[httpx.AsyncClient]:
+    app, _ = _app(tts_handler.dispatch)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        await client.post("/api/v1/test/login", json={"username": "testadmin", "role": "admin"})
+        yield client
+
+
+async def test_admin_sees_tts_as_unassigned(aclient: httpx.AsyncClient) -> None:
+    # The engine's own fallback entry is hidden from listeners but shown to
+    # admins (who need the full engine list) as unassigned, never a default.
+    body = (await aclient.get("/api/v1/voices")).json()
+    tts = next(item for item in body["items"] if item["id"] == "tts")
+    assert tts == {
+        "id": "tts",
+        "display_name": "Tts",
+        "language": None,
+        "is_default": False,
+        "books_count": 0,
+        "on_server": True,
+        "language_overridden": False,
+    }
+
+
+async def test_removed_voice_is_listed_not_dropped(
+    aclient: httpx.AsyncClient, tts_handler: _Handlers
+) -> None:
+    await aclient.put(
+        "/api/v1/admin/voice-names", json={"names": {"ashley-en": "Ash"}}, headers=csrf(aclient)
+    )
+    shrunk = {"voices": ["tts", "ashley-ja", "ashley-kr", "ashley-zh"]}
+    tts_handler.fn = lambda _request: httpx.Response(200, json=shrunk)
+    body = (await aclient.get("/api/v1/voices?refresh=true")).json()
+    ghost = next(item for item in body["items"] if item["id"] == "ashley-en")
+    assert ghost == {
+        "id": "ashley-en",
+        "display_name": "Ash",
+        "language": "en",  # still detected from the id suffix
+        "is_default": False,
+        "books_count": 0,
+        "on_server": False,
+        "language_overridden": False,
+    }
+    assert body["defaults"]["en"] is None  # no en voice left on the server
+    assert body["count"] == 3
+
+
+async def test_books_count_counts_by_base_language(vclient: httpx.AsyncClient, db: Session) -> None:
+    make_book(db, status="ready", language="en")
+    make_book(db, status="ready", language="zh-TW")
+    make_book(db, status="ready", language="zh-Hans")
+    make_book(db, status="ready", language="de")
+    db.commit()
+    by_id = {item["id"]: item for item in (await vclient.get("/api/v1/voices")).json()["items"]}
+    assert by_id["ashley-en"]["books_count"] == 1
+    assert by_id["ashley-zh"]["books_count"] == 2  # zh-TW and zh-Hans fold into zh
+    assert by_id["ashley-ja"]["books_count"] == 0
 
 
 async def test_voices_ttl_cache_and_refresh_bypass(

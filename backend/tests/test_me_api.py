@@ -66,9 +66,48 @@ async def test_settings_voices_deep_merge(auth_client: httpx.AsyncClient) -> Non
         "/api/v1/me/settings", json={"voices": {"en": "ashley-en"}}, headers=csrf(auth_client)
     )
     response = await auth_client.put(
-        "/api/v1/me/settings", json={"voices": {"de": "tobias-de"}}, headers=csrf(auth_client)
+        "/api/v1/me/settings", json={"voices": {"ja": "hana-ja"}}, headers=csrf(auth_client)
     )
-    assert response.json()["settings"]["voices"] == {"en": "ashley-en", "de": "tobias-de"}
+    assert response.json()["settings"]["voices"] == {"en": "ashley-en", "ja": "hana-ja"}
+
+
+async def test_settings_voices_null_means_server_default(auth_client: httpx.AsyncClient) -> None:
+    await auth_client.put(
+        "/api/v1/me/settings", json={"voices": {"en": "ashley-en"}}, headers=csrf(auth_client)
+    )
+    response = await auth_client.put(
+        "/api/v1/me/settings", json={"voices": {"en": None}}, headers=csrf(auth_client)
+    )
+    assert response.status_code == 200
+    assert response.json()["settings"]["voices"] == {"en": None}
+
+
+async def test_settings_voices_migrate_region_keys(auth_client: httpx.AsyncClient) -> None:
+    response = await auth_client.put(
+        "/api/v1/me/settings",
+        json={"voices": {"zh-TW": "mina-zh-TW", "kr": "hana-kr"}},
+        headers=csrf(auth_client),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["settings"]["voices"] == {"zh": "mina-zh-TW", "ko": "hana-kr"}
+    # zh wins when both zh and a zh variant arrive in one patch.
+    response = await auth_client.put(
+        "/api/v1/me/settings",
+        json={"voices": {"zh-Hans": "other-zh", "zh": "mina-zh"}},
+        headers=csrf(auth_client),
+    )
+    assert response.json()["settings"]["voices"]["zh"] == "mina-zh"
+
+
+async def test_settings_voices_legacy_row_migrates_on_read(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    user = db.scalar(select(User).where(User.username == "testuser"))
+    assert user is not None
+    user.settings = {**(user.settings or {}), "voices": {"zh-TW": "mina-zh", "zh": "other-zh"}}
+    db.commit()
+    response = await auth_client.get("/api/v1/me/settings")
+    assert response.json()["settings"]["voices"] == {"zh": "other-zh"}
 
 
 @pytest.mark.parametrize(
@@ -81,7 +120,7 @@ async def test_settings_voices_deep_merge(auth_client: httpx.AsyncClient) -> Non
         {"skip_forward": 121},
         {"skip_back": 7.5},
         {"voices": {"en": ""}},  # empty voice id
-        {"voices": {"en": None}},
+        {"voices": {"en": 42}},  # not a string
         {"auto_next": "not-a-bool"},
         {"volume": 1},  # unknown key
     ],

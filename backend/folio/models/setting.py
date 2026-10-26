@@ -1,6 +1,7 @@
 """app_settings: generic key/value store for admin-set app data (spec: Admin).
 
-Deliberately not voice-specific: ``voice_names`` is the only key used today.
+Deliberately not voice-specific; the voice keys today are ``voice_names``,
+``voice_defaults`` and ``voice_languages`` (see ``voice_catalog.py``).
 """
 
 from datetime import datetime

@@ -59,7 +59,7 @@ def prepare_audio(
     """Queue the current segment plus ``count`` lookahead ones; any listener may call it."""
     require_csrf(request, request.state.session_row)
     book = _get_book(db, book_id)
-    rows = prepare(db, settings, book, body.segment_id, body.count, body.voice)
+    rows = prepare(db, settings, book, body.segment_id, body.count, body.voice, user.settings)
     items = []
     for segment, row in rows:
         audio = db.get(Audio, row.cache_key) if row.cache_key else None

@@ -16,6 +16,7 @@ from folio.models import Book, Chapter, Progress, User
 from folio.routers.books import _public
 from folio.routers.progress import progress_dict
 from folio.security import require_csrf
+from folio.voice_catalog import base_language
 
 router = APIRouter(prefix="/api/v1/me", tags=["me"])
 
@@ -37,7 +38,7 @@ class SettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     speed: float | None = None
-    voices: dict[str, str] | None = None
+    voices: dict[str, str | None] | None = None  # base language -> voice id, null = server default
     skip_back: int | None = None
     skip_forward: int | None = None
     auto_next: bool | None = None
@@ -73,9 +74,28 @@ def _merge(current: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def _normalize_voices(raw: Any) -> dict[str, Any]:
+    """Fold legacy region keys to base languages (``zh-TW`` -> ``zh``, ``kr`` -> ``ko``);
+    an exact base-language entry wins over a variant when both are stored."""
+    out: dict[str, Any] = {}
+    for language, voice in (raw or {}).items():
+        base = _voice_key(language)
+        if not base or (base in out and str(language).lower() != base):
+            continue
+        out[base] = voice
+    return out
+
+
+def _voice_key(language: str) -> str:
+    """Storage key for a settings voices map: base language, or the lower-cased
+    key for languages outside the four the UI offers (``de`` stays ``de``)."""
+    return base_language(language) or str(language).strip().lower()
+
+
 def _public_settings(user: User) -> dict[str, Any]:
     merged = _merge(DEFAULT_SETTINGS, user.settings)
     merged.pop("theme", None)  # Direction D: dark only; stale rows are never returned
+    merged["voices"] = _normalize_voices(merged.get("voices"))
     return merged
 
 
@@ -93,12 +113,20 @@ def _validated(patch: SettingsPatch) -> dict[str, Any]:
                 _fail()
             values[name] = value
     if patch.voices is not None:
-        if not all(
-            language and isinstance(voice, str) and voice.strip()
-            for language, voice in patch.voices.items()
-        ):
-            _fail()
-        values["voices"] = patch.voices
+        normalized: dict[str, Any] = {}
+        for language, voice in patch.voices.items():
+            base = _voice_key(language)
+            if not base:
+                _fail()
+            if voice is not None and not (isinstance(voice, str) and voice.strip()):
+                _fail()
+            if base in normalized and str(language).lower() != base:
+                continue  # an explicit zh entry wins over a zh-TW one
+            pinned: str | None = voice.strip() if isinstance(voice, str) else None
+            if pinned is not None and len(pinned) > 64:
+                _fail()
+            normalized[base] = pinned
+        values["voices"] = normalized
     for name in ("auto_next", "speak_titles"):
         value = getattr(patch, name)
         if value is not None:

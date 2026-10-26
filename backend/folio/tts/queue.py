@@ -8,6 +8,7 @@ No separate jobs plumbing: the rows double as queue and state.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -34,17 +35,23 @@ from folio.tts import (
     select_voice,
 )
 from folio.tts.pronunciation import apply_rules
+from folio.voice_catalog import effective_defaults
 
 # Segments needed now go first; lookahead is lower priority (spec: Priority).
 PRIORITY_NOW = 10
 PRIORITY_LOOKAHEAD = 100
 
 
-def _resolve_voice(settings: Settings, book: Book) -> str:
-    """Run the selection order against the engine's current voice list."""
+def _resolve_voice(
+    session: Session, settings: Settings, book: Book, user_settings: dict[str, Any] | None = None
+) -> str:
+    """Run the selection order against the engine's current voice list and
+    the admin-set per-language defaults."""
     with TtsClient(settings) as client:
         voices = discover_voices(settings, client)
-    return select_voice(book, {}, settings, voices)
+    return select_voice(
+        book, user_settings or {}, settings, voices, effective_defaults(session, voices)
+    )
 
 
 def _ordered_segments(session: Session, book: Book) -> list[Segment]:
@@ -96,6 +103,7 @@ def prepare(
     segment_id: UUID,
     count: int | None = None,
     voice: str | None = None,
+    user_settings: dict[str, Any] | None = None,
 ) -> list[tuple[Segment, SegmentAudio]]:
     """Queue ``count + 1`` segments from ``segment_id``; cache hits go straight to ready.
 
@@ -104,7 +112,7 @@ def prepare(
     seek raises it), and ``failed`` waits for the retry button.
     """
     if voice is None:
-        voice = _resolve_voice(settings, book)
+        voice = _resolve_voice(session, settings, book, user_settings)
     if count is None:
         count = settings.tts_lookahead
     rules = _rules(session, book.id)
