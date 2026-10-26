@@ -104,6 +104,30 @@ def set_cover_url(
     return _stored(book)
 
 
+@router.delete("/{book_id}/cover", status_code=204)
+def delete_cover(
+    request: Request,
+    book_id: UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_session)],
+) -> None:
+    """Remove every stored cover variant and the cover columns; idempotent."""
+    require_csrf(request, request.state.session_row)
+    book = _get_book(db, book_id)
+    _require_edit(user, book)
+    settings = get_settings()
+    for path in (
+        cover_path(settings, book.id, 200),
+        cover_path(settings, book.id, 600),
+        cover_path(settings, book.id, None),
+    ):
+        if path is not None:
+            path.unlink(missing_ok=True)
+    book.cover_key = None
+    book.cover_rgb = None
+    db.commit()
+
+
 @router.get("/{book_id}/cover")
 def get_cover(
     request: Request,

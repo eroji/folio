@@ -29,6 +29,7 @@ from folio.models.book import BOOK_SEARCH_EXPR
 from folio.routers.progress import progress_dict
 from folio.security import require_csrf
 from folio.storage import book_dir, cover_dir, ensure_dirs, original_path
+from folio.text import clean_description
 
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
@@ -41,7 +42,9 @@ _FORMAT_EXT = {Format.EPUB: "epub", Format.PDF: "pdf", Format.KINDLE: "mobi"}
 
 
 class BookPublic(BaseModel):
-    """Book payload without uploaded_by/locked_fields (not exposed, see DECISIONS)."""
+    """Book payload without uploaded_by (not exposed, see DECISIONS).
+    ``locked_fields`` is exposed so the Edit details drawer can draw its lock
+    icons and offer "unlock" (see POST /books/{id}/unlock)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -69,6 +72,7 @@ class BookPublic(BaseModel):
     created_at: datetime
     updated_at: datetime
     can_edit: bool = False  # computed per caller in _public; uploaded_by stays hidden
+    locked_fields: list[str] = []
 
 
 class ChapterPublic(BaseModel):
@@ -115,6 +119,12 @@ class ChapterPatch(BaseModel):
     """PATCH /books/{id}/chapters/{cid} body: the exclusion toggle."""
 
     excluded: bool
+
+
+class UnlockBody(BaseModel):
+    """POST /books/{id}/unlock body: the field to release from locked_fields."""
+
+    field: str = Field(max_length=64)
 
 
 def _fail() -> NoReturn:
@@ -172,10 +182,13 @@ def _patch_values(patch: BookPatch) -> dict[str, object | None]:
     if "genre" in provided:
         values["genre"] = _clean_str(patch.genre)
     if "description" in provided:
-        # Plain text for M3 (see DECISIONS): all markup stripped, never rendered raw.
+        # Plain text for M3 (see DECISIONS): markup stripped, invisible control
+        # characters dropped (they render as empty boxes in the drawer).
         raw = patch.description
         values["description"] = (
-            bleach.clean(raw, tags=[], strip=True).strip() or None if raw else None
+            clean_description(bleach.clean(raw, tags=[], strip=True).strip()) or None
+            if raw
+            else None
         )
     for name in ("authors", "tags"):
         if name in provided:
@@ -423,6 +436,27 @@ def patch_book(
     for name, value in values.items():
         setattr(book, name, value)
     book.locked_fields = list(dict.fromkeys([*book.locked_fields, *patch.model_fields_set]))
+    db.commit()
+    return {"book": _public(book, user)}
+
+
+@router.post("/{book_id}/unlock")
+def unlock_field(
+    request: Request,
+    book_id: UUID,
+    body: UnlockBody,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_session)],
+) -> dict[str, Any]:
+    """Remove one field from locked_fields so "Find metadata" may update it
+    again (Edit details drawer lock icon). Idempotent; the value is untouched."""
+    require_csrf(request, request.state.session_row)
+    book = _get_book(db, book_id)
+    if not can_edit_book(user, book):
+        raise ApiError("forbidden", "You can only edit books you uploaded.", 403)
+    if body.field not in BookPatch.model_fields:
+        raise ApiError("validation_failed", "Unknown field.", 422)
+    book.locked_fields = [name for name in book.locked_fields if name != body.field]
     db.commit()
     return {"book": _public(book, user)}
 

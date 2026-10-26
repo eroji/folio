@@ -34,6 +34,7 @@ from folio.ingest.segment import segment_chapter
 from folio.metadata.service import auto_fetch, genre_from_subjects
 from folio.models import Book, BookFile, Chapter, Job, Segment
 from folio.storage import book_dir
+from folio.text import clean_description
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,11 @@ def _extract(settings: Settings, book: Book, path: Path) -> ExtractedBook:
 
 def _apply_metadata(book: Book, meta: EmbeddedMetadata) -> None:
     """File metadata wins; locked_fields (set by M3 edits) is never overwritten."""
-    description = bleach.clean(meta.description, tags=[], strip=True) if meta.description else None
+    description = (
+        clean_description(bleach.clean(meta.description, tags=[], strip=True)) or None
+        if meta.description
+        else None
+    )
     fields: dict[str, object | None] = {
         "title": meta.title or book.title,  # book.title is the filename stem from upload
         "authors": meta.authors or None,
