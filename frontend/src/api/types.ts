@@ -118,6 +118,8 @@ export interface Candidate {
   tags: string[];
   cover_url: string | null;
   score: number;
+  /** Genre derived from the provider subjects; absent until the backend lands. */
+  suggested_genre?: string | null;
 }
 
 /** Row of GET /admin/jobs (Job model, plan T1/T2). */

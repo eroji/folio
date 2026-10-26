@@ -1,9 +1,13 @@
-/** Edit details drawer (handoff "Edit details drawer"): a right-side drawer
- * over the book page replacing the old full-page Edit metadata view. Fixed
- * header/footer, groups (Cover, Book, Publication, Identifiers, Tags,
- * Description) in a scrollbar-less body, per-field locks backed by
- * POST /books/{id}/unlock, and an in-drawer 2:3 cover crop. Focus moves to
- * Title and is trapped; Esc / scrim / X close with an unsaved-changes check. */
+/** Edit details drawer (handoff "Find metadata inside the drawer"): a right-side
+ * drawer over the book page. "Find metadata" widens it from 600 px to 1040 px
+ * and slides in a 400 px results pane on the left; the form stays on the right
+ * with unsaved edits intact. The selected result offers per-field suggestion
+ * pills; "Use" fills the field and marks it as metadata-sourced (saved via
+ * metadata_fields so it is not locked), "Undo" restores the previous value.
+ * Nothing is written until Save; a used cover is PUT first, then the PATCH.
+ * Under 1100 px the pane overlays the form and closes after a pick. Groups
+ * (Cover, Book, Publication, Identifiers, Tags, Description), per-field locks
+ * backed by POST /books/{id}/unlock and the in-drawer 2:3 crop are unchanged. */
 import {
   useEffect,
   useRef,
@@ -13,9 +17,18 @@ import {
   type ReactNode,
 } from "react";
 import clsx from "clsx";
-import { useDeleteCover, useSetCoverUrl, useUnlockField, useUpdateBook, useUploadCover, type BookPatch } from "../api/metadata";
+import {
+  useDeleteCover,
+  useMetadataSearch,
+  useSetCoverUrl,
+  useUnlockField,
+  useUpdateBook,
+  useUploadCover,
+  type BookPatch,
+  type BookSavePatch,
+} from "../api/metadata";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { FindMetadata } from "./FindMetadata";
 import { Icon } from "./Icon";
 import type { Book, Candidate } from "../api/types";
 
@@ -161,6 +174,126 @@ export function buildPatch(form: Form, book: Book): BookPatch {
   return patch;
 }
 
+/* ---- find-metadata suggestions ---- */
+
+const SOURCES: Record<string, string> = { openlibrary: "Open Library", googlebooks: "Google Books" };
+const sourceName = (source: string): string => SOURCES[source] ?? source;
+
+/** Provider descriptions carry HTML; suggestion pills and the form take plain text.
+ * Block tags become newlines so the pill can show the first line. */
+function plainText(html: string): string {
+  const withBreaks = html.replace(/<\/(?:p|div|h[1-6]|li)>|<br[^>]*>/gi, "\n");
+  const text = new DOMParser().parseFromString(withBreaks, "text/html").body.textContent ?? withBreaks;
+  return text.replace(/[ \t]+/g, " ").trim();
+}
+
+/** One provider field → form field mapping. `text` null/empty or `same` means
+ * no suggestion; `keys` are the Form keys Use writes (and typing clears). */
+interface SuggestionDef {
+  label: string;
+  keys: (keyof Form)[];
+  text: (candidate: Candidate) => string | null;
+  apply: (candidate: Candidate, form: Form) => Partial<Form>;
+  same: (candidate: Candidate, form: Form) => boolean;
+}
+
+const eqTrim = (a: string, b: string | null): boolean => a.trim() === (b ?? "").trim();
+
+const SUGGESTIONS: Record<string, SuggestionDef> = {
+  title: {
+    label: "Title",
+    keys: ["title"],
+    text: (c) => c.title.trim() || null,
+    apply: (c) => ({ title: c.title }),
+    same: (c, f) => eqTrim(f.title, c.title),
+  },
+  authors: {
+    label: "Authors",
+    keys: ["authors"],
+    text: (c) => (c.authors.length > 0 ? c.authors.join(", ") : null),
+    apply: (c) => ({ authors: [...c.authors] }),
+    same: (c, f) => f.authors.join("\u0000") === c.authors.join("\u0000"),
+  },
+  series: {
+    label: "Series",
+    keys: ["series"],
+    text: (c) => c.series,
+    apply: (c) => ({ series: c.series ?? "" }),
+    same: (c, f) => eqTrim(f.series, c.series),
+  },
+  series_index: {
+    label: "Number",
+    keys: ["seriesIndex"],
+    text: (c) => (c.series_index == null ? null : String(c.series_index)),
+    apply: (c) => ({ seriesIndex: String(c.series_index) }),
+    same: (c, f) => (f.seriesIndex.trim() === "" ? null : Number(f.seriesIndex)) === c.series_index,
+  },
+  published_date: {
+    label: "Published",
+    keys: ["publishedDate"],
+    text: (c) => (c.published_date ? normalizeDate(c.published_date) : null),
+    apply: (c) => ({ publishedDate: normalizeDate(c.published_date ?? "") }),
+    same: (c, f) => normalizeDate(f.publishedDate) === normalizeDate(c.published_date ?? ""),
+  },
+  publisher: {
+    label: "Publisher",
+    keys: ["publisher"],
+    text: (c) => c.publisher,
+    apply: (c) => ({ publisher: c.publisher ?? "" }),
+    same: (c, f) => eqTrim(f.publisher, c.publisher),
+  },
+  description: {
+    label: "Description",
+    keys: ["description"],
+    text: (c) => (c.description ? plainText(c.description) : null),
+    apply: (c) => ({ description: plainText(c.description ?? "") }),
+    same: (c, f) => eqTrim(f.description, c.description ? plainText(c.description) : ""),
+  },
+  language: {
+    label: "Language",
+    keys: ["language", "otherLanguage"],
+    text: (c) => c.language,
+    apply: (c) => {
+      const value = (c.language ?? "").trim();
+      return LANGUAGES.some((entry) => entry.code === value)
+        ? { language: value, otherLanguage: "" }
+        : { language: OTHER, otherLanguage: value };
+    },
+    same: (c, f) => (f.language === OTHER ? f.otherLanguage.trim() : f.language) === (c.language ?? "").trim(),
+  },
+  genre: {
+    label: "Genre",
+    keys: ["genre", "otherGenre"],
+    text: (c) => c.suggested_genre ?? null,
+    apply: (c) => {
+      const value = (c.suggested_genre ?? "").trim();
+      return GENRES.includes(value) ? { genre: value, otherGenre: "" } : { genre: OTHER, otherGenre: value };
+    },
+    same: (c, f) => (f.genre === OTHER ? f.otherGenre.trim() : f.genre) === (c.suggested_genre ?? "").trim(),
+  },
+  isbn10: {
+    label: "ISBN-10",
+    keys: ["isbn10"],
+    text: (c) => c.isbn10,
+    apply: (c) => ({ isbn10: c.isbn10 ?? "" }),
+    same: (c, f) => eqTrim(f.isbn10, c.isbn10),
+  },
+  isbn13: {
+    label: "ISBN-13",
+    keys: ["isbn13"],
+    text: (c) => c.isbn13,
+    apply: (c) => ({ isbn13: c.isbn13 ?? "" }),
+    same: (c, f) => eqTrim(f.isbn13, c.isbn13),
+  },
+  tags: {
+    label: "Tags",
+    keys: ["tags"],
+    text: (c) => (c.tags.length > 0 ? c.tags.join(", ") : null),
+    apply: (c) => ({ tags: [...c.tags] }),
+    same: (c, f) => f.tags.join("\u0000") === c.tags.join("\u0000"),
+  },
+};
+
 /* ---- cover crop (same pinned export size as the old CoverEditor) ---- */
 
 const VW = 240;
@@ -211,6 +344,9 @@ const footerPrimary =
   "tap inline-flex h-11 items-center justify-center rounded-full bg-fg px-[18px] text-md font-bold text-on-fg disabled:opacity-50";
 const selectPill = "select-pill tap h-11 w-full border border-border bg-raised text-md text-fg";
 const selectChevron = "pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-fg-2";
+/** Accent-tinted suggestion pill / summary bar (handoff: accent at ~10–12%). */
+const accentTint = "border-accent/30 bg-accent/10";
+const whitePill = "tap inline-flex items-center justify-center rounded-full bg-fg font-bold text-on-fg";
 
 /** 13px/600 label with a fixed 24px row so side-by-side fields line up;
  * an accent lock button appears while the field is protected. */
@@ -372,7 +508,15 @@ interface CropSource {
   from: "file" | "url";
 }
 
-function CoverGroup({ book }: { book: Book }) {
+interface CoverSuggestion {
+  url: string;
+  source: string;
+  used: boolean;
+  onUse: () => void;
+  onUndo: () => void;
+}
+
+function CoverGroup({ book, suggestion }: { book: Book; suggestion?: CoverSuggestion }) {
   const upload = useUploadCover(book.id);
   const fromUrl = useSetCoverUrl(book.id);
   const removeCover = useDeleteCover(book.id);
@@ -588,6 +732,34 @@ function CoverGroup({ book }: { book: Book }) {
             Remove cover
           </button>
         </div>
+        {suggestion && (
+          <div className={clsx("flex shrink-0 flex-col items-center gap-1.5 rounded-lg border p-2", accentTint)}>
+            <img src={suggestion.url} alt="" className="aspect-[2/3] w-14 rounded-xs bg-raised object-cover" />
+            {suggestion.used ? (
+              <span className="flex items-center gap-1.5 text-xs text-fg-2">
+                <Icon name="Check" size={13} className="text-accent" />
+                From {suggestion.source}
+                <button
+                  type="button"
+                  onClick={suggestion.onUndo}
+                  aria-label="Undo cover"
+                  className="font-semibold text-fg underline"
+                >
+                  Undo
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={suggestion.onUse}
+                aria-label={`Use cover from ${suggestion.source}`}
+                className={clsx(whitePill, "h-7 px-3 text-base")}
+              >
+                Use
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {error && (
         <p role="alert" className="flex items-center gap-2 rounded-lg border border-danger bg-bg px-3 py-2 text-sm text-danger">
@@ -607,52 +779,196 @@ export function EditDetailsDrawer({
   book,
   onClose,
   initialReviewItems,
+  initialFind,
 }: {
   book: Book;
   onClose: () => void;
-  /** "Review metadata matches" opens straight into the find view. */
+  /** "Review metadata matches" opens the pane with these results preloaded. */
   initialReviewItems?: Candidate[];
+  /** Manage → "Find metadata" opens the pane and auto-searches. */
+  initialFind?: boolean;
 }) {
   const [form, setForm] = useState<Form>(() => fromBook(book));
   const [isbnTouched, setIsbnTouched] = useState({ isbn10: false, isbn13: false });
   const [unlocked, setUnlocked] = useState<string[]>([]);
   const [discardOpen, setDiscardOpen] = useState(false);
-  const [findOpen, setFindOpen] = useState(Boolean(initialReviewItems?.length));
-  const bookRef = useRef(book);
+  const [findOpen, setFindOpen] = useState(Boolean(initialReviewItems?.length) || Boolean(initialFind));
+  const [items, setItems] = useState<Candidate[] | null>(initialReviewItems ?? null);
+  const [selected, setSelected] = useState(initialReviewItems?.length ? 0 : -1);
+  // The result driving the suggestion pills; null once the pane is closed with X.
+  const [suggestion, setSuggestion] = useState<Candidate | null>(initialReviewItems?.[0] ?? null);
+  // field → where it came from and the form to restore on Undo.
+  const [usedMeta, setUsedMeta] = useState<Record<string, { source: string; prev: Form }>>({});
+  // Deferred cover: remembered until Save PUTs it.
+  const [usedCover, setUsedCover] = useState<{ url: string; source: string } | null>(null);
+  const [query, setQuery] = useState(`${book.title} ${book.authors[0] ?? ""}`.trim());
+  const [isbn, setIsbn] = useState(book.isbn13 ?? book.isbn10 ?? "");
   const panelRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const update = useUpdateBook(book.id);
   const unlock = useUnlockField(book.id);
+  const search = useMetadataSearch(book.id);
+  const coverPut = useSetCoverUrl(book.id);
+  const wide = useMediaQuery("(min-width: 1100px)");
 
   useEffect(() => {
     titleRef.current?.focus();
   }, []);
 
-  // Applying provider metadata replaces the book in the query cache. Refresh
-  // the form from it — safe because Find is disabled while edits are unsaved.
+  // Latest values for the pane's auto-search without re-running the effect.
+  const live = useRef({ query, isbn, items, search });
+  live.current = { query, isbn, items, search };
+
+  function runSearch() {
+    const { query: q, isbn: rawIsbn, search: mutation } = live.current;
+    mutation.mutate(
+      { q: q.trim(), isbn: rawIsbn.trim() || undefined },
+      {
+        onSuccess: (data) => {
+          setItems(data.items);
+          // The best match is selected automatically (server sorts by score).
+          const best = data.items.reduce((b, item, i) => (item.score > (data.items[b]?.score ?? -1) ? i : b), 0);
+          setSelected(best);
+          setSuggestion(data.items[best] ?? null);
+        },
+      },
+    );
+  }
+
+  // Searching runs automatically whenever the pane opens without results
+  // (Find metadata pill, Manage → Find metadata); preloaded review items skip it.
   useEffect(() => {
-    if (findOpen && bookRef.current !== book) setForm(fromBook(book));
-    bookRef.current = book;
-  }, [book, findOpen]);
+    if (findOpen && live.current.items === null) runSearch();
+  }, [findOpen]);
 
-  const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const set = <K extends keyof Form>(key: K, value: Form[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    // Typing makes the field hand-edited again: drop the metadata marker.
+    setUsedMeta((current) => {
+      const field = Object.keys(current).find((name) => SUGGESTIONS[name]?.keys.includes(key));
+      if (!field) return current;
+      const rest = { ...current };
+      delete rest[field];
+      return rest;
+    });
+  };
+
   const patch = buildPatch(form, book);
-  const changeCount = Object.keys(patch).length;
-
   const locked = new Set((book.locked_fields ?? []).filter((field) => !unlocked.includes(field)));
-  const isLocked = (field: (typeof LOCKABLE_FIELDS)[number]) => locked.has(field);
+  const isLocked = (field: string) => locked.has(field);
   function unlockField(field: (typeof LOCKABLE_FIELDS)[number]) {
     unlock.mutate(field, { onSuccess: () => setUnlocked((current) => [...current, field]) });
   }
+
+  const usedFields = Object.keys(usedMeta);
+  const changeCount = Object.keys(patch).length + (usedCover ? 1 : 0);
 
   const titleError = form.title.trim() === "" ? "Title is required." : null;
   const isbn10Error = form.isbn10.trim() !== "" && !isbn10Valid(form.isbn10) ? "This ISBN-10 checksum is not valid." : null;
   const isbn13Error = form.isbn13.trim() !== "" && !isbn13Valid(form.isbn13) ? "This ISBN-13 checksum is not valid." : null;
   const indexError = form.seriesIndex.trim() !== "" && Number.isNaN(Number(form.seriesIndex)) ? "Series number must be a number." : null;
   const languageError = form.language === OTHER && form.otherLanguage.trim() === "" ? "Enter a language code." : null;
-  const isbnInvalid =
-    (isbnTouched.isbn10 && isbn10Error) || (isbnTouched.isbn13 && isbn13Error);
+  const isbnInvalid = (isbnTouched.isbn10 && isbn10Error) || (isbnTouched.isbn13 && isbn13Error);
   const invalid = Boolean(titleError ?? isbnInvalid ?? indexError ?? languageError);
+
+  function applySuggestion(field: string) {
+    if (!suggestion) return;
+    const def = SUGGESTIONS[field]!;
+    const source = sourceName(suggestion.source);
+    setUsedMeta((current) => ({ ...current, [field]: { source, prev: form } }));
+    setForm((current) => ({ ...current, ...def.apply(suggestion, current) }));
+  }
+
+  function undoField(field: string) {
+    const marker = usedMeta[field];
+    if (!marker) return;
+    setForm((current) => {
+      const next = { ...current } as Record<string, unknown>;
+      for (const key of SUGGESTIONS[field]!.keys) next[key] = marker.prev[key];
+      return next as unknown as Form;
+    });
+    setUsedMeta((current) => {
+      const rest = { ...current };
+      delete rest[field];
+      return rest;
+    });
+  }
+
+  /** Applies every differing suggestion except locked fields (handoff: locked
+   * fields need an explicit Use) and remembers the candidate's cover. */
+  function useAll() {
+    if (!suggestion) return;
+    const source = sourceName(suggestion.source);
+    let next = form;
+    const markers = { ...usedMeta };
+    for (const [field, def] of Object.entries(SUGGESTIONS)) {
+      if (isLocked(field)) continue;
+      if (!def.text(suggestion) || def.same(suggestion, next)) continue;
+      markers[field] = { source, prev: form };
+      next = { ...next, ...def.apply(suggestion, next) };
+    }
+    if (suggestion.cover_url && suggestion.cover_url !== book.cover_url) {
+      setUsedCover({ url: suggestion.cover_url, source });
+    }
+    setForm(next);
+    setUsedMeta(markers);
+  }
+
+  function selectRow(index: number) {
+    setSelected(index);
+    setSuggestion(items?.[index] ?? null);
+    if (!wide) setFindOpen(false); // overlay mode: picking reveals the suggestions
+  }
+
+  /** X (or Esc): collapse the pane and drop unused suggestions; used values and
+   * their ✓ lines stay in the form. */
+  function closePane() {
+    setFindOpen(false);
+    setSuggestion(null);
+  }
+
+  const pillShown = (field: string): boolean => {
+    if (usedMeta[field] || !suggestion) return false;
+    const def = SUGGESTIONS[field]!;
+    return Boolean(def.text(suggestion)) && !def.same(suggestion, form);
+  };
+  const coverSuggested = Boolean(suggestion?.cover_url) && suggestion?.cover_url !== book.cover_url;
+  const suggestionCount = usedFields.length + Object.keys(SUGGESTIONS).filter(pillShown).length + (coverSuggested || usedCover ? 1 : 0);
+
+  /** Per-field suggestion UI: the pill, or the "✓ From … · Undo" line. */
+  function suggestionUi(field: string): ReactNode {
+    const def = SUGGESTIONS[field]!;
+    const marker = usedMeta[field];
+    if (marker) {
+      return (
+        <span className="flex items-center gap-1.5 text-xs text-fg-2">
+          <Icon name="Check" size={13} className="text-accent" />
+          From {marker.source}
+          <button type="button" onClick={() => undoField(field)} aria-label={`Undo ${def.label}`} className="font-semibold text-fg underline">
+            Undo
+          </button>
+        </span>
+      );
+    }
+    if (!suggestion) return null;
+    const value = def.text(suggestion);
+    if (!value || def.same(suggestion, form)) return null;
+    const shown =
+      field === "description"
+        ? `${value.split("\n")[0]} · ${value.split(/\s+/).filter(Boolean).length} words`
+        : value;
+    return (
+      <div className={clsx("flex min-h-9 items-center justify-between gap-2.5 rounded-lg py-0.5 pr-1 pl-3.5", accentTint)}>
+        <span className="min-w-0 truncate text-base">
+          <span className="text-fg-2">{sourceName(suggestion.source)}: </span>
+          <span className="font-semibold">{shown}</span>
+        </span>
+        <button type="button" onClick={() => applySuggestion(field)} aria-label={`Use ${shown}`} className={clsx(whitePill, "h-7 shrink-0 px-3 text-base")}>
+          Use
+        </button>
+      </div>
+    );
+  }
 
   function attemptClose() {
     if (changeCount > 0) setDiscardOpen(true);
@@ -661,18 +977,23 @@ export function EditDetailsDrawer({
 
   function save() {
     if (invalid || changeCount === 0) return;
-    update.mutate(patch, { onSuccess: onClose });
+    const metadataFields = usedFields.filter((field) => field in patch);
+    const body: BookSavePatch = metadataFields.length > 0 ? { ...patch, metadata_fields: metadataFields } : patch;
+    if (usedCover) {
+      // The metadata cover goes through PUT /cover-url first; on failure the
+      // drawer stays open with the error.
+      coverPut.mutate(usedCover.url, { onSuccess: () => update.mutate(body, { onSuccess: onClose }) });
+      return;
+    }
+    update.mutate(body, { onSuccess: onClose });
   }
 
   function onKeyDown(event: ReactKeyboardEvent) {
     if (event.key === "Escape") {
       if (discardOpen) return; // the confirm dialog handles its own dismissal
       event.stopPropagation();
-      if (findOpen) {
-        setFindOpen(false);
-        return;
-      }
-      attemptClose();
+      if (findOpen) closePane();
+      else attemptClose();
       return;
     }
     if (event.key !== "Tab") return;
@@ -694,6 +1015,20 @@ export function EditDetailsDrawer({
   }
 
   const genreOptions = book.genre && !GENRES.includes(book.genre) ? [...GENRES, book.genre] : GENRES;
+  const sourceLabel = suggestion ? sourceName(suggestion.source) : "";
+  const suggestionYear = suggestion?.published_date ? normalizeDate(suggestion.published_date).slice(0, 4) : "";
+  const statusNames = [...new Set((items ?? []).map((item) => sourceName(item.source)))].sort();
+  const coverSuggestion: CoverSuggestion | undefined = usedCover
+    ? { url: usedCover.url, source: usedCover.source, used: true, onUse: () => undefined, onUndo: () => setUsedCover(null) }
+    : suggestion?.cover_url && suggestion.cover_url !== book.cover_url
+      ? {
+          url: suggestion.cover_url,
+          source: sourceName(suggestion.source),
+          used: false,
+          onUse: () => setUsedCover({ url: suggestion.cover_url!, source: sourceName(suggestion.source) }),
+          onUndo: () => undefined,
+        }
+      : undefined;
 
   return (
     <div
@@ -708,217 +1043,326 @@ export function EditDetailsDrawer({
         aria-modal="true"
         aria-labelledby="edit-details-title"
         onKeyDown={onKeyDown}
-        className="drawer-in flex h-full w-full max-w-[600px] flex-col border-l border-border bg-surface shadow-[-24px_0_60px_rgb(0_0_0/0.5)]"
+        className={clsx(
+          "drawer-in relative flex h-full w-full flex-col border-l border-border bg-surface shadow-[-24px_0_60px_rgb(0_0_0/0.5)] transition-[max-width] duration-[250ms]",
+          findOpen ? "max-w-[1040px]" : "max-w-[600px]",
+        )}
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 pt-[18px] pr-5 pb-3.5 pl-7">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <h2 id="edit-details-title" className="font-display text-xl">
-              {findOpen ? "Find metadata" : "Edit details"}
-            </h2>
-            <span className="text-[13px] text-fg-2">
-              {findOpen ? (
-                "Search Open Library and Google Books, then apply the fields you want."
-              ) : (
-                <>
-                  Fields you change here <span className="whitespace-nowrap">(marked with a <Icon name="Lock" size={12} className="inline align-[-1px]" />)</span> are protected from automatic updates.
-                </>
+        <div className="flex min-h-0 flex-1">
+          {findOpen && (
+            <section
+              role="region"
+              aria-label="Find metadata"
+              className={clsx(
+                "flex w-[400px] max-w-full shrink-0 flex-col border-r border-border bg-bg",
+                !wide && "absolute inset-y-0 left-0 z-10",
               )}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {findOpen && (
-              <button
-                type="button"
-                aria-label="Back to details"
-                onClick={() => setFindOpen(false)}
-                className={outlinePill}
-              >
-                <Icon name="ArrowLeft" size={18} />
-                Back
-              </button>
-            )}
-            <button type="button" aria-label="Close" onClick={attemptClose} className="tap grid size-10 shrink-0 place-items-center rounded-full text-fg hover:bg-raised">
-              <Icon name="X" size={22} />
-            </button>
-          </div>
-        </header>
-
-        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-7 pb-6">
-          {findOpen ? (
-            <FindMetadata book={book} initialItems={initialReviewItems} />
-          ) : (
-            <>
-          {update.isError && (
-            <p role="alert" className="mt-4 flex items-center gap-2 rounded-lg border border-danger bg-bg px-3 py-2 text-sm text-danger">
-              <Icon name="TriangleAlert" size={16} />
-              {update.error.message}
-            </p>
-          )}
-
-          {!findOpen && (
-            <div className="pt-4">
-              <button
-                type="button"
-                onClick={() => setFindOpen(true)}
-                disabled={changeCount > 0}
-                title={changeCount > 0 ? "Save or discard your changes first" : undefined}
-                className={outlinePill}
-              >
-                <Icon name="Globe" size={18} />
-                Find metadata
-              </button>
-            </div>
-          )}
-
-          <CoverGroup book={book} />
-
-          <Group title="Book">
-            <Field name="Title" locked={isLocked("title")} onUnlock={() => unlockField("title")}>
-              <input ref={titleRef} value={form.title} aria-label="Title" onChange={(event) => set("title", event.target.value)} className={inputPill} />
-              {titleError && <span className="text-xs text-danger">{titleError}</span>}
-            </Field>
-            <Field name="Subtitle" locked={isLocked("subtitle")} onUnlock={() => unlockField("subtitle")}>
-              <input value={form.subtitle} aria-label="Subtitle" placeholder="Optional" onChange={(event) => set("subtitle", event.target.value)} className={inputPill} />
-            </Field>
-            <ChipField
-              label="Authors"
-              noun="author"
-              chips={form.authors}
-              onChange={(authors) => set("authors", authors)}
-              placeholder="Add an author"
-              reorderable
-              hint="Drag to reorder. The first author is shown on covers and lists."
-              locked={isLocked("authors")}
-              onUnlock={() => unlockField("authors")}
-            />
-            <div className="grid grid-cols-2 gap-3.5">
-              <Field name="Series" locked={isLocked("series")} onUnlock={() => unlockField("series")}>
-                <input value={form.series} aria-label="Series" onChange={(event) => set("series", event.target.value)} className={inputPill} />
-              </Field>
-              <Field name="Number" locked={isLocked("series_index")} onUnlock={() => unlockField("series_index")}>
-                <div className="w-[120px]">
-                  <input value={form.seriesIndex} aria-label="Number" inputMode="decimal" onChange={(event) => set("seriesIndex", event.target.value)} className={inputPill} />
-                </div>
-                {indexError && <span className="text-xs text-danger">{indexError}</span>}
-              </Field>
-            </div>
-          </Group>
-
-          <Group title="Publication">
-            <div className="grid grid-cols-2 gap-3.5">
-              <Field name="Publisher" locked={isLocked("publisher")} onUnlock={() => unlockField("publisher")}>
-                <input value={form.publisher} aria-label="Publisher" onChange={(event) => set("publisher", event.target.value)} className={inputPill} />
-              </Field>
-              <Field name="Published" locked={isLocked("published_date")} onUnlock={() => unlockField("published_date")}>
-                <input
-                  value={form.publishedDate}
-                  aria-label="Published"
-                  placeholder="Year or date"
-                  onChange={(event) => set("publishedDate", event.target.value)}
-                  className={inputPill}
-                />
-                <span className="text-xs text-fg-2">Year, or a full date</span>
-              </Field>
-              <Field name="Language" locked={isLocked("language")} onUnlock={() => unlockField("language")}>
-                <div className="relative">
-                  <select value={form.language} aria-label="Language" onChange={(event) => set("language", event.target.value)} className={selectPill}>
-                    {LANGUAGES.map((entry) => (
-                      <option key={entry.code} value={entry.code}>
-                        {entry.label} ({entry.code})
-                      </option>
-                    ))}
-                    <option value={OTHER}>Other…</option>
-                  </select>
-                  <Icon name="ChevronDown" size={18} className={selectChevron} />
-                </div>
-                {form.language === OTHER && (
-                  <input value={form.otherLanguage} aria-label="Language code" placeholder="e.g. fr-CA" onChange={(event) => set("otherLanguage", event.target.value)} className={inputPill} />
-                )}
-                {languageError && <span className="text-xs text-danger">{languageError}</span>}
-              </Field>
-              <Field name="Genre" locked={isLocked("genre")} onUnlock={() => unlockField("genre")}>
-                <div className="relative">
-                  <select value={form.genre} aria-label="Genre" onChange={(event) => set("genre", event.target.value)} className={selectPill}>
-                    <option value="">No genre</option>
-                    {genreOptions.map((genre) => (
-                      <option key={genre} value={genre}>
-                        {genre}
-                      </option>
-                    ))}
-                    <option value={OTHER}>Other…</option>
-                  </select>
-                  <Icon name="ChevronDown" size={18} className={selectChevron} />
-                </div>
-                {form.genre === OTHER && (
+            >
+              <div className="flex shrink-0 items-center justify-between gap-2 pt-[22px] pr-4 pb-2.5 pl-6">
+                <h3 className="font-display text-xl">Find metadata</h3>
+                <button
+                  type="button"
+                  aria-label="Close find metadata"
+                  onClick={closePane}
+                  className="tap grid size-9 shrink-0 place-items-center rounded-full text-fg-2 hover:bg-raised"
+                >
+                  <Icon name="X" size={20} />
+                </button>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2.5 px-6 pb-4">
+                <label className="relative block">
+                  <Icon name="Search" size={18} className="absolute top-1/2 left-3.5 -translate-y-1/2 text-fg-2" />
                   <input
-                    value={form.otherGenre}
-                    aria-label="New genre"
-                    placeholder="e.g. Nautical history"
-                    onChange={(event) => set("otherGenre", event.target.value)}
-                    className={inputPill}
+                    type="search"
+                    aria-label="Title or author"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        runSearch();
+                      }
+                    }}
+                    className="tap h-11 w-full rounded-full border-2 border-accent bg-raised pr-4 pl-10 text-base"
                   />
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    aria-label="ISBN"
+                    placeholder="ISBN (optional)"
+                    value={isbn}
+                    onChange={(event) => setIsbn(event.target.value)}
+                    className="tap h-10 min-w-0 flex-1 rounded-full border border-border bg-raised px-4 text-base"
+                  />
+                  <button
+                    type="button"
+                    onClick={runSearch}
+                    disabled={search.isPending}
+                    className={clsx(whitePill, "h-10 shrink-0 px-[18px] text-base")}
+                  >
+                    Search
+                  </button>
+                </div>
+                {search.isError ? (
+                  <p role="alert" className="flex items-center gap-2 text-sm text-danger">
+                    <Icon name="TriangleAlert" size={16} />
+                    The metadata providers could not be reached. {search.error.message}
+                  </p>
+                ) : (
+                  items && (
+                    <p role="status" className="text-xs text-fg-2">
+                      {items.length} result{items.length === 1 ? "" : "s"} from {statusNames.join(" and ")}
+                    </p>
+                  )
                 )}
-              </Field>
-            </div>
-          </Group>
-
-          <Group title="Identifiers">
-            <div className="grid grid-cols-2 gap-3.5">
-              <Field name="ISBN-10" locked={isLocked("isbn10")} onUnlock={() => unlockField("isbn10")}>
-                <input
-                  value={form.isbn10}
-                  aria-label="ISBN-10"
-                  placeholder="Optional"
-                  onChange={(event) => set("isbn10", event.target.value)}
-                  onBlur={() => setIsbnTouched((current) => ({ ...current, isbn10: true }))}
-                  className={inputPill}
-                  aria-invalid={isbnTouched.isbn10 && Boolean(isbn10Error)}
-                />
-                {isbnTouched.isbn10 && isbn10Error && <span className="text-xs text-danger">{isbn10Error}</span>}
-              </Field>
-              <Field name="ISBN-13" locked={isLocked("isbn13")} onUnlock={() => unlockField("isbn13")}>
-                <input
-                  value={form.isbn13}
-                  aria-label="ISBN-13"
-                  placeholder="Optional"
-                  onChange={(event) => set("isbn13", event.target.value)}
-                  onBlur={() => setIsbnTouched((current) => ({ ...current, isbn13: true }))}
-                  className={inputPill}
-                  aria-invalid={isbnTouched.isbn13 && Boolean(isbn13Error)}
-                />
-                {isbnTouched.isbn13 && isbn13Error && <span className="text-xs text-danger">{isbn13Error}</span>}
-              </Field>
-            </div>
-          </Group>
-
-          <Group title="Tags">
-            <ChipField
-              label="Tags"
-              noun="tag"
-              chips={form.tags}
-              onChange={(tags) => set("tags", tags)}
-              placeholder="Add a tag"
-              locked={isLocked("tags")}
-              onUnlock={() => unlockField("tags")}
-            />
-          </Group>
-
-          <Group title="Description">
-            <Field name="Description" locked={isLocked("description")} onUnlock={() => unlockField("description")}>
-              <textarea
-                value={form.description}
-                aria-label="Description"
-                rows={7}
-                onChange={(event) => set("description", event.target.value)}
-                className="w-full rounded-[18px] border border-border bg-raised px-[18px] py-3.5 text-md leading-[1.55] resize-y"
-              />
-            </Field>
-          </Group>
-            </>
+              </div>
+              <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+                {items?.map((item, index) => (
+                  <button
+                    key={`${item.source}-${index}`}
+                    type="button"
+                    aria-pressed={index === selected}
+                    onClick={() => selectRow(index)}
+                    className={clsx(
+                      "tap flex w-full items-center gap-3 rounded-lg p-2.5 text-left",
+                      index === selected ? "bg-raised" : "hover:bg-raised",
+                    )}
+                  >
+                    {item.cover_url ? (
+                      <img src={item.cover_url} alt="" loading="lazy" className="aspect-[2/3] w-10 shrink-0 rounded-xs bg-raised object-cover" />
+                    ) : (
+                      <div className="aspect-[2/3] w-10 shrink-0 rounded-xs bg-raised" aria-hidden />
+                    )}
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate text-base font-semibold">{item.title}</span>
+                      <span className="truncate text-xs text-fg-2">
+                        {[item.authors.join(", "), item.published_date?.slice(0, 4), sourceName(item.source)]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs tabular font-bold text-fg-2">{Math.round(item.score * 100)}%</span>
+                    {index === selected && <Icon name="Check" size={20} className="shrink-0 text-accent" />}
+                  </button>
+                ))}
+              </div>
+            </section>
           )}
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            <header className="flex shrink-0 items-start justify-between gap-3 pt-[18px] pr-5 pb-3.5 pl-7">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <h2 id="edit-details-title" className="font-display text-xl">
+                  Edit details
+                </h2>
+                <span className="text-[13px] text-fg-2">
+                  {findOpen ? (
+                    "Pick a result on the left, then use the suggestions you want."
+                  ) : (
+                    <>
+                      Fields you change here <span className="whitespace-nowrap">(marked with a <Icon name="Lock" size={12} className="inline align-[-1px]" />)</span> are protected from automatic updates.
+                    </>
+                  )}
+                </span>
+              </div>
+              <button type="button" aria-label="Close" onClick={attemptClose} className="tap grid size-10 shrink-0 place-items-center rounded-full text-fg hover:bg-raised">
+                <Icon name="X" size={22} />
+              </button>
+            </header>
+
+            <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-7 pb-6">
+              {(update.isError || coverPut.isError) && (
+                <p role="alert" className="mt-4 flex items-center gap-2 rounded-lg border border-danger bg-bg px-3 py-2 text-sm text-danger">
+                  <Icon name="TriangleAlert" size={16} />
+                  {(update.error ?? coverPut.error)!.message}
+                </p>
+              )}
+
+              {!findOpen && (
+                <div className="pt-4">
+                  <button type="button" onClick={() => setFindOpen(true)} className={outlinePill}>
+                    <Icon name="Globe" size={18} />
+                    Find metadata
+                  </button>
+                </div>
+              )}
+
+              {suggestion && suggestionCount > 0 && (
+                <div className={clsx("mb-4 mt-4 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border px-3.5 py-3", accentTint)}>
+                  <span className="text-base">
+                    <span className="font-bold">{suggestionCount} suggestion{suggestionCount === 1 ? "" : "s"}</span>{" "}
+                    <span className="text-fg-2">
+                      from {sourceLabel} · {suggestion.title}
+                      {suggestionYear && ` (${suggestionYear})`}
+                    </span>
+                  </span>
+                  <button type="button" onClick={useAll} className={clsx(whitePill, "h-[34px] px-[18px] text-base")}>
+                    Use all
+                  </button>
+                </div>
+              )}
+
+              <CoverGroup book={book} suggestion={coverSuggestion} />
+
+              <Group title="Book">
+                <Field name="Title" locked={isLocked("title")} onUnlock={() => unlockField("title")}>
+                  <input ref={titleRef} value={form.title} aria-label="Title" onChange={(event) => set("title", event.target.value)} className={inputPill} />
+                  {titleError && <span className="text-xs text-danger">{titleError}</span>}
+                  {suggestionUi("title")}
+                </Field>
+                <Field name="Subtitle" locked={isLocked("subtitle")} onUnlock={() => unlockField("subtitle")}>
+                  <input value={form.subtitle} aria-label="Subtitle" placeholder="Optional" onChange={(event) => set("subtitle", event.target.value)} className={inputPill} />
+                </Field>
+                <ChipField
+                  label="Authors"
+                  noun="author"
+                  chips={form.authors}
+                  onChange={(authors) => set("authors", authors)}
+                  placeholder="Add an author"
+                  reorderable
+                  hint="Drag to reorder. The first author is shown on covers and lists."
+                  locked={isLocked("authors")}
+                  onUnlock={() => unlockField("authors")}
+                />
+                {suggestionUi("authors")}
+                <div className="grid grid-cols-2 gap-3.5">
+                  <Field name="Series" locked={isLocked("series")} onUnlock={() => unlockField("series")}>
+                    <input value={form.series} aria-label="Series" onChange={(event) => set("series", event.target.value)} className={inputPill} />
+                    {suggestionUi("series")}
+                  </Field>
+                  <Field name="Number" locked={isLocked("series_index")} onUnlock={() => unlockField("series_index")}>
+                    <div className="w-[120px]">
+                      <input value={form.seriesIndex} aria-label="Number" inputMode="decimal" onChange={(event) => set("seriesIndex", event.target.value)} className={inputPill} />
+                    </div>
+                    {indexError && <span className="text-xs text-danger">{indexError}</span>}
+                    {suggestionUi("series_index")}
+                  </Field>
+                </div>
+              </Group>
+
+              <Group title="Publication">
+                <div className="grid grid-cols-2 gap-3.5">
+                  <Field name="Publisher" locked={isLocked("publisher")} onUnlock={() => unlockField("publisher")}>
+                    <input value={form.publisher} aria-label="Publisher" onChange={(event) => set("publisher", event.target.value)} className={inputPill} />
+                    {suggestionUi("publisher")}
+                  </Field>
+                  <Field name="Published" locked={isLocked("published_date")} onUnlock={() => unlockField("published_date")}>
+                    <input
+                      value={form.publishedDate}
+                      aria-label="Published"
+                      placeholder="Year or date"
+                      onChange={(event) => set("publishedDate", event.target.value)}
+                      className={inputPill}
+                    />
+                    <span className="text-xs text-fg-2">Year, or a full date</span>
+                    {suggestionUi("published_date")}
+                  </Field>
+                  <Field name="Language" locked={isLocked("language")} onUnlock={() => unlockField("language")}>
+                    <div className="relative">
+                      <select value={form.language} aria-label="Language" onChange={(event) => set("language", event.target.value)} className={selectPill}>
+                        {LANGUAGES.map((entry) => (
+                          <option key={entry.code} value={entry.code}>
+                            {entry.label} ({entry.code})
+                          </option>
+                        ))}
+                        <option value={OTHER}>Other…</option>
+                      </select>
+                      <Icon name="ChevronDown" size={18} className={selectChevron} />
+                    </div>
+                    {form.language === OTHER && (
+                      <input value={form.otherLanguage} aria-label="Language code" placeholder="e.g. fr-CA" onChange={(event) => set("otherLanguage", event.target.value)} className={inputPill} />
+                    )}
+                    {languageError && <span className="text-xs text-danger">{languageError}</span>}
+                    {suggestionUi("language")}
+                  </Field>
+                  <Field name="Genre" locked={isLocked("genre")} onUnlock={() => unlockField("genre")}>
+                    <div className="relative">
+                      <select value={form.genre} aria-label="Genre" onChange={(event) => set("genre", event.target.value)} className={selectPill}>
+                        <option value="">No genre</option>
+                        {genreOptions.map((genre) => (
+                          <option key={genre} value={genre}>
+                            {genre}
+                          </option>
+                        ))}
+                        <option value={OTHER}>Other…</option>
+                      </select>
+                      <Icon name="ChevronDown" size={18} className={selectChevron} />
+                    </div>
+                    {form.genre === OTHER && (
+                      <input
+                        value={form.otherGenre}
+                        aria-label="New genre"
+                        placeholder="e.g. Nautical history"
+                        onChange={(event) => set("otherGenre", event.target.value)}
+                        className={inputPill}
+                      />
+                    )}
+                    {suggestionUi("genre")}
+                  </Field>
+                </div>
+              </Group>
+
+              <Group title="Identifiers">
+                <div className="grid grid-cols-2 gap-3.5">
+                  <Field name="ISBN-10" locked={isLocked("isbn10")} onUnlock={() => unlockField("isbn10")}>
+                    <input
+                      value={form.isbn10}
+                      aria-label="ISBN-10"
+                      placeholder="Optional"
+                      onChange={(event) => set("isbn10", event.target.value)}
+                      onBlur={() => setIsbnTouched((current) => ({ ...current, isbn10: true }))}
+                      className={inputPill}
+                      aria-invalid={isbnTouched.isbn10 && Boolean(isbn10Error)}
+                    />
+                    {isbnTouched.isbn10 && isbn10Error && <span className="text-xs text-danger">{isbn10Error}</span>}
+                    {suggestionUi("isbn10")}
+                  </Field>
+                  <Field name="ISBN-13" locked={isLocked("isbn13")} onUnlock={() => unlockField("isbn13")}>
+                    <input
+                      value={form.isbn13}
+                      aria-label="ISBN-13"
+                      placeholder="Optional"
+                      onChange={(event) => set("isbn13", event.target.value)}
+                      onBlur={() => setIsbnTouched((current) => ({ ...current, isbn13: true }))}
+                      className={inputPill}
+                      aria-invalid={isbnTouched.isbn13 && Boolean(isbn13Error)}
+                    />
+                    {isbnTouched.isbn13 && isbn13Error && <span className="text-xs text-danger">{isbn13Error}</span>}
+                    {suggestionUi("isbn13")}
+                  </Field>
+                </div>
+              </Group>
+
+              <Group title="Tags">
+                <ChipField
+                  label="Tags"
+                  noun="tag"
+                  chips={form.tags}
+                  onChange={(tags) => set("tags", tags)}
+                  placeholder="Add a tag"
+                  locked={isLocked("tags")}
+                  onUnlock={() => unlockField("tags")}
+                />
+                {suggestionUi("tags")}
+              </Group>
+
+              <Group title="Description">
+                <Field name="Description" locked={isLocked("description")} onUnlock={() => unlockField("description")}>
+                  <textarea
+                    value={form.description}
+                    aria-label="Description"
+                    rows={7}
+                    onChange={(event) => set("description", event.target.value)}
+                    className="w-full rounded-[18px] border border-border bg-raised px-[18px] py-3.5 text-md leading-[1.55] resize-y"
+                  />
+                  {suggestionUi("description")}
+                </Field>
+              </Group>
+            </div>
+          </div>
         </div>
 
-        {!findOpen && (
         <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border py-3.5 pr-5 pl-7">
           <span aria-live="polite" className="text-[13px] text-fg-2">
             {changeCount === 0 ? "" : `${changeCount} unsaved change${changeCount === 1 ? "" : "s"}`}
@@ -927,12 +1371,11 @@ export function EditDetailsDrawer({
             <button type="button" onClick={attemptClose} className={footerPill}>
               Cancel
             </button>
-            <button type="button" onClick={save} disabled={changeCount === 0 || invalid || update.isPending} className={footerPrimary}>
+            <button type="button" onClick={save} disabled={changeCount === 0 || invalid || update.isPending || coverPut.isPending} className={footerPrimary}>
               Save
             </button>
           </div>
         </footer>
-        )}
 
         {discardOpen && (
           <ConfirmDialog
