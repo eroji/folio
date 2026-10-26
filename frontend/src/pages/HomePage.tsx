@@ -1,7 +1,8 @@
-/** Home (Direction D §4): filter chips and the Continue listening, Next
- * chapters and Recently added shelves from GET /me/home. Clicking a Continue
- * card resumes playback in place; its href still points at /player so the
- * card works without JS (docs/DECISIONS.md). */
+/** Home (Direction D §4): filter chips, the Continue listening, Next chapters
+ * and Recently added shelves from GET /me/home, and a "Browse by genre" block
+ * of genre shelves from GET /books?group=genre. Clicking a Continue card resumes
+ * playback in place; its href still points at /player so the card works without
+ * JS (docs/DECISIONS.md). */
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
@@ -9,7 +10,9 @@ import { useAuth } from "../auth/AuthProvider";
 import {
   formatLength,
   nativeLanguageName,
+  useBookGroups,
   useHome,
+  type BookGroupShelf,
   type HomeContinueItem,
   type HomeFilters,
   type HomeNextItem,
@@ -17,12 +20,12 @@ import {
 import { useProgressMembership } from "../api/progress";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { usePlayer } from "../player/usePlayer";
-import { BookCover } from "../components/BookCard";
+import { BookCard, BookCover } from "../components/BookCard";
 import { useCarouselRow } from "../components/Carousel";
 import { CoverProgressBadge } from "../components/CoverProgressBadge";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
-import type { Book } from "../api/types";
+import type { Book, Progress } from "../api/types";
 
 const STATUS_CHIPS = [
   { value: "all", label: "All" },
@@ -137,6 +140,52 @@ function NextChapterRow({
   );
 }
 
+/** One genre shelf in the "Browse by genre" block: same shape as the Library
+ * genre shelves (name + count, "See all" pill, 150px cover cards) with Home's
+ * pill styling. `count` is the number of books the current chips leave. */
+function GenreShelf({
+  shelf,
+  books,
+  count,
+  progressById,
+}: {
+  shelf: BookGroupShelf;
+  books: Book[];
+  count: number;
+  progressById: Map<string, Progress>;
+}) {
+  const { arrows, row } = useCarouselRow(
+    books.map((book) => (
+      <div key={book.id} className="w-[150px] shrink-0">
+        <BookCard book={book} progress={progressById.get(book.id) ?? null} />
+      </div>
+    )),
+    "gap-[18px]",
+  );
+  return (
+    <section aria-label={shelf.label} className="flex flex-col gap-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="flex min-w-0 items-baseline gap-2.5 font-display text-xl">
+          <span className="truncate">{shelf.label}</span>
+          <span className="font-ui text-md font-medium tracking-normal text-fg-2 tabular">
+            {count}
+          </span>
+        </h3>
+        <div className="flex shrink-0 items-center gap-3">
+          <Link
+            to={`/library?group=none&genre=${encodeURIComponent(shelf.key ?? "none")}`}
+            className="tap inline-flex h-9 items-center rounded-full border border-border px-4 text-base font-semibold text-fg no-underline hover:bg-raised"
+          >
+            See all
+          </Link>
+          {books.length > 8 && arrows}
+        </div>
+      </div>
+      {row}
+    </section>
+  );
+}
+
 export function HomePage() {
   const { user } = useAuth();
   const player = usePlayer();
@@ -161,6 +210,31 @@ export function HomePage() {
     ...new Set([...recent, ...items.map((item) => item.book)].map((book) => book.language)),
   ].sort();
   const empty = !isPending && !error && items.length + next.length + recent.length === 0;
+
+  /** Genre shelves: GET /books?group=genre honours the status chip; the language
+   * and duration chips have no server parameter, so they filter the loaded
+   * books client-side like the Library chips do.
+   * ponytail: counts are the API's whole-genre counts; a client-side filter
+   * shows the filtered count and can drop a genre whose matches sit past the
+   * 12 books the grouped listing returns. Send language/max_minutes to
+   * GET /books once the API accepts them. */
+  const { data: grouped } = useBookGroups(
+    { group: "genre", sort: "recent", status: filters.status },
+    { enabled: !empty },
+  );
+  const filtered = Boolean(filters.language || filters.maxMinutes);
+  const matchesChips = (book: Book): boolean =>
+    (!filters.language || book.language === filters.language) &&
+    (!filters.maxMinutes ||
+      // Like GET /me/home: books without a known length are not "under" anything.
+      (book.est_duration_s != null && book.est_duration_s <= filters.maxMinutes * 60));
+  const genreShelves = (grouped?.groups ?? [])
+    .map((shelf) => ({ shelf, books: shelf.books.filter(matchesChips) }))
+    .filter(({ books }) => books.length > 0)
+    .sort(
+      (a, b) =>
+        Number(a.shelf.key === null) - Number(b.shelf.key === null) || b.shelf.count - a.shelf.count,
+    );
 
   /** Load (or switch to) the book and start it playing, without navigating. */
   async function start(bookId: string, chapterId?: string) {
@@ -338,6 +412,21 @@ export function HomePage() {
                 </div>
               </div>
               {recentRow.row}
+            </section>
+          )}
+
+          {genreShelves.length > 0 && (
+            <section aria-label="Browse by genre" className="flex flex-col gap-8">
+              <h2 className="font-display text-2xl">Browse by genre</h2>
+              {genreShelves.map(({ shelf, books }) => (
+                <GenreShelf
+                  key={shelf.key ?? ""}
+                  shelf={shelf}
+                  books={books}
+                  count={filtered ? books.length : shelf.count}
+                  progressById={progressById}
+                />
+              ))}
             </section>
           )}
         </>

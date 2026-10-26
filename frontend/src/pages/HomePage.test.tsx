@@ -34,6 +34,29 @@ function shelfBook(overrides: Partial<Book> = {}): Book {
   };
 }
 
+/** Body of GET /books?group=genre: deliberately not in count order, so the
+ * test proves Home sorts (count desc, "No genre yet" last). */
+const GENRES = [
+  {
+    key: "Fantasy",
+    label: "Fantasy",
+    count: 3,
+    books: [shelfBook({ id: "66666666-0000-0000-0000-000000000001", title: "A Wizard of Earthsea", genre: "Fantasy" })],
+  },
+  {
+    key: "Mystery",
+    label: "Mystery",
+    count: 5,
+    books: [shelfBook({ id: "66666666-0000-0000-0000-000000000002", title: "The Long Goodbye", genre: "Mystery" })],
+  },
+  {
+    key: null,
+    label: "No genre yet",
+    count: 1,
+    books: [shelfBook({ id: "66666666-0000-0000-0000-000000000003", title: "Untitled Ledger", genre: null })],
+  },
+];
+
 const HOME = {
   continue: [
     {
@@ -51,7 +74,7 @@ const HOME = {
   recent: [shelfBook()],
 };
 
-function mockHome(home: typeof HOME = HOME): void {
+function mockHome(home: typeof HOME = HOME, groups: unknown = GENRES): void {
   installPlayerFetch();
   const base = vi.mocked(fetch);
   vi.stubGlobal(
@@ -65,6 +88,7 @@ function mockHome(home: typeof HOME = HOME): void {
         });
       }
       if (url.includes("/me/home")) return jsonResponse(home);
+      if (url.includes("/books?")) return jsonResponse({ groups });
       if (url.includes("/me/continue") || url.includes("/me/finished")) {
         return jsonResponse({ items: [] });
       }
@@ -194,5 +218,113 @@ describe("HomePage", () => {
     renderHome();
     expect(await screen.findByRole("heading", { name: "Your library is empty" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Upload books" })).toBeTruthy();
+  });
+
+  it("adds genre shelves sorted by count with No genre yet last", async () => {
+    mockHome();
+    renderHome();
+    const block = await screen.findByRole("region", { name: "Browse by genre" });
+    expect(
+      [...block.querySelectorAll("section[aria-label]")].map((s) => s.getAttribute("aria-label")),
+    ).toEqual(["Mystery", "Fantasy", "No genre yet"]);
+    expect(within(block).getByText("Mystery")).toBeTruthy();
+    expect(
+      within(block)
+        .getAllByRole("link", { name: "See all" })
+        .map((l) => l.getAttribute("href")),
+    ).toEqual([
+      "/library?group=none&genre=Mystery",
+      "/library?group=none&genre=Fantasy",
+      "/library?group=none&genre=none",
+    ]);
+  });
+
+  it("sends the status chip to the grouped genre query", async () => {
+    mockHome();
+    renderHome();
+    const group = await screen.findByRole("group", { name: "Filter" });
+    await screen.findByRole("region", { name: "Browse by genre" });
+    fireEvent.click(within(group).getByRole("button", { name: "In progress" }));
+    await waitFor(() => {
+      const call = vi
+        .mocked(fetch)
+        .mock.calls.find(([url]) => {
+          const u = new URL(String(url), "http://localhost");
+          return (
+            u.pathname.endsWith("/books") &&
+            u.searchParams.get("group") === "genre" &&
+            u.searchParams.get("status") === "in_progress"
+          );
+        });
+      expect(call).toBeTruthy();
+    });
+  });
+
+  it("filters the genre shelves with the language and duration chips", async () => {
+    const japanese = shelfBook({
+      id: "77777777-0000-0000-0000-000000000001",
+      title: "Sangetsuki",
+      language: "ja",
+      genre: "Fantasy",
+    });
+    mockHome(
+      { ...HOME, recent: [shelfBook(), japanese] },
+      [
+        {
+          key: "Fantasy",
+          label: "Fantasy",
+          count: 2,
+          books: [
+            shelfBook({ id: "66666666-0000-0000-0000-000000000001", title: "The Long Goodbye", genre: "Fantasy" }),
+            japanese,
+          ],
+        },
+        {
+          key: "Mystery",
+          label: "Mystery",
+          count: 1,
+          books: [
+            shelfBook({
+              id: "66666666-0000-0000-0000-000000000002",
+              title: "The Hobbit",
+              genre: "Mystery",
+              est_duration_s: 600,
+            }),
+          ],
+        },
+      ],
+    );
+    renderHome();
+    await screen.findByRole("region", { name: "Browse by genre" });
+    const filter = await screen.findByRole("group", { name: "Filter" });
+
+    fireEvent.click(within(filter).getByRole("button", { name: "日本語" }));
+    await waitFor(() => {
+      const fantasy = screen.getByRole("region", { name: "Fantasy" });
+      expect(within(fantasy).getByText("Sangetsuki")).toBeTruthy();
+      expect(within(fantasy).queryByText("The Long Goodbye")).toBeNull();
+      expect(screen.queryByRole("region", { name: "Mystery" })).toBeNull();
+    });
+
+    fireEvent.click(within(filter).getByRole("button", { name: "All" }));
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "Mystery" })).toBeTruthy();
+    });
+
+    // "Under 3 hours" drops the 3 h 32 m books, and with them the empty shelf.
+    fireEvent.click(within(filter).getByRole("button", { name: "Under 3 hours" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "Fantasy" })).toBeNull();
+      expect(
+        within(screen.getByRole("region", { name: "Mystery" })).getByText("The Hobbit"),
+      ).toBeTruthy();
+    });
+  });
+
+  it("hides the genre block when the listing has no groups", async () => {
+    mockHome(HOME, []);
+    renderHome();
+    await screen.findByRole("region", { name: "Recently added" });
+    expect(screen.queryByRole("region", { name: "Browse by genre" })).toBeNull();
   });
 });
