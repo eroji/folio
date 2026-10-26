@@ -1,5 +1,6 @@
 /** Chapter row in the Direction D shape (handoff "Book page → Chapters"):
- * 52px row, number / title / length, played rows secondary with a Check,
+ * 52px row, number / title / length; played rows are secondary and show only
+ * a Check (no length),
  * the playing row raised with an accent AudioLines and a percent line.
  * Used by the book page and the player's Up next tab. */
 import clsx from "clsx";
@@ -52,7 +53,9 @@ export function ChapterRow({
           </span>
         )}
       </span>
-      <span className={clsx("shrink-0 text-sm tabular", current ? "text-fg" : "text-fg-2")}>{formatTime(seconds)}</span>
+      {state !== "played" && (
+        <span className={clsx("shrink-0 text-sm tabular", current ? "text-fg" : "text-fg-2")}>{formatTime(seconds)}</span>
+      )}
       {state === "played" && (
         <>
           <Icon name="Check" size={16} className="shrink-0" />

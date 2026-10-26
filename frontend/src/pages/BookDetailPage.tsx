@@ -314,7 +314,6 @@ export function BookDetailPage() {
   const currentIndex = loadedHere ? player.chapters.findIndex((chapter) => chapter.id === player.chapter?.id) : -1;
   const currentId = loadedHere ? player.chapter?.id ?? null : progressChapter?.id ?? null;
   const resumeChapter = loadedHere ? player.chapter : progressChapter;
-  const resumeNumber = resumeChapter ? included.findIndex((chapter) => chapter.id === resumeChapter.id) + 1 : 0;
 
   /** "played" is approximate: chapters before the progress (or live player)
    * chapter count as played; a finished book is all played (DECISIONS).
@@ -383,9 +382,7 @@ export function BookDetailPage() {
         : finished
           ? "Play again"
           : resumeChapter || loadedHere
-            ? resumeNumber > 0
-              ? `Resume Chapter ${resumeNumber}`
-              : "Resume"
+            ? "Resume"
             : "Play";
   const coverLabel = finished
     ? `${book.title}, finished`

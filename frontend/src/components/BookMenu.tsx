@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { Icon } from "./Icon";
 
 /** ⋮ book menu (Direction D "Book page" item 6), visible to every listener:
- * Mark as finished/unfinished, Reset progress, Narrator voice… (the only
+ * Mark as finished/unfinished, Reset progress, Narrator voice (the only
  * place a book's narrator is chosen) and Go to author. Raised fill, 12px
  * radius, 40px rows. variant "inline": 44px outlined pill trigger next to the
  * primary action (desktop); variant "header": borderless 44px trigger for the
@@ -139,7 +139,7 @@ export function BookMenu({
               className={menuItem}
             >
               <Icon name="Speech" size={20} />
-              Narrator voice…
+              Narrator voice
             </button>
             <button
               type="button"
