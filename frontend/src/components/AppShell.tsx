@@ -32,7 +32,7 @@ const NAV: { to: string; icon: IconName; label: string }[] = [
   { to: "/upload", icon: "Upload", label: "Upload" },
 ];
 
-/** Remembered sidebar collapse; tablet (768–1023) starts as an icon rail. */
+/** Remembered sidebar collapse; tablet (768–1023) starts as the labelled rail. */
 const SIDEBAR_KEY = "folio-sidebar-collapsed";
 
 function useSidebarCollapsed(): [boolean, () => void] {
@@ -72,21 +72,20 @@ function SideNavItem({ to, icon, label, collapsed }: { to: string; icon: IconNam
       className={({ isActive }) =>
         clsx(
           "flex min-h-12 shrink-0 items-center gap-4 rounded-xl px-3.5 text-lg no-underline",
-          collapsed && "flex-col gap-1 px-0 py-2",
+          collapsed && "flex-col gap-0.5 px-0 py-0.5",
           isActive ? "bg-raised font-bold text-fg" : "font-medium text-fg hover:bg-raised/60",
         )
       }
     >
       <Icon name={icon} size={24} />
-      <span className={clsx("truncate", collapsed && "hidden text-2xs font-medium md:block lg:hidden")}>
-        {label}
-      </span>
+      <span className={clsx("truncate", collapsed && "text-2xs font-medium")}>{label}</span>
     </NavLink>
   );
 }
 
-/** ≥768px: labelled sidebar; collapsed it is a 72px rail (icon-only ≥1024,
- * icon + 11px label on tablet). Settings/Admin live in the account menu. */
+/** ≥768px: labelled sidebar; collapsed it is an 80px rail of 48px icon +
+ * 11px-label items (no logo; the logo moves to the top bar). Settings/Admin
+ * live in the account menu. Tablet (768–1023) starts as this rail. */
 function Sidebar({
   collapsed,
   onToggle,
@@ -101,7 +100,7 @@ function Sidebar({
       aria-label="Main"
       className={clsx(
         "sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-bg px-3 pt-2 pb-4 md:flex",
-        collapsed ? "w-[72px]" : "w-[240px]",
+        collapsed ? "w-20" : "w-[240px]",
       )}
     >
       <div className={clsx("flex h-14 shrink-0 items-center gap-2 px-0.5", collapsed && "justify-center px-0")}>
@@ -116,15 +115,6 @@ function Sidebar({
         </button>
         {!collapsed && <Logo size={29} textClass="text-[23px]" />}
       </div>
-      {collapsed && (
-        <Link
-          to="/"
-          aria-label="Folio home"
-          className="grid min-h-12 shrink-0 place-items-center rounded-xl no-underline hover:bg-raised"
-        >
-          <img src={folioMark} alt="" width={24} height={24} />
-        </Link>
-      )}
       {NAV.map((item) => (
         <SideNavItem key={item.to} {...item} collapsed={collapsed} />
       ))}
@@ -267,11 +257,13 @@ function BottomNav() {
   );
 }
 
-/** ≥768px: 56px top bar inside the main pane. <768px: 56px phone header with
- * the logo, a Search icon button and the avatar. */
-function TopBar() {
+/** ≥768px: 56px top bar inside the main pane; with the sidebar collapsed the
+ * logo sits at its far left, before the search pill. <768px: 56px phone
+ * header with the logo, a Search icon button and the avatar. */
+function TopBar({ collapsed }: { collapsed: boolean }) {
   return (
     <header className="hidden h-14 shrink-0 items-center gap-4 px-10 md:flex">
+      {collapsed && <Logo size={24} textClass="text-[19px]" />}
       <TopBarSearch />
       <div className="ml-auto shrink-0">
         <AccountMenu />
@@ -365,7 +357,7 @@ function Shell() {
     <div className="flex min-h-dvh">
       <Sidebar collapsed={collapsed} onToggle={toggleSidebar} inProgress={continueData?.items ?? []} />
       <div className={clsx("flex min-w-0 flex-1 flex-col", glow.className)} style={glow.style}>
-        <TopBar />
+        <TopBar collapsed={collapsed} />
         <PhoneHeader />
         <main
           className={clsx(
