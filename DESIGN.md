@@ -66,6 +66,8 @@
   position; `X` stops, saves and unloads; cross-device positions show "Paused ·
   last played on {device}" and a ResumePrompt. One `<audio>` element app-wide —
   bar, mini player, `/player` page and phone player all drive the same state.
+  The speed text button opens a 0.95×–1.25× slider popover (step 0.05) instead
+  of cycling presets.
 
 ## Screens
 
@@ -94,7 +96,7 @@
 - **Upload `/upload`:** dashed `#4A4A52` drop zone with the bookmark mark and white
   "Choose files" pill; "This session" surface rows with status icon, progress bar
   (indeterminate via `.bar-indeterminate`) and pill actions.
-- **Profile `/settings`:** Playback (speed select, 5–120 s skip steppers, switches)
+- **Profile `/settings`:** Playback (speed select 0.95–1.25×, 5–120 s skip steppers, switches)
   and Voices (per-language pill select + 40 px outlined Preview) only. Saves are
   immediate; failures revert with an inline error.
 - **Sign in `/login`:** accent glow, centered 380 px column, mark + "folio", 48 px
@@ -119,8 +121,12 @@
   Find button's fixed 36 px slot, so the form never moves. Manage has no Find button:
   the pane opens only from the drawer (or the Review metadata matches banner).
   The narrator is set only from the book's ⋮ menu.
-- **Restyle-only screens** (Find metadata, narrator dialog, confirms, Admin,
-  About tab, empty/loading/error/offline/needs-OCR/failed
+- **Admin `/admin`:** Jobs / Cache / Users / Voices in the Settings column.
+  Voices groups by language; each on-server voice has a display name, Preview,
+  a default radio and its own narration instruction (max 500, saved on blur).
+  The instruction is sent to the TTS engine with the book's genre appended.
+- **Restyle-only screens** (Find metadata, narrator dialog, confirms, About tab,
+  empty/loading/error/offline/needs-OCR/failed
 
 Favicons and app icons are transparent (no dark tile) with the bookmark mark
 scaled up to ~61 % of the canvas.

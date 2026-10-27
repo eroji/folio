@@ -21,6 +21,7 @@ Probed the homelab service so M4 is built against reality, not the spec's assump
 - Opus in Ogg is returned directly, so the spec's `TTS_FORMAT=opus` default needs no fallback here; keep the mp3 fallback for portability.
 - `/v1/audio/speech` takes no auth here (`TTS_API_KEY` empty).
 - A 3-word utterance generated in 0.32 s, so lookahead of 6 segments is comfortably ahead of playback at 1×(~15 chars/s).
+- `POST /v1/audio/speech` accepts an optional **`instructions`** string. Folio sends the admin's per-voice prompt plus `You're narrating a {genre} novel.` for the book's genre; the field is omitted when there is nothing to say, and the instruction is part of the audio cache key.
 
 ## For the admin health check (M4)
 
