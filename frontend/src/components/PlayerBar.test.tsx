@@ -89,14 +89,14 @@ describe("PlayerBar", () => {
     const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
     expect(speed.getAttribute("aria-expanded")).toBe("true");
     const slider = within(dialog).getByRole("slider", { name: "Playback speed" });
-    expect(slider).toHaveProperty("min", "0.95");
-    expect(slider).toHaveProperty("max", "1.25");
+    expect(slider).toHaveProperty("min", "0.9");
+    expect(slider).toHaveProperty("max", "1.15");
     expect(slider).toHaveProperty("step", "0.05");
     expect(slider.getAttribute("aria-orientation")).toBe("vertical");
     expect(slider.className).toContain("-rotate-90"); // rotated native input, bottom → top
     expect(document.activeElement).toBe(slider); // focused when opened
-    expect(within(dialog).getByText("1.25×")).toBeTruthy(); // end labels, max on top
-    expect(within(dialog).getByText("0.95×")).toBeTruthy();
+    expect(within(dialog).getByText("1.15×")).toBeTruthy(); // end labels, max on top
+    expect(within(dialog).getByText("0.9×")).toBeTruthy();
 
     fireEvent.change(slider, { target: { value: "1.15" } });
     await waitFor(() => expect(getPlayer().rate).toBe(1.15));

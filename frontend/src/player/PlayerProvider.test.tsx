@@ -141,17 +141,17 @@ describe("PlayerProvider", () => {
     expect(played).toContain(getPlayer().elements[1]);
   });
 
-  it("applies playback speed to both elements, clamps to 0.95–1.25 and rounds to 0.05", () => {
+  it("applies playback speed to both elements, clamps to 0.9–1.15 and rounds to 0.05", () => {
     const getPlayer = renderPlayer();
     const [a, b] = getPlayer().elements;
-    getPlayer().setRate(1.2);
-    expect([a.playbackRate, b.playbackRate]).toEqual([1.2, 1.2]);
+    getPlayer().setRate(1.1);
+    expect([a.playbackRate, b.playbackRate]).toEqual([1.1, 1.1]);
     getPlayer().setRate(1.13);
     expect(a.playbackRate).toBe(1.15); // rounds to the step, no float noise
     getPlayer().setRate(2);
-    expect(a.playbackRate).toBe(1.25);
+    expect(a.playbackRate).toBe(1.15);
     getPlayer().setRate(0.5);
-    expect(a.playbackRate).toBe(0.95);
+    expect(a.playbackRate).toBe(0.9);
   });
 
   it("pauses when the minute-based sleep timer elapses", async () => {
@@ -210,10 +210,10 @@ describe("PlayerProvider", () => {
   });
 
   it("starts at the saved default speed", async () => {
-    installPlayerFetch({ settings: { speed: 1.2 } });
+    installPlayerFetch({ settings: { speed: 1.1 } });
     const getPlayer = renderPlayer();
-    await waitFor(() => expect(getPlayer().rate).toBe(1.2));
-    expect(getPlayer().elements[0].playbackRate).toBe(1.2);
+    await waitFor(() => expect(getPlayer().rate).toBe(1.1));
+    expect(getPlayer().elements[0].playbackRate).toBe(1.1);
   });
 
   it("skips by the configured back and forward intervals", async () => {
@@ -642,10 +642,9 @@ describe("PlayerProvider progress", () => {
 
 describe("formatSpeed", () => {
   it("shows one decimal minimum and two only when needed", () => {
+    expect(formatSpeed(0.9)).toBe("0.9");
     expect(formatSpeed(1)).toBe("1.0");
-    expect(formatSpeed(1.1)).toBe("1.1");
+    expect(formatSpeed(1.1)).toBe("1.1"); // Math.round guards float noise like 1.1 * 100 !== 110
     expect(formatSpeed(1.15)).toBe("1.15");
-    expect(formatSpeed(0.95)).toBe("0.95");
-    expect(formatSpeed(1.2)).toBe("1.2"); // Math.round guards float noise like 1.1 * 100 !== 110
   });
 });

@@ -102,8 +102,8 @@ def _public_settings(user: User) -> dict[str, Any]:
 def _validated(patch: SettingsPatch) -> dict[str, Any]:
     values: dict[str, Any] = {}
     if patch.speed is not None:
-        # 0.95-1.25 in 0.05 steps; round guards the binary drift in 1.15.
-        if not 0.95 <= patch.speed <= 1.25 or round(patch.speed * 100) % 5:
+        # 0.9-1.15 in 0.05 steps; round guards the binary drift in 1.15.
+        if not 0.9 <= patch.speed <= 1.15 or round(patch.speed * 100) % 5:
             _fail()
         values["speed"] = patch.speed
     for name in ("skip_back", "skip_forward"):

@@ -114,8 +114,8 @@ async def test_settings_voices_legacy_row_migrates_on_read(
     "body",
     [
         {"speed": 1.13},  # not a 0.05 step
-        {"speed": 0.5},
-        {"speed": 1.3},
+        {"speed": 0.85},
+        {"speed": 1.2},
         {"speed": 2.75},
         {"skip_back": 3},
         {"skip_forward": 121},
@@ -134,7 +134,14 @@ async def test_settings_validation_failures(auth_client: httpx.AsyncClient, body
 
 @pytest.mark.parametrize(
     "body",
-    [{"speed": 0.95}, {"speed": 1.15}, {"speed": 1.2}, {"speed": 1.25}, {"skip_forward": 5}],
+    [
+        {"speed": 0.9},
+        {"speed": 1.0},
+        {"speed": 1.05},
+        {"speed": 1.1},
+        {"speed": 1.15},
+        {"skip_forward": 5},
+    ],
 )
 async def test_settings_accepts_boundary_values(auth_client: httpx.AsyncClient, body: dict) -> None:
     response = await auth_client.put("/api/v1/me/settings", json=body, headers=csrf(auth_client))
@@ -143,7 +150,7 @@ async def test_settings_accepts_boundary_values(auth_client: httpx.AsyncClient, 
 
 async def test_settings_are_per_user(client: httpx.AsyncClient) -> None:
     await client.post("/api/v1/test/login", json={"username": "alice", "role": "user"})
-    await client.put("/api/v1/me/settings", json={"speed": 1.2}, headers=csrf(client))
+    await client.put("/api/v1/me/settings", json={"speed": 1.1}, headers=csrf(client))
     await client.post("/api/v1/test/login", json={"username": "bob", "role": "user"})
     assert (await client.get("/api/v1/me/settings")).json()["settings"]["speed"] == 1.0
 
