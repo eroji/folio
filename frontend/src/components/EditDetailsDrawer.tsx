@@ -524,13 +524,17 @@ interface CoverPreview {
 
 function CoverGroup({
   book,
-  stagedCover,
-  onDeclineCover,
+  suggestedCover,
+  usedCover,
+  onUseCover,
+  onUndoCover,
   onCoverPicked,
 }: {
   book: Book;
-  stagedCover?: CoverPreview;
-  onDeclineCover: () => void;
+  suggestedCover?: CoverPreview;
+  usedCover?: CoverPreview;
+  onUseCover: () => void;
+  onUndoCover: () => void;
   onCoverPicked: () => void;
 }) {
   const upload = useUploadCover(book.id);
@@ -683,19 +687,28 @@ function CoverGroup({
   return (
     <Group title="Cover" divider={false}>
       <div className="flex flex-wrap items-center gap-5">
-        {stagedCover ? (
-          <span className="relative block aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-md bg-raised">
-            <img src={stagedCover.url} alt="" className="h-full w-full object-cover" />
-            <button
-              type="button"
-              onClick={onDeclineCover}
-              aria-label="Don't use the suggested cover"
-              title="Don't use the suggested cover"
-              className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-bg/85 text-fg hover:bg-bg"
-            >
-              <Icon name="X" size={14} />
-            </button>
-          </span>
+        {suggestedCover || usedCover ? (
+          <div className="flex w-24 shrink-0 flex-col items-center gap-1.5">
+            <span className="block w-full overflow-hidden rounded-md border-2 border-accent/40 bg-accent/10 p-0.5">
+              <img
+                src={(usedCover ?? suggestedCover)!.url}
+                alt=""
+                className="aspect-[2/3] w-full rounded-sm bg-raised object-cover"
+              />
+            </span>
+            {usedCover ? (
+              <span className="flex items-center justify-center gap-1 text-[11px] text-fg-2">
+                <Icon name="Check" size={12} className="text-accent" />
+                <button type="button" onClick={onUndoCover} aria-label="Undo cover" className="font-semibold text-fg underline">
+                  Undo cover
+                </button>
+              </span>
+            ) : (
+              <button type="button" onClick={onUseCover} className={clsx(whitePill, "h-7 w-full justify-center text-sm")}>
+                Use
+              </button>
+            )}
+          </div>
         ) : book.cover_url ? (
           <img src={book.cover_url} alt="" className="aspect-[2/3] w-24 shrink-0 rounded-md bg-raised object-cover" />
         ) : (
@@ -754,7 +767,7 @@ function CoverGroup({
             </div>
           )}
           <p className="text-xs text-fg-2">JPG, PNG or WebP. You’ll crop it to 2:3 next.</p>
-          {!stagedCover && (
+          {!suggestedCover && !usedCover && (
             <button
               type="button"
               disabled={!book.cover_url || removeCover.isPending}
@@ -763,9 +776,6 @@ function CoverGroup({
             >
               Remove cover
             </button>
-          )}
-          {stagedCover && (
-            <span className="text-xs text-fg-2">Suggested cover from {stagedCover.source} · saves when you press Save</span>
           )}
         </div>
       </div>
@@ -807,7 +817,6 @@ export function EditDetailsDrawer({
   // Deferred cover: the selected result's cover is shown in place until Save
   // PUTs it; the X on the preview declines it.
   const [usedCover, setUsedCover] = useState<{ url: string; source: string } | null>(null);
-  const [declinedCovers, setDeclinedCovers] = useState<string[]>([]);
   const [query, setQuery] = useState(`${book.title} ${book.authors[0] ?? ""}`.trim());
   const [isbn, setIsbn] = useState(book.isbn13 ?? book.isbn10 ?? "");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -848,27 +857,15 @@ export function EditDetailsDrawer({
     if (findOpen && live.current.items === null) runSearch();
   }, [findOpen]);
 
-  // The selected result's cover is previewed in the cover slot immediately
-  // (unless the server says it is already applied, or the user declined it).
+  // Moving to another result drops a cover staged from the previous one.
   useEffect(() => {
     if (!suggestion) return;
-    const url = suggestion.cover_url;
-    if (!url || suggestion.cover_applied || declinedCovers.includes(url)) {
-      setUsedCover(null);
-      return;
-    }
-    setUsedCover((current) =>
-      current?.url === url ? current : { url, source: sourceName(suggestion.source) },
-    );
-  }, [suggestion, declinedCovers]);
+    setUsedCover((current) => (current && current.url !== suggestion.cover_url ? null : current));
+  }, [suggestion]);
 
-  function declineCover() {
-    if (usedCover) {
-      setDeclinedCovers((current) =>
-        current.includes(usedCover.url) ? current : [...current, usedCover.url],
-      );
-    }
-    setUsedCover(null);
+  function useCover() {
+    if (!suggestion?.cover_url) return;
+    setUsedCover({ url: suggestion.cover_url, source: sourceName(suggestion.source) });
   }
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
@@ -937,6 +934,9 @@ export function EditDetailsDrawer({
       markers[field] = { source, prev: form };
       next = { ...next, ...def.apply(suggestion, next) };
     }
+    if (suggestion.cover_url && !suggestion.cover_applied && !usedCover) {
+      setUsedCover({ url: suggestion.cover_url, source });
+    }
     setForm(next);
     setUsedMeta(markers);
   }
@@ -959,8 +959,11 @@ export function EditDetailsDrawer({
     const def = SUGGESTIONS[field]!;
     return Boolean(def.text(suggestion)) && !def.same(suggestion, form);
   };
+  const coverProposed = Boolean(suggestion?.cover_url) && !suggestion?.cover_applied;
   const suggestionCount =
-    usedFields.length + Object.keys(SUGGESTIONS).filter(pillShown).length + (usedCover ? 1 : 0);
+    usedFields.length +
+    Object.keys(SUGGESTIONS).filter(pillShown).length +
+    (coverProposed || usedCover ? 1 : 0);
 
   /** Per-field suggestion UI: the pill, or the "✓ From … · Undo" line. */
   function suggestionUi(field: string): ReactNode {
@@ -1236,9 +1239,15 @@ export function EditDetailsDrawer({
 
               <CoverGroup
                 book={book}
-                stagedCover={usedCover ?? undefined}
-                onDeclineCover={declineCover}
-                onCoverPicked={declineCover}
+                suggestedCover={
+                  coverProposed
+                    ? { url: suggestion!.cover_url!, source: sourceName(suggestion!.source) }
+                    : undefined
+                }
+                usedCover={usedCover ?? undefined}
+                onUseCover={useCover}
+                onUndoCover={() => setUsedCover(null)}
+                onCoverPicked={() => setUsedCover(null)}
               />
 
               <Group title="Book">

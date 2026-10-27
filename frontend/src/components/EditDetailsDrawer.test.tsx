@@ -282,9 +282,6 @@ describe("EditDetailsDrawer", () => {
   it("Use fills the field, shows the source line and counts the change; Undo restores", async () => {
     renderDrawer();
     await openFindPane();
-    // The selected result's cover is previewed automatically; decline it so
-    // this test counts only the field.
-    fireEvent.click(screen.getByRole("button", { name: "Don't use the suggested cover" }));
     fireEvent.click(screen.getByRole("button", { name: "Use Chilton" }));
     expect(input("Publisher").value).toBe("Chilton");
     expect(screen.getByText("From Open Library")).toBeTruthy();
@@ -309,7 +306,7 @@ describe("EditDetailsDrawer", () => {
       "A classic of desert politics.",
     );
     expect(coverUrlFetches).toHaveLength(0);
-    expect(screen.getByRole("button", { name: "Don't use the suggested cover" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Undo cover" })).toBeTruthy();
   });
 
   it("typing after Use makes the field hand-edited again: no metadata_fields on Save", async () => {
@@ -341,8 +338,8 @@ describe("EditDetailsDrawer", () => {
   it("a used cover PUTs cover-url before the PATCH on Save", async () => {
     renderDrawer({ cover_url: "https://example.org/current.jpg" });
     await openFindPane();
-    // Selecting the result previews its cover in place (X declines it).
-    expect(screen.getByRole("button", { name: "Don't use the suggested cover" })).toBeTruthy();
+    // The result's cover is proposed in place with a Use button.
+    fireEvent.click(screen.getByRole("button", { name: /^Use$/ }));
     expect(coverUrlFetches).toHaveLength(0);
     expect(screen.getByText("1 unsaved change")).toBeTruthy();
     fireEvent.click(saveButton());
@@ -400,15 +397,22 @@ describe("EditDetailsDrawer", () => {
     renderDrawer({}, [match]);
     expect(screen.getByText("Everything matches")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Use all" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Don't use the suggested cover" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Use$/ })).toBeNull();
   });
 
-  it("declining the suggested cover restores the book cover and drops the change", async () => {
+  it("proposes the cover with an accent outline and a Use button; Undo restores it", async () => {
     renderDrawer({ cover_url: "https://example.org/current.jpg" });
     await openFindPane();
-    fireEvent.click(screen.getByRole("button", { name: "Don't use the suggested cover" }));
-    expect(screen.queryByRole("button", { name: "Don't use the suggested cover" })).toBeNull();
+    const coverGroup = document.querySelector('section[aria-label="Cover"]')!;
+    const image = coverGroup.querySelector<HTMLImageElement>('img[src="https://covers.test/dune.jpg"]');
+    expect(image).toBeTruthy();
+    expect(image!.parentElement?.className).toContain("border-accent/40");
+    expect(screen.queryByLabelText("Don't use the suggested cover")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Use$/ }));
+    expect(screen.getByRole("button", { name: "Undo cover" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Undo cover" }));
     expect(screen.queryByText(/unsaved change/)).toBeNull();
+    expect(screen.getByRole("button", { name: /^Use$/ })).toBeTruthy();
   });
 
   it("Cancel closes directly when nothing changed", () => {

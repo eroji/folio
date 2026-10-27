@@ -113,7 +113,7 @@
   does not move. The Manage "Edit details" pill is filled (`bg-raised`). Each result offers per-field
   accent suggestion pills with Use/Undo and "Use all" (locked fields excluded);
   used values are deferred until Save and save without locking, typed fields
-  still lock. The selected result's cover is previewed in place (X declines);
+  still lock. The selected result's cover is outlined in accent in place with a Use button below;
   a provider cover already applied is deduped server-side and the banner turns
   green ("Everything matches") when nothing differs. The banner occupies the
   Find button's fixed 36 px slot, so the form never moves. Manage has no Find button:
