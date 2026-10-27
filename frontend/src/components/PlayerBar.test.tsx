@@ -78,13 +78,33 @@ describe("PlayerBar", () => {
     await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH1));
   });
 
-  it("speed text button cycles the rate and the sleep menu sets the timer", async () => {
+  it("speed button opens a slider popover that sets the rate, and the sleep menu sets the timer", async () => {
     const getPlayer = await loadBar();
     const speed = screen.getByRole("button", { name: "Playback speed, 1 times" });
     expect(speed.textContent).toBe("1×");
+    expect(speed.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(speed.getAttribute("aria-expanded")).toBe("false");
+
     fireEvent.click(speed);
-    await waitFor(() => expect(getPlayer().rate).toBe(1.25));
-    expect(screen.getByRole("button", { name: "Playback speed, 1.25 times" }).textContent).toBe("1.25×");
+    const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
+    expect(speed.getAttribute("aria-expanded")).toBe("true");
+    const slider = within(dialog).getByRole("slider", { name: "Playback speed" });
+    expect(slider).toHaveProperty("min", "0.95");
+    expect(slider).toHaveProperty("max", "1.25");
+    expect(slider).toHaveProperty("step", "0.05");
+    expect(document.activeElement).toBe(slider); // focused when opened
+
+    fireEvent.change(slider, { target: { value: "1.15" } });
+    await waitFor(() => expect(getPlayer().rate).toBe(1.15));
+    expect(screen.getByRole("button", { name: "Playback speed, 1.15 times" }).textContent).toBe("1.15×");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeNull());
+
+    fireEvent.click(speed); // toggles open again
+    await screen.findByRole("dialog", { name: "Playback speed" });
+    fireEvent.click(document.body); // outside click closes
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeNull());
 
     fireEvent.click(screen.getByRole("button", { name: "Sleep timer" }));
     const menu = await screen.findByRole("menu", { name: "Sleep timer" });

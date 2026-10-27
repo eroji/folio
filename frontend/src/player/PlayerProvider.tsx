@@ -24,9 +24,9 @@ import type { Book, BookDetailResponse, Chapter, Progress } from "../api/types";
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
 export const TTS_LOOKAHEAD = 6;
-export const SPEED_MIN = 0.75;
-export const SPEED_MAX = 2.5;
-const SPEED_STEP = 0.25;
+export const SPEED_MIN = 0.95;
+export const SPEED_MAX = 1.25;
+export const SPEED_STEP = 0.05;
 const POLL_MS = 1000;
 /** Segments after the current one that must be ready before a voice-change
  * reload starts: starting on the first one alone made playback stall a few
@@ -603,7 +603,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   function setRate(rate: number) {
-    s.rate = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(rate / SPEED_STEP) * SPEED_STEP));
+    // Round to the step, then drop the float noise Math.round(x/0.05)*0.05 leaves.
+    const stepped = Math.round(rate / SPEED_STEP) * SPEED_STEP;
+    s.rate = Number(Math.min(SPEED_MAX, Math.max(SPEED_MIN, stepped)).toFixed(2));
     for (const element of els) element.playbackRate = s.rate;
     bump();
   }
