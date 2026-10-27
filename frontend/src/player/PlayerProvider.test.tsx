@@ -248,6 +248,45 @@ describe("PlayerProvider", () => {
     expect(calls.some((call) => call.voice === "danny-en")).toBe(true);
   });
 
+  it("the book narrator wins over the per-language preference", async () => {
+    const { prepareCalls: calls } = installPlayerFetch({
+      book: { narrator_voice: "zoe-en" },
+      settings: { voices: { en: "danny-en" } },
+    });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    expect(calls.some((call) => call.voice === "zoe-en")).toBe(true);
+    expect(calls.every((call) => call.voice !== "danny-en")).toBe(true);
+  });
+
+  it("reloadVoice re-prepares the current position and keeps playing", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const before = prepareCalls.length;
+    const a = getPlayer().elements[0];
+    act(() => {
+      a.currentTime = 12;
+      a.dispatchEvent(new Event("timeupdate"));
+    });
+    expect(getPlayer().time).toBe(12);
+    await act(async () => {
+      getPlayer().reloadVoice(BOOK_ID);
+    });
+    await waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().time).toBe(12);
+    expect(prepareCalls[prepareCalls.length - 1]?.segment_id).toBe(`${CH1}-seg0`);
+  });
+
+  it("reloadVoice ignores a different book", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const before = prepareCalls.length;
+    act(() => getPlayer().reloadVoice(BOOK2_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(prepareCalls.length).toBe(before);
+  });
+
   it("stop pauses both elements, saves, clears the book, and clears the URL query", async () => {
     const { saveCalls } = installPlayerFetch();
     const getPlayer = renderPlayer(<SearchProbe />, [`/player?book=${BOOK_ID}`]);

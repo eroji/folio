@@ -815,7 +815,12 @@ export function BookDetailPage() {
           language={book.language}
           error={update.isError ? update.error.message : null}
           onClose={() => setNarratorOpen(false)}
-          onSelect={(next) => update.mutate({ narrator_voice: next })}
+          onSelect={(next) =>
+            update.mutate(
+              { narrator_voice: next },
+              { onSuccess: () => player.reloadVoice(book.id) },
+            )
+          }
         />
       )}
     </div>

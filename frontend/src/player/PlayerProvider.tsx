@@ -20,7 +20,7 @@ import {
 } from "../api/progress";
 import { useListeningSettings, type ListeningSettings } from "../api/settings";
 import type { ResumePromptProps } from "../components/ResumePrompt";
-import type { Book, Chapter, Progress } from "../api/types";
+import type { Book, BookDetailResponse, Chapter, Progress } from "../api/types";
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
 export const TTS_LOOKAHEAD = 6;
@@ -78,6 +78,8 @@ export interface PlayerContextValue {
   /** Index (into `elements`) of the element currently playing. */
   active: 0 | 1;
   load: (bookId: string, chapterId?: string) => Promise<void>;
+  /** Re-synthesize the current position after a narrator/voice change. */
+  reloadVoice: (bookId?: string) => void;
   play: () => Promise<void>;
   pause: () => void;
   /** Pause, save, forget the book, and clear the URL query. */
@@ -285,8 +287,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (toppingUp.current) return;
     toppingUp.current = true;
     try {
-      // Pins are keyed by base language; a zh-TW book reads the zh pin.
-      const voice = settingsRef.current.voices[baseLanguage(s.book.language)] ?? undefined;
+      // Book narrator wins over the per-language preference (server: book →
+      // listener preference → server default). Pins are keyed by base language.
+      const voice =
+        s.book.narrator_voice ??
+        settingsRef.current.voices[baseLanguage(s.book.language)] ??
+        undefined;
       const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, voice);
       s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
       preloadNext();
@@ -492,6 +498,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.resumePrompt = null;
     s.lastDevice = null;
     if (location.search) navigate(location.pathname, { replace: true }); // /player must not reload the book
+    bump();
+  }
+
+  /** A narrator changed: drop the prepared audio for the current position and
+   * ask for it again with the new voice, keeping the exact offset and whether
+   * the listener was playing (paused players reload paused). */
+  function reloadVoice(bookId?: string) {
+    if (!s.book || (bookId && s.book.id !== bookId)) return;
+    const cached = queryClient.getQueryData<BookDetailResponse>(["book", s.book.id])?.book;
+    if (cached) s.book = cached;
+    // Read the live element while playing so the reload resumes exactly where
+    // the listener was, not at the last (throttled) timeupdate.
+    const offset = s.playing ? activeEl().currentTime : s.time;
+    s.offset = offset;
+    s.time = offset;
+    silence();
+    s.status = {};
+    void topUp();
     bump();
   }
 
@@ -710,6 +734,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // A per-language preference change reloads the loaded book only when the
+  // book has no narrator of its own (the book narrator always wins).
+  const prefState = useRef<{ bookId: string; value: string | null } | null>(null);
+  useEffect(() => {
+    if (!s.book) {
+      prefState.current = null;
+      return;
+    }
+    const value = s.book.narrator_voice
+      ? null
+      : settings.voices[baseLanguage(s.book.language)] ?? null;
+    if (!prefState.current || prefState.current.bookId !== s.book.id) {
+      prefState.current = { bookId: s.book.id, value };
+      return;
+    }
+    if (prefState.current.value === value) return;
+    prefState.current.value = value;
+    reloadVoice(s.book.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- s.book is a ref; values compared above
+  }, [settings.voices, s.book]);
+
   const book = s.book;
   const chapterTitle = s.chapters[s.chapterIdx]?.title;
   const playing = s.playing;
@@ -763,6 +808,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     elements: els,
     active: s.active,
     load,
+    reloadVoice,
     play,
     pause,
     stop,

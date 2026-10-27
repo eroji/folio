@@ -66,6 +66,8 @@ export interface PlayerFixture {
   settings?: Partial<ListeningSettings>;
   /** The caller's saved progress on GET /books/{id} (null until set). */
   progress?: Progress | null;
+  /** Overrides merged into the default book payload (e.g. narrator_voice). */
+  book?: Partial<Book>;
 }
 
 export interface InstalledFetch {
@@ -155,7 +157,11 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
             progress: null,
           });
         }
-        return jsonResponse({ book: makeBook(), chapters, progress: fixture.progress ?? null });
+        return jsonResponse({
+          book: { ...makeBook(), ...fixture.book },
+          chapters,
+          progress: fixture.progress ?? null,
+        });
       }
       throw new Error(`unexpected fetch: ${url}`);
     }),

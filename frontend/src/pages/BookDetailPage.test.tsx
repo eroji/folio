@@ -114,7 +114,7 @@ let role: Role = "user";
 let rules: PronunciationRule[] = [];
 let rulesFail = false;
 let ruleSeq = 1;
-let prepareCalls: { segment_id: string }[] = [];
+let prepareCalls: { segment_id: string; voice?: string }[] = [];
 let finishedCalls: { finished: boolean }[] = [];
 let saveCalls: Record<string, unknown>[] = [];
 let chapterPatchBodies: Record<string, unknown>[] = [];
@@ -224,7 +224,7 @@ beforeEach(() => {
       const segments = url.match(new RegExp(`/books/${ID}/chapters/([^/?]+)/segments`));
       if (segments) return jsonResponse(200, { items: SEGMENTS[segments[1]!] ?? [] });
       if (url.includes("/audio/prepare")) {
-        const prepare = body as { segment_id: string; count: number };
+        const prepare = body as { segment_id: string; count: number; voice?: string };
         prepareCalls.push(prepare);
         const all = Object.values(SEGMENTS).flat();
         const from = Math.max(0, all.findIndex((segment) => segment.id === prepare.segment_id));
@@ -754,6 +754,18 @@ describe("BookDetailPage", () => {
     fireEvent.click(zoe);
     expect(screen.queryByRole("dialog", { name: "Narrator voice" })).toBeNull();
     await vi.waitFor(() => expect(lastPatchBody()).toEqual({ narrator_voice: "zoe-en" }));
+  });
+
+  it("reloads the active player at the same position when the narrator changes", async () => {
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Play" }));
+    await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s1")).toBe(true));
+    const before = prepareCalls.length;
+    const dialog = await openNarratorDialog();
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Zoe" }));
+    await vi.waitFor(() => expect(lastPatchBody()).toEqual({ narrator_voice: "zoe-en" }));
+    await vi.waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
+    expect(prepareCalls.some((call) => call.voice === "zoe-en")).toBe(true);
   });
 
   it("previews a voice from the dialog without selecting it", async () => {
