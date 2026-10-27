@@ -57,6 +57,21 @@ def test_synthesize_posts_the_pinned_body() -> None:
     }
 
 
+def test_instructions_in_body_only_when_set() -> None:
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, content=b"x")
+
+    client = _client(handler)
+    client.synthesize("hi", "v", "Warm tone.")
+    client.synthesize("hi", "v")
+    client.synthesize("hi", "v", "")
+    client.synthesize("hi", "v", None)
+    assert [body.get("instructions") for body in seen] == ["Warm tone.", None, None, None]
+
+
 def test_bearer_header_sent_only_when_api_key() -> None:
     seen: list[str | None] = []
 

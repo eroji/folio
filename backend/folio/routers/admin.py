@@ -23,11 +23,14 @@ from folio.routers.voices import get_tts_client
 from folio.security import require_csrf
 from folio.tts import TtsClient, discover_voices
 from folio.voice_catalog import (
+    MAX_INSTRUCTION_LENGTH,
     build_catalog,
     effective_defaults,
     load_voice_defaults,
+    load_voice_instructions,
     load_voice_languages,
     save_voice_defaults,
+    save_voice_instructions,
     save_voice_languages,
     voice_languages,
 )
@@ -215,6 +218,7 @@ class VoicePatch(BaseModel):
 
     display_name: str | None = None
     language_override: Literal["en", "ja", "ko", "zh"] | None = None  # null = detect again
+    instructions: str | None = None  # narration prompt; null/empty clears
 
 
 @router.patch("/voices/{voice_id}")
@@ -226,13 +230,16 @@ def patch_voice(
     client: Annotated[TtsClient, Depends(get_tts_client)],
     body: VoicePatch | None = None,
 ) -> dict[str, Any]:
-    """Save one voice's alias and/or language override; return its catalog item."""
+    """Save one voice's alias, language override and/or narration instruction;
+    return its catalog item."""
     require_csrf(request, request.state.session_row)
     patch = body or VoicePatch()
     voices = discover_voices(settings, client)
     names = load_overrides(db)
     languages = load_voice_languages(db)
-    if voice_id not in {v.id for v in voices} and voice_id not in {*names, *languages}:
+    instructions = load_voice_instructions(db)
+    known = {v.id for v in voices} | names.keys() | languages.keys() | instructions.keys()
+    if voice_id not in known:
         raise ApiError("validation_failed", f"Unknown voice: {voice_id}.", 422)
     fields = patch.model_dump(exclude_unset=True)
     if "display_name" in fields:
@@ -254,6 +261,19 @@ def patch_voice(
         else:
             languages[voice_id] = patch.language_override
         save_voice_languages(db, languages)
+    if "instructions" in fields:
+        text = (patch.instructions or "").strip()
+        if len(text) > MAX_INSTRUCTION_LENGTH:
+            raise ApiError(
+                "validation_failed",
+                f"Narration instructions must be at most {MAX_INSTRUCTION_LENGTH} characters.",
+                422,
+            )
+        if text:
+            instructions[voice_id] = text
+        else:
+            instructions.pop(voice_id, None)
+        save_voice_instructions(db, instructions)
     items = build_catalog(db, voices, include_tts=True)["items"]
     item = next((i for i in items if i["id"] == voice_id), None)
     if item is None:  # unreachable: the id is in the engine list or in one of the maps
@@ -297,7 +317,8 @@ def delete_voice(
     db: Annotated[DbSession, Depends(get_session)],
 ) -> None:
     """Forget a voice that is no longer on the server: drop its alias,
-    language override and any default entry pointing at it. Idempotent."""
+    language override, narration instruction and any default entry pointing at
+    it. Idempotent."""
     require_csrf(request, request.state.session_row)
     names = load_overrides(db)
     names.pop(voice_id, None)
@@ -307,6 +328,9 @@ def delete_voice(
     save_voice_languages(db, languages)
     defaults = {k: v for k, v in load_voice_defaults(db).items() if v != voice_id}
     save_voice_defaults(db, defaults)
+    voice_instructions = load_voice_instructions(db)
+    voice_instructions.pop(voice_id, None)
+    save_voice_instructions(db, voice_instructions)
 
 
 def probe_tts(settings: Settings) -> str:

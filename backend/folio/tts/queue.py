@@ -36,6 +36,7 @@ from folio.tts import (
     normalize_speech_text,
     select_voice,
 )
+from folio.tts.narration import narration_prompt
 from folio.tts.pronunciation import apply_rules
 from folio.voice_catalog import effective_defaults
 
@@ -120,6 +121,7 @@ def prepare(
     if count is None:
         count = settings.tts_lookahead
     rules = _rules(session, book.id)
+    instructions = narration_prompt(session, voice, book.genre)
     segments = _ordered_segments(session, book)
     start = next((i for i, s in enumerate(segments) if s.id == segment_id), None)
     if start is None:
@@ -138,6 +140,7 @@ def prepare(
             voice,
             settings.tts_format,
             normalize_speech_text(apply_rules(segment.text, rules)),
+            instructions,
         )
         audio = session.get(Audio, key)
         if audio is not None and not Path(audio.path).is_file():
@@ -212,9 +215,16 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
         if segment is None:
             raise TtsError("The segment no longer exists.", code="segment_gone")
         rules = _rules(session, chapter.book_id) if chapter else []
+        book = session.get(Book, chapter.book_id) if chapter else None
+        instructions = narration_prompt(session, row.voice, book.genre if book else None)
         with TtsClient(settings) as client:
             audio, _ = get_or_synthesize(
-                session, settings, client, apply_rules(segment.text, rules), row.voice
+                session,
+                settings,
+                client,
+                apply_rules(segment.text, rules),
+                row.voice,
+                instructions,
             )
         row.cache_key, row.status, row.error = audio.cache_key, "ready", None
     except TtsError as exc:

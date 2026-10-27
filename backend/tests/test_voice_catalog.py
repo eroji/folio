@@ -120,6 +120,7 @@ def test_catalog_lists_removed_entries_and_counts_books_by_base_language(db: Ses
         "books_count": 1,
         "on_server": True,
         "language_overridden": False,
+        "instructions": "",
     }
     # The assigned voice: overridden flag set, counted as a ja voice (0 books).
     assert by_id["mystery"]["language"] == "ja"
@@ -135,6 +136,7 @@ def test_catalog_lists_removed_entries_and_counts_books_by_base_language(db: Ses
         "books_count": 0,
         "on_server": False,
         "language_overridden": False,
+        "instructions": "",
     }
     assert body["defaults"] == {"en": "ashley-en", "ja": "mystery", "ko": None, "zh": None}
     assert body["count"] == 2  # tts is not a voice; the ghost is not on the server
