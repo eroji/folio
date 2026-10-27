@@ -66,8 +66,8 @@
   position; `X` stops, saves and unloads; cross-device positions show "Paused ·
   last played on {device}" and a ResumePrompt. One `<audio>` element app-wide —
   bar, mini player, `/player` page and phone player all drive the same state.
-  The speed text button opens a 0.95×–1.25× slider popover (step 0.05) instead
-  of cycling presets.
+  The speed text button opens a vertical 0.95×–1.25× slider popover (step 0.05)
+  instead of cycling presets; values always show at least one decimal (1.0×).
 
 ## Screens
 

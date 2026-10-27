@@ -292,3 +292,5 @@ One line each: decision, why, what it costs.
 
 - Narration instructions are **per voice**, not global (user correction): `app_settings.voice_instructions` maps voice id → text (≤500, empty drops the entry); `GET /voices` items carry `instructions`, and the existing `PATCH /admin/voices/{id}` saves them. The prompt is that voice's instruction (sentence-terminated) plus `You're narrating a {genre} novel.`; it is part of the audio cache key only when non-empty, so existing audio keys are unchanged until someone sets a prompt. Voice preview clips do not use the instruction (no book context).
 - Player speed is limited to **0.95×–1.25×** (step 0.05): the speed button opens a slider popover instead of cycling; Settings' default-speed list uses the same range. Legacy saved defaults above 1.25 are clamped in the player and still appear as a fallback option in the select.
+
+- The speed popover is a vertical card (rotated native range keeps keyboard/a11y) and the value/format is one decimal minimum (`1.0×`, `1.15×`) in the player and Settings; the popover anchors right on desktop and left on the phone.
