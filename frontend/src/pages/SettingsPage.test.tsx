@@ -174,6 +174,10 @@ describe("SettingsPage", () => {
   it("PUTs only the changed keys and updates optimistically", async () => {
     renderSettings();
     const speed = await screen.findByRole("combobox", { name: "Default playback speed" });
+    // Labels show at least one decimal; values stay plain numeric strings for e2e.
+    expect(screen.getByRole("option", { name: "1.0×" })).toHaveProperty("value", "1");
+    expect(screen.getByRole("option", { name: "1.15×" })).toHaveProperty("value", "1.15");
+    expect(screen.getByRole("option", { name: "0.95×" })).toHaveProperty("value", "0.95");
     fireEvent.change(speed, { target: { value: "1.15" } });
 
     expect(speed).toHaveProperty("value", "1.15");

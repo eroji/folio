@@ -27,6 +27,13 @@ export const TTS_LOOKAHEAD = 6;
 export const SPEED_MIN = 0.95;
 export const SPEED_MAX = 1.25;
 export const SPEED_STEP = 0.05;
+
+/** Speed as a label number: one decimal minimum, two only when needed
+ * (1 → "1.0", 1.1 → "1.1", 1.15 → "1.15"). Callers append the "×". */
+export function formatSpeed(value: number): string {
+  const hundredths = Math.round(value * 100);
+  return (hundredths / 100).toFixed(hundredths % 10 === 0 ? 1 : 2);
+}
 const POLL_MS = 1000;
 /** Segments after the current one that must be ready before a voice-change
  * reload starts: starting on the first one alone made playback stall a few

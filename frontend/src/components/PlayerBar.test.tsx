@@ -80,8 +80,8 @@ describe("PlayerBar", () => {
 
   it("speed button opens a slider popover that sets the rate, and the sleep menu sets the timer", async () => {
     const getPlayer = await loadBar();
-    const speed = screen.getByRole("button", { name: "Playback speed, 1 times" });
-    expect(speed.textContent).toBe("1×");
+    const speed = screen.getByRole("button", { name: "Playback speed, 1.0 times" });
+    expect(speed.textContent).toBe("1.0×");
     expect(speed.getAttribute("aria-haspopup")).toBe("dialog");
     expect(speed.getAttribute("aria-expanded")).toBe("false");
 
@@ -92,7 +92,11 @@ describe("PlayerBar", () => {
     expect(slider).toHaveProperty("min", "0.95");
     expect(slider).toHaveProperty("max", "1.25");
     expect(slider).toHaveProperty("step", "0.05");
+    expect(slider.getAttribute("aria-orientation")).toBe("vertical");
+    expect(slider.className).toContain("-rotate-90"); // rotated native input, bottom → top
     expect(document.activeElement).toBe(slider); // focused when opened
+    expect(within(dialog).getByText("1.25×")).toBeTruthy(); // end labels, max on top
+    expect(within(dialog).getByText("0.95×")).toBeTruthy();
 
     fireEvent.change(slider, { target: { value: "1.15" } });
     await waitFor(() => expect(getPlayer().rate).toBe(1.15));
