@@ -116,6 +116,7 @@ async def test_patch_language_override_assigns_and_unassigns(aclient: httpx.Asyn
         "books_count": 0,
         "on_server": True,
         "language_overridden": False,
+        "instructions": "",
     }
     response = await aclient.patch(
         "/api/v1/admin/voices/mystery", json={"language_override": "ja"}, headers=csrf(aclient)
@@ -241,6 +242,11 @@ async def test_delete_removes_all_entries_for_a_voice(
     await aclient.patch(
         "/api/v1/admin/voices/bruno-en", json={"display_name": "Bruno"}, headers=csrf(aclient)
     )
+    await aclient.patch(
+        "/api/v1/admin/voices/bruno-en",
+        json={"instructions": "Warm tone."},
+        headers=csrf(aclient),
+    )
     await aclient.put(
         "/api/v1/admin/voices/defaults",
         json={"language": "en", "voice_id": "bruno-en"},
@@ -253,6 +259,10 @@ async def test_delete_removes_all_entries_for_a_voice(
     body = (await aclient.get("/api/v1/voices?refresh=true")).json()
     assert "bruno-en" not in [item["id"] for item in body["items"]]  # alias and default gone
     assert body["defaults"]["en"] == "ashley-en"
+    response = await aclient.patch(
+        "/api/v1/admin/voices/bruno-en", json={"instructions": "x"}, headers=csrf(aclient)
+    )
+    assert response.status_code == 422  # the instruction entry went with the voice
     # Deleting an on-server voice only clears its metadata; the voice stays listed.
     await aclient.patch(
         "/api/v1/admin/voices/mystery", json={"language_override": "ja"}, headers=csrf(aclient)
@@ -264,3 +274,50 @@ async def test_delete_removes_all_entries_for_a_voice(
 
 async def test_delete_requires_csrf(aclient: httpx.AsyncClient) -> None:
     assert (await aclient.delete("/api/v1/admin/voices/ashley-en")).status_code == 403
+
+
+async def test_patch_instructions_saves_and_clears_per_voice(
+    aclient: httpx.AsyncClient,
+) -> None:
+    item = item_of((await aclient.get("/api/v1/voices")).json(), "ashley-en")
+    assert item["instructions"] == ""
+    response = await aclient.patch(
+        "/api/v1/admin/voices/ashley-en",
+        json={"instructions": "  Warm, expressive  "},
+        headers=csrf(aclient),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["instructions"] == "Warm, expressive"
+    body = (await aclient.get("/api/v1/voices")).json()
+    assert item_of(body, "ashley-en")["instructions"] == "Warm, expressive"
+    assert item_of(body, "bruno-en")["instructions"] == ""  # per voice, not global
+    for clear in (None, ""):  # null and empty both clear
+        response = await aclient.patch(
+            "/api/v1/admin/voices/ashley-en",
+            json={"instructions": clear},
+            headers=csrf(aclient),
+        )
+        assert response.json()["instructions"] == ""
+
+
+async def test_patch_instructions_length_and_csrf(aclient: httpx.AsyncClient) -> None:
+    response = await aclient.patch(
+        "/api/v1/admin/voices/ashley-en",
+        json={"instructions": "x" * 501},
+        headers=csrf(aclient),
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_failed"
+    assert (
+        await aclient.patch("/api/v1/admin/voices/ashley-en", json={"instructions": "x"})
+    ).status_code == 403  # no CSRF header
+
+
+async def test_patch_instructions_forbidden_for_users(uclient: httpx.AsyncClient) -> None:
+    assert (
+        await uclient.patch(
+            "/api/v1/admin/voices/ashley-en",
+            json={"instructions": "x"},
+            headers=csrf(uclient),
+        )
+    ).status_code == 403

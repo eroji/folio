@@ -1,8 +1,8 @@
 """Content-addressed audio cache: keys, paths, synthesis and LRU eviction.
 
-A segment is synthesized once per (model, voice, format, normalized text); the
-key deliberately excludes playback speed because speed is a browser
-``playbackRate`` only (spec: Backend contract). Files live under
+A segment is synthesized once per (model, voice, format, normalized text,
+narration instruction); the key deliberately excludes playback speed because
+speed is a browser ``playbackRate`` only (spec: Backend contract). Files live under
 ``DATA_DIR/audio/<key[:2]>/<key>.<ext>``.
 """
 
@@ -28,9 +28,16 @@ if TYPE_CHECKING:
 _RECENT = timedelta(minutes=10)  # never evict a file created in the last 10 minutes
 
 
-def cache_key(model: str, voice: str, fmt: str, text: str) -> str:
-    """sha256 of ``model|voice|fmt|text`` (speed is intentionally absent)."""
-    return hashlib.sha256(f"{model}|{voice}|{fmt}|{text}".encode()).hexdigest()
+def cache_key(model: str, voice: str, fmt: str, text: str, instructions: str = "") -> str:
+    """sha256 of ``model|voice|fmt|text[|instructions]`` (speed is absent by design).
+
+    Empty instructions are not appended: keys stay exactly what they were
+    before narration existed, so clearing the instruction re-hits the cache.
+    """
+    seed = f"{model}|{voice}|{fmt}|{text}"
+    if instructions:
+        seed += f"|{instructions}"
+    return hashlib.sha256(seed.encode()).hexdigest()
 
 
 def cache_path(settings: Settings, key: str, fmt: str) -> Path:
@@ -48,18 +55,23 @@ def duration_seconds(path: Path) -> float:
 
 
 def get_or_synthesize(
-    session: Session, settings: Settings, client: TtsClient, text: str, voice: str
+    session: Session,
+    settings: Settings,
+    client: TtsClient,
+    text: str,
+    voice: str,
+    instructions: str = "",
 ) -> tuple[Audio, bool]:
     """Return ``(audio_row, was_cached)``; a cache hit makes no HTTP call."""
     normalized = normalize_speech_text(text)
-    key = cache_key(settings.tts_model, voice, settings.tts_format, normalized)
+    key = cache_key(settings.tts_model, voice, settings.tts_format, normalized, instructions)
     row = session.get(Audio, key)
     if row is not None and Path(row.path).exists():
         row.last_played_at = datetime.now(UTC)
         session.commit()
         return row, True
 
-    data, fmt = client.synthesize(normalized, voice)
+    data, fmt = client.synthesize(normalized, voice, instructions)
     path = cache_path(settings, key, fmt)
     ensure_dirs(path.parent)
     tmp = path.parent / f"{path.name}.part"

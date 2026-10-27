@@ -130,6 +130,7 @@ async def test_voices_list_parses_the_real_engine_shape(
         "books_count": 0,
         "on_server": True,
         "language_overridden": False,
+        "instructions": "",
     }
     assert by_id["ashley-kr"]["language"] == "ko"  # kr -> ko (docs/TTS.md)
     # No explicit defaults stored: each language's first on-server voice is its default.
@@ -173,6 +174,7 @@ async def test_admin_sees_tts_as_unassigned(aclient: httpx.AsyncClient) -> None:
         "books_count": 0,
         "on_server": True,
         "language_overridden": False,
+        "instructions": "",
     }
 
 
@@ -194,6 +196,7 @@ async def test_removed_voice_is_listed_not_dropped(
         "books_count": 0,
         "on_server": False,
         "language_overridden": False,
+        "instructions": "",
     }
     assert body["defaults"]["en"] is None  # no en voice left on the server
     assert body["count"] == 3

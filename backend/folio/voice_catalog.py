@@ -7,6 +7,8 @@
   on-server voice of that language", which is what makes defaults automatic.
 - ``voice_languages``: voice id -> base language, the admin's override for
   voices whose language cannot be detected (or detected wrongly).
+- ``voice_instructions``: voice id -> narration instruction, the admin's global
+  style prompt sent with every synthesis in that voice (see ``tts/narration.py``).
 
 Ids that carry an entry but are no longer on the engine are listed with
 ``on_server: false`` instead of being silently dropped, so admins can clean
@@ -30,6 +32,8 @@ if TYPE_CHECKING:
 
 VOICE_DEFAULTS_KEY = "voice_defaults"
 VOICE_LANGUAGES_KEY = "voice_languages"
+VOICE_INSTRUCTIONS_KEY = "voice_instructions"
+MAX_INSTRUCTION_LENGTH = 500
 BASE_LANGUAGES = ("en", "ja", "ko", "zh")
 
 # Trailing language token of a voice id: ``-en``, ``-kr``, ``mina-zh-TW``,
@@ -88,6 +92,17 @@ def save_voice_languages(db: Session, value: Mapping[str, str]) -> None:
     _save_map(db, VOICE_LANGUAGES_KEY, value)
 
 
+def load_voice_instructions(db: Session) -> dict[str, str]:
+    return _load_map(db, VOICE_INSTRUCTIONS_KEY)
+
+
+def save_voice_instructions(db: Session, value: Mapping[str, str]) -> dict[str, str]:
+    """Replace the instruction map (trimmed-empty values dropped); return what was saved."""
+    saved = {key: text.strip() for key, text in value.items() if text.strip()}
+    _save_map(db, VOICE_INSTRUCTIONS_KEY, saved)
+    return saved
+
+
 def voice_languages(db: Session, voices: Sequence[Voice]) -> dict[str, str | None]:
     """id -> base language; the manual override wins over detection. ``tts`` is
     the engine's internal fallback, not a voice, and never appears here."""
@@ -131,6 +146,7 @@ def build_catalog(db: Session, voices: Sequence[Voice], *, include_tts: bool) ->
     names = load_overrides(db)
     stored_defaults = load_voice_defaults(db)
     languages = load_voice_languages(db)
+    instructions = load_voice_instructions(db)
     language = voice_languages(db, voices)
     defaults = effective_defaults(db, voices)
     counts = _books_per_language(db)
@@ -146,6 +162,7 @@ def build_catalog(db: Session, voices: Sequence[Voice], *, include_tts: bool) ->
             "books_count": counts.get(language_of, 0) if language_of and on_server else 0,
             "on_server": on_server,
             "language_overridden": voice_id in languages,
+            "instructions": instructions.get(voice_id, ""),
         }
 
     items = [

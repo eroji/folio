@@ -28,7 +28,9 @@ class _CountingClient:
         self.fmt = fmt
         self.calls = 0
 
-    def synthesize(self, _text: str, _voice: str) -> tuple[bytes, str]:
+    def synthesize(
+        self, _text: str, _voice: str, _instructions: str | None = None
+    ) -> tuple[bytes, str]:
         self.calls += 1
         return self.data, self.fmt
 

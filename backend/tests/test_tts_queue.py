@@ -21,6 +21,7 @@ from folio.tts import queue as queue_module
 from folio.tts.cache import cache_key, cache_path
 from folio.tts.queue import claim_next_tts, prepare, retry, run_tts_job
 from folio.tts.text import normalize_speech_text
+from folio.voice_catalog import save_voice_instructions
 
 
 def _book(db: Session, *, language: str = "en", chapters: int = 2, per_chapter: int = 2) -> Book:
@@ -91,13 +92,13 @@ def _seed_audio(db: Session, settings: Settings, text: str, voice: str = "ashley
 class _FakeClient:
     """Stands in for TtsClient in queue tests; swap with a MockTransport one for errors."""
 
-    def __init__(self, _settings: Settings, handler: Any = None) -> None:
-        if handler is None:
-            self._impl: Any = _Synth()
-        else:
+    def __init__(self, _settings: Settings, handler: Any = None, synth: Any = None) -> None:
+        if handler is not None:
             real = TtsClient(_tts_settings())
             real._client = httpx.Client(transport=httpx.MockTransport(handler))
             self._impl = real
+        else:
+            self._impl = synth or _Synth()
 
     def __enter__(self) -> Any:
         return self._impl
@@ -106,12 +107,20 @@ class _FakeClient:
         if isinstance(self._impl, TtsClient):
             self._impl.close()
 
-    def synthesize(self, text: str, voice: str) -> tuple[bytes, str]:
-        return self._impl.synthesize(text, voice)
+    def synthesize(
+        self, text: str, voice: str, instructions: str | None = None
+    ) -> tuple[bytes, str]:
+        return self._impl.synthesize(text, voice, instructions)
 
 
 class _Synth:
-    def synthesize(self, _text: str, _voice: str) -> tuple[bytes, str]:
+    def __init__(self, captured: list[str | None] | None = None) -> None:
+        self.captured = captured if captured is not None else []
+
+    def synthesize(
+        self, _text: str, _voice: str, instructions: str | None = None
+    ) -> tuple[bytes, str]:
+        self.captured.append(instructions)
         return SILENT_OPUS, "opus"
 
 
@@ -314,7 +323,9 @@ def test_run_tts_job_releases_the_row_on_unexpected_errors(
     assert row is not None
 
     class _Boom:
-        def synthesize(self, _text: str, _voice: str) -> tuple[bytes, str]:
+        def synthesize(
+            self, _text: str, _voice: str, _instructions: str | None = None
+        ) -> tuple[bytes, str]:
             raise RuntimeError("boom")
 
     class _BoomClient:
@@ -377,3 +388,62 @@ def test_prepare_notifies_only_when_the_window_changes(
 
     prepare(db, settings, book, segments[0].id, count=1)
     assert frames == []  # nothing changed, nothing announced
+
+
+def test_prepare_requeues_when_the_voice_instruction_changes(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A narration instruction is part of the cache key: changing it turns the
+    ready clip into a miss and the row goes back to queued. Re-running the job
+    must then land on the key prepare computed (same string on both sides)."""
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    book = _book(db, chapters=1, per_chapter=1)
+    book.genre = "Mystery"
+    db.commit()
+    segment = _segments(db, book)[0]
+    prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    row = claim_next_tts(db)
+    assert row is not None
+    run_tts_job(db, settings, row)
+    assert row.status == "ready"
+
+    save_voice_instructions(db, {"ashley-en": "Warm, expressive"})
+    window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    assert (window[0][1].status, window[0][1].cache_key) == ("queued", None)
+
+    claimed = claim_next_tts(db)
+    assert claimed is not None
+    run_tts_job(db, settings, claimed)
+    assert claimed.status == "ready"
+    key = cache_key(
+        settings.tts_model,
+        "ashley-en",
+        settings.tts_format,
+        normalize_speech_text(segment.text),
+        "Warm, expressive. You're narrating a Mystery novel.",
+    )
+    assert claimed.cache_key == key
+    window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    assert window[0][1].status == "ready"  # prepare and run_tts_job agree on the key
+
+
+def test_run_tts_job_synthesizes_with_the_voice_narration_prompt(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: list[str | None] = []
+    book = _book(db, chapters=1, per_chapter=1)
+    book.genre = "Mystery"
+    db.commit()
+    segment = _segments(db, book)[0]
+    save_voice_instructions(db, {"ashley-en": "Warm, expressive"})
+    prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    row = claim_next_tts(db)
+    assert row is not None
+    monkeypatch.setattr(
+        queue_module, "TtsClient", lambda _s: _FakeClient(_s, synth=_Synth(captured))
+    )
+
+    run_tts_job(db, settings, row)
+
+    assert row.status == "ready"
+    assert captured == ["Warm, expressive. You're narrating a Mystery novel."]
