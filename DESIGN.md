@@ -66,7 +66,7 @@
   position; `X` stops, saves and unloads; cross-device positions show "Paused ·
   last played on {device}" and a ResumePrompt. One `<audio>` element app-wide —
   bar, mini player, `/player` page and phone player all drive the same state.
-  The speed text button opens a vertical 0.95×–1.25× slider popover (step 0.05)
+  The speed text button opens a vertical 0.9×–1.15× slider popover (step 0.05)
   instead of cycling presets; values always show at least one decimal (1.0×).
 
 ## Screens
@@ -96,7 +96,7 @@
 - **Upload `/upload`:** dashed `#4A4A52` drop zone with the bookmark mark and white
   "Choose files" pill; "This session" surface rows with status icon, progress bar
   (indeterminate via `.bar-indeterminate`) and pill actions.
-- **Profile `/settings`:** Playback (speed select 0.95–1.25×, 5–120 s skip steppers, switches)
+- **Profile `/settings`:** Playback (speed select 0.9–1.15×, 5–120 s skip steppers, switches)
   and Voices (per-language pill select + 40 px outlined Preview) only. Saves are
   immediate; failures revert with an inline error.
 - **Sign in `/login`:** accent glow, centered 380 px column, mark + "folio", 48 px
@@ -159,7 +159,7 @@ scaled up to ~61 % of the canvas.
 icons (Play/Pause/SkipBack/SkipForward) render filled (`strokeWidth={0}`). Names
 follow the HANDOFF table and are registered in `components/Icon.tsx` — no Material
 Symbols, no inline SVGs, no emoji. Icon-only buttons carry an `aria-label` that
-includes the current value ("Playback speed, 1.25 times").
+includes the current value ("Playback speed, 1.0 times").
 
 ## Motion
 
