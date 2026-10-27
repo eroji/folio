@@ -1,8 +1,9 @@
 /** Admin → Voices (HANDOFF §Admin · Voices): flat Settings-style rows on the
  * page background, grouped by language — languages that have books first
  * (most books), then other languages alphabetically, then Unassigned, then
- * No longer on the server. Names save on blur/Enter, defaults on click,
- * language assignment moves the row at once; there is no Save button. */
+ * No longer on the server. Names and narration instructions save on blur/Enter,
+ * defaults on click, language assignment moves the row at once; there is no
+ * Save button. */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
@@ -39,6 +40,8 @@ const smallPill =
   "tap inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 text-sm font-semibold text-fg hover:bg-raised disabled:opacity-50";
 const nameInput =
   "tap h-10 w-[200px] max-w-full rounded-full border border-border bg-raised px-[18px] text-base text-fg placeholder:text-fg-2";
+const instructionsInput =
+  "tap mb-4 w-full resize-y rounded-[18px] border border-border bg-raised px-[18px] py-2.5 text-base leading-[1.55] text-fg placeholder:text-fg-2";
 
 /** "2 min ago" style age of the last voice fetch. */
 function timeAgo(ms: number): string {
@@ -108,6 +111,8 @@ function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | nul
   const remove = useDeleteVoice();
   const [name, setName] = useState(voice.display_name ?? "");
   useEffect(() => setName(voice.display_name ?? ""), [voice.display_name]);
+  const [instructions, setInstructions] = useState(voice.instructions ?? "");
+  useEffect(() => setInstructions(voice.instructions ?? ""), [voice.instructions]);
 
   const gone = !voiceOnServer(voice);
   const unassigned = !gone && code === null;
@@ -117,6 +122,12 @@ function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | nul
   function commitName(): void {
     const next = name.trim();
     if (next !== (voice.display_name ?? "").trim()) update.mutate({ id: voice.id, display_name: next });
+  }
+
+  function commitInstructions(): void {
+    const next = instructions.trim();
+    if (next === (voice.instructions ?? "").trim()) return;
+    update.mutate({ id: voice.id, instructions: next }, { onError: () => setInstructions(voice.instructions ?? "") });
   }
 
   return (
@@ -225,6 +236,24 @@ function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | nul
           )}
         </div>
       </div>
+      {!gone && (
+        <textarea
+          aria-label={`Narration instructions for ${voice.id}`}
+          rows={2}
+          maxLength={500}
+          placeholder="Warm, expressive, speak with a brisk pace."
+          value={instructions}
+          onChange={(event) => setInstructions(event.target.value)}
+          onBlur={commitInstructions}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commitInstructions();
+            }
+          }}
+          className={instructionsInput}
+        />
+      )}
       {failed && (
         <p role="alert" className="pb-3 text-sm text-danger">
           Couldn’t save — {failed.message}
