@@ -28,6 +28,10 @@ export const SPEED_MIN = 0.75;
 export const SPEED_MAX = 2.5;
 const SPEED_STEP = 0.25;
 const POLL_MS = 1000;
+/** Segments after the current one that must be ready before a voice-change
+ * reload starts: starting on the first one alone made playback stall a few
+ * seconds later while the queued lookahead caught up. */
+const BUFFER_AHEAD = 2;
 /** Spec "Progress model": save every 10 s while playing. */
 const SAVE_MS = 10_000;
 /** Rewind on resume so the listener gets context. */
@@ -110,6 +114,7 @@ interface Machine {
   intent: boolean; // the user wants audio playing
   playing: boolean;
   preparing: boolean;
+  prebuffering: boolean; // a voice reload is filling its lookahead before starting
   error: string | null;
   time: number;
   rate: number;
@@ -133,7 +138,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
-    intent: false, playing: false, preparing: false, error: null,
+    intent: false, playing: false, preparing: false, prebuffering: false, error: null,
     time: 0, rate: 1, sleep: null, offset: 0, active: 0,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
@@ -147,6 +152,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const durationOf = (segment: Segment | undefined) => (segment ? s.status[segment.id]?.duration_s ?? 0 : 0);
   const chapterTotal = () => s.segments.reduce((total, seg) => total + durationOf(seg), 0);
   const elapsed = () => s.segments.slice(0, s.index).reduce((total, seg) => total + durationOf(seg), 0) + s.time;
+
+  /** The current segment plus the next BUFFER_AHEAD (or the rest of the chapter)
+   * are all playable. Only consulted while a voice reload is prebuffering. */
+  const buffered = () =>
+    s.segments
+      .slice(s.index, s.index + 1 + BUFFER_AHEAD)
+      .every((seg) => s.status[seg.id]?.status === "ready" && s.status[seg.id]?.url);
 
   /** Characters spoken so far: whole chapters before + segment start + share of the current segment. */
   const charPosition = () => {
@@ -224,6 +236,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.playing = false;
       fail("Couldn't generate this part");
       return;
+    }
+    // A voice reload waits for a small buffer so it does not start and then
+    // stall while the queued lookahead catches up. The poll keeps topping up.
+    if (s.prebuffering) {
+      if (!buffered()) {
+        s.preparing = true;
+        return;
+      }
+      s.prebuffering = false;
     }
     if (item?.status !== "ready" || !item.url) {
       s.preparing = true;
@@ -318,6 +339,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.time = 0;
     s.offset = 0;
     s.error = null;
+    s.prebuffering = false;
     s.preparing = autoplay;
     bump();
     try {
@@ -385,6 +407,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   async function load(bookId: string, chapterId?: string) {
     if (s.book?.id === bookId && s.segments.length > 0 && (!chapterId || s.chapters[s.chapterIdx]?.id === chapterId)) return;
+    s.prebuffering = false; // a fresh session always starts normally
     const switching = s.book !== null && s.book.id !== bookId;
     try {
       const detail = await queryClient.fetchQuery({ queryKey: ["book", bookId], queryFn: () => fetchBookDetail(bookId) });
@@ -472,6 +495,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   function pause() {
     s.intent = false;
     s.preparing = false;
+    s.prebuffering = false;
     silence(); // both elements: the preloaded one may have been left running
     saveNow(); // spec: save on pause
     bump();
@@ -486,6 +510,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     silence();
     s.intent = false;
     s.preparing = false;
+    s.prebuffering = false;
     saveNow(); // never lose the position we stop at
     s.book = null;
     s.chapters = [];
@@ -506,6 +531,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * the listener was playing (paused players reload paused). */
   function reloadVoice(bookId?: string) {
     if (!s.book || (bookId && s.book.id !== bookId)) return;
+    const wasPlaying = s.intent || s.playing; // read before silence() clears the flag
     const cached = queryClient.getQueryData<BookDetailResponse>(["book", s.book.id])?.book;
     if (cached) s.book = cached;
     // Read the live element while playing so the reload resumes exactly where
@@ -515,6 +541,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.time = offset;
     silence();
     s.status = {};
+    // A playing listener buffers the lookahead before resuming; a paused one
+    // reloads paused and starts normally when the user presses play.
+    s.prebuffering = wasPlaying;
+    s.preparing = wasPlaying;
     void topUp();
     bump();
   }
@@ -525,6 +555,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.index = index;
     s.offset = Math.max(0, offsetSeconds);
     s.time = s.offset;
+    s.prebuffering = false; // a deliberate jump plays now, no buffer wait
     silence(); // stop the running element (and the preloaded one) before restarting
     // Prepare the target first so the UI shows "Preparing audio…" instead of silence.
     if (currentItem()?.status === "ready") pump();

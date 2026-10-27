@@ -274,8 +274,53 @@ describe("PlayerProvider", () => {
     });
     await waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
     await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().preparing).toBe(false); // the buffer gate cleared once it started
     expect(getPlayer().time).toBe(12);
     expect(prepareCalls[prepareCalls.length - 1]?.segment_id).toBe(`${CH1}-seg0`);
+  });
+
+  it("reloadVoice waits for the lookahead buffer before resuming", async () => {
+    // The stall bug: the current segment alone was enough to start, so playback
+    // began and then paused while the queued next segments caught up.
+    const statuses: Record<string, AudioStatus> = { [`${CH1}-seg1`]: "queued" };
+    prepareCalls = installPlayerFetch({ statuses }).prepareCalls;
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer); // the first start is not gated
+    expect(played).toHaveLength(1);
+
+    const before = prepareCalls.length;
+    await act(async () => {
+      getPlayer().reloadVoice(BOOK_ID);
+    });
+    await waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
+    expect(getPlayer().playing).toBe(false);
+    expect(getPlayer().preparing).toBe(true);
+    expect(played).toHaveLength(1); // nothing started while the buffer is incomplete
+
+    statuses[`${CH1}-seg1`] = "ready";
+    await act(async () => {
+      MockEventSource.instances[0]!.emit("audio", { book_id: BOOK_ID, segment_id: `${CH1}-seg1` });
+      await new Promise((resolve) => setTimeout(resolve, 0)); // let the top-up settle
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().preparing).toBe(false);
+    expect(played).toHaveLength(2); // and it started exactly once, on the full buffer
+  });
+
+  it("reloadVoice keeps a paused player paused without prebuffering", async () => {
+    const statuses: Record<string, AudioStatus> = { [`${CH1}-seg1`]: "queued" };
+    prepareCalls = installPlayerFetch({ statuses }).prepareCalls;
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    act(() => getPlayer().pause());
+    played.length = 0;
+
+    await act(async () => {
+      getPlayer().reloadVoice(BOOK_ID);
+    });
+    expect(getPlayer().playing).toBe(false);
+    expect(getPlayer().preparing).toBe(false);
+    expect(played).toHaveLength(0);
   });
 
   it("reloadVoice ignores a different book", async () => {
