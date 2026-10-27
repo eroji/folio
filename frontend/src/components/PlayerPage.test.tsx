@@ -148,7 +148,7 @@ describe("PlayerPage (phone)", () => {
   it("the speed popover opens left-aligned so it cannot overflow the viewport", async () => {
     stubMatchMedia(false);
     await renderAtPlayer();
-    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1 times" }));
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
     const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
     expect(dialog.className).toContain("left-0");
     expect(dialog.className).not.toContain("right-0");

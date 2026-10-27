@@ -2,7 +2,7 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayerContextValue } from "./PlayerProvider";
-import { TTS_LOOKAHEAD } from "./PlayerProvider";
+import { TTS_LOOKAHEAD, formatSpeed } from "./PlayerProvider";
 import { installMockEventSource, MockEventSource } from "../test/eventsource";
 import { BOOK_ID, BOOK2_ID, CH1, CH2, CH3, installPlayerFetch, makeProgress, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import { deviceLabel } from "../api/progress";
@@ -637,5 +637,15 @@ describe("PlayerProvider progress", () => {
     await waitFor(() => expect(getPlayer().index).toBe(1));
     // Segment one starts at its char_start of the 1200-char book.
     expect(getPlayer().progressPercent).toBeCloseTo(makeSegments(CH1, 2)[1]!.char_start / 12, 5);
+  });
+});
+
+describe("formatSpeed", () => {
+  it("shows one decimal minimum and two only when needed", () => {
+    expect(formatSpeed(1)).toBe("1.0");
+    expect(formatSpeed(1.1)).toBe("1.1");
+    expect(formatSpeed(1.15)).toBe("1.15");
+    expect(formatSpeed(0.95)).toBe("0.95");
+    expect(formatSpeed(1.2)).toBe("1.2"); // Math.round guards float noise like 1.1 * 100 !== 110
   });
 });

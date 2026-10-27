@@ -3,7 +3,7 @@
  * the single PlayerProvider state. */
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { SPEED_MAX, SPEED_MIN, SPEED_STEP, formatTime, type SleepChoice } from "../player/PlayerProvider";
+import { SPEED_MAX, SPEED_MIN, SPEED_STEP, formatSpeed, formatTime, type SleepChoice } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import { Icon } from "./Icon";
 
@@ -72,9 +72,9 @@ export function ChapterNavButton({ delta }: { delta: -1 | 1 }) {
   );
 }
 
-/** Speed as a text button opening a slider popover (0.95×–1.25×, step 0.05).
- * The popover anchors right by default; the phone controls pass align="left"
- * so it cannot overflow the viewport edge. */
+/** Speed as a text button opening a vertical slider popover (0.95×–1.25×,
+ * step 0.05, bottom → top). The popover anchors right by default; the phone
+ * controls pass align="left" so it cannot overflow the viewport edge. */
 export function SpeedButton({ className, align = "right" }: { className?: string; align?: "left" | "right" }) {
   const player = usePlayer();
   const [open, setOpen] = useState(false);
@@ -100,40 +100,43 @@ export function SpeedButton({ className, align = "right" }: { className?: string
     <div ref={wrap} className="relative shrink-0">
       <button
         type="button"
-        aria-label={`Playback speed, ${player.rate} times`}
+        aria-label={`Playback speed, ${formatSpeed(player.rate)} times`}
         title="Playback speed"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={clsx("tap h-10 rounded-full px-2.5 text-base font-semibold text-fg hover:bg-raised", className)}
       >
-        {player.rate}×
+        {formatSpeed(player.rate)}×
       </button>
       {open && (
         <div
           role="dialog"
           aria-label="Playback speed"
           className={clsx(
-            "absolute bottom-full z-20 mb-2 w-56 rounded-xl border border-border bg-raised p-3 shadow-(--shadow-menu)",
+            "absolute bottom-full z-20 mb-2 w-28 rounded-xl border border-border bg-raised p-3 shadow-(--shadow-menu)",
             align === "right" ? "right-0" : "left-0",
           )}
         >
-          <div className="mb-1 text-center text-base font-semibold tabular text-fg">{player.rate}×</div>
-          <input
-            ref={slider}
-            type="range"
-            aria-label="Playback speed"
-            min={SPEED_MIN}
-            max={SPEED_MAX}
-            step={SPEED_STEP}
-            value={player.rate}
-            onChange={(event) => player.setRate(Number(event.target.value))}
-            className="w-full accent-accent"
-          />
-          <div className="flex justify-between text-xs tabular text-fg-2">
-            <span>{SPEED_MIN}×</span>
-            <span>{SPEED_MAX}×</span>
+          <div className="text-center text-base font-semibold tabular text-fg">{formatSpeed(player.rate)}×</div>
+          <div className="pt-1 text-center text-xs tabular text-fg-2">{formatSpeed(SPEED_MAX)}×</div>
+          {/* Native range rotated -90deg: bottom is min, top is max; arrow keys
+           * still work because the input itself stays horizontal. */}
+          <div className="relative mx-auto h-40 w-10">
+            <input
+              ref={slider}
+              type="range"
+              aria-label="Playback speed"
+              aria-orientation="vertical"
+              min={SPEED_MIN}
+              max={SPEED_MAX}
+              step={SPEED_STEP}
+              value={player.rate}
+              onChange={(event) => player.setRate(Number(event.target.value))}
+              className="absolute left-1/2 top-1/2 h-10 w-40 -translate-x-1/2 -translate-y-1/2 -rotate-90 accent-accent"
+            />
           </div>
+          <div className="pb-1 text-center text-xs tabular text-fg-2">{formatSpeed(SPEED_MIN)}×</div>
         </div>
       )}
     </div>

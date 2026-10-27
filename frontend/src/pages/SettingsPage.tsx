@@ -25,6 +25,7 @@ import {
 } from "../api/voices";
 import { Icon } from "../components/Icon";
 import { Switch } from "../components/Switch";
+import { formatSpeed } from "../player/PlayerProvider";
 
 const SPEEDS = [0.95, 1, 1.05, 1.1, 1.15, 1.2, 1.25] as const;
 
@@ -484,15 +485,15 @@ export function SettingsPage() {
                   {(SPEEDS as readonly number[]).includes(settings.speed) ? (
                     SPEEDS.map((value) => (
                       <option key={value} value={String(value)}>
-                        {value}×
+                        {formatSpeed(value)}×
                       </option>
                     ))
                   ) : (
                     <>
-                      <option value={String(settings.speed)}>{settings.speed}×</option>
+                      <option value={String(settings.speed)}>{formatSpeed(settings.speed)}×</option>
                       {SPEEDS.map((value) => (
                         <option key={value} value={String(value)}>
-                          {value}×
+                          {formatSpeed(value)}×
                         </option>
                       ))}
                     </>
