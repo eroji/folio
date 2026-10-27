@@ -175,9 +175,9 @@ describe("SettingsPage", () => {
     renderSettings();
     const speed = await screen.findByRole("combobox", { name: "Default playback speed" });
     // Labels show at least one decimal; values stay plain numeric strings for e2e.
+    expect(optionLabels(speed)).toEqual(["0.9×", "0.95×", "1.0×", "1.05×", "1.1×", "1.15×"]);
     expect(screen.getByRole("option", { name: "1.0×" })).toHaveProperty("value", "1");
     expect(screen.getByRole("option", { name: "1.15×" })).toHaveProperty("value", "1.15");
-    expect(screen.getByRole("option", { name: "0.95×" })).toHaveProperty("value", "0.95");
     fireEvent.change(speed, { target: { value: "1.15" } });
 
     expect(speed).toHaveProperty("value", "1.15");
@@ -199,11 +199,11 @@ describe("SettingsPage", () => {
 
   it("falls back to localStorage when the settings request fails", async () => {
     settingsGetFails = true;
-    localStorage.setItem("folio-speed", "1.25");
+    localStorage.setItem("folio-speed", "0.9");
     renderSettings();
     expect(await screen.findByRole("combobox", { name: "Default playback speed" })).toHaveProperty(
       "value",
-      "1.25",
+      "0.9",
     );
   });
 

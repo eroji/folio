@@ -173,8 +173,8 @@ curl -fsS -b "$TMP/user.jar" "$API/me/continue" | grep -q "$dup" || fail "contin
 echo "PASS: progress round-trip (${percent}%), continue listening"
 
 settings=$(curl -fsS -b "$TMP/user.jar" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
-  -X PUT -d '{"speed":1.25,"skip_back":10,"auto_next":false}' "$API/me/settings")
-echo "$settings" | grep -q '"speed": *1.25' || fail "settings did not persist: $settings"
+  -X PUT -d '{"speed":1.15,"skip_back":10,"auto_next":false}' "$API/me/settings")
+echo "$settings" | grep -q '"speed": *1.15' || fail "settings did not persist: $settings"
 echo "$settings" | grep -q '"auto_next": *false' || fail "settings merge failed: $settings"
 echo "$settings" | grep -q '"skip_forward": *30' || fail "settings lost the default: $settings"
 echo "PASS: settings merge"

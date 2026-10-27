@@ -72,7 +72,7 @@ export function ChapterNavButton({ delta }: { delta: -1 | 1 }) {
   );
 }
 
-/** Speed as a text button opening a vertical slider popover (0.95×–1.25×,
+/** Speed as a text button opening a vertical slider popover (0.9×–1.15×,
  * step 0.05, bottom → top). The popover anchors right by default; the phone
  * controls pass align="left" so it cannot overflow the viewport edge. */
 export function SpeedButton({ className, align = "right" }: { className?: string; align?: "left" | "right" }) {

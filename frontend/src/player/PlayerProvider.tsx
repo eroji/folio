@@ -24,8 +24,8 @@ import type { Book, BookDetailResponse, Chapter, Progress } from "../api/types";
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
 export const TTS_LOOKAHEAD = 6;
-export const SPEED_MIN = 0.95;
-export const SPEED_MAX = 1.25;
+export const SPEED_MIN = 0.9;
+export const SPEED_MAX = 1.15;
 export const SPEED_STEP = 0.05;
 
 /** Speed as a label number: one decimal minimum, two only when needed

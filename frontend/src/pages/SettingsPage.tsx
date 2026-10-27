@@ -27,7 +27,7 @@ import { Icon } from "../components/Icon";
 import { Switch } from "../components/Switch";
 import { formatSpeed } from "../player/PlayerProvider";
 
-const SPEEDS = [0.95, 1, 1.05, 1.1, 1.15, 1.2, 1.25] as const;
+const SPEEDS = [0.9, 0.95, 1, 1.05, 1.1, 1.15] as const;
 
 const SKIP_MIN = 5;
 const SKIP_MAX = 120;
