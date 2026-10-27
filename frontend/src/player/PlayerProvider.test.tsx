@@ -141,15 +141,17 @@ describe("PlayerProvider", () => {
     expect(played).toContain(getPlayer().elements[1]);
   });
 
-  it("applies playback speed to both elements and clamps to 0.75–2.5", () => {
+  it("applies playback speed to both elements, clamps to 0.95–1.25 and rounds to 0.05", () => {
     const getPlayer = renderPlayer();
     const [a, b] = getPlayer().elements;
-    getPlayer().setRate(1.25);
-    expect([a.playbackRate, b.playbackRate]).toEqual([1.25, 1.25]);
-    getPlayer().setRate(10);
-    expect(a.playbackRate).toBe(2.5);
-    getPlayer().setRate(0.1);
-    expect(a.playbackRate).toBe(0.75);
+    getPlayer().setRate(1.2);
+    expect([a.playbackRate, b.playbackRate]).toEqual([1.2, 1.2]);
+    getPlayer().setRate(1.13);
+    expect(a.playbackRate).toBe(1.15); // rounds to the step, no float noise
+    getPlayer().setRate(2);
+    expect(a.playbackRate).toBe(1.25);
+    getPlayer().setRate(0.5);
+    expect(a.playbackRate).toBe(0.95);
   });
 
   it("pauses when the minute-based sleep timer elapses", async () => {
@@ -208,10 +210,10 @@ describe("PlayerProvider", () => {
   });
 
   it("starts at the saved default speed", async () => {
-    installPlayerFetch({ settings: { speed: 1.5 } });
+    installPlayerFetch({ settings: { speed: 1.2 } });
     const getPlayer = renderPlayer();
-    await waitFor(() => expect(getPlayer().rate).toBe(1.5));
-    expect(getPlayer().elements[0].playbackRate).toBe(1.5);
+    await waitFor(() => expect(getPlayer().rate).toBe(1.2));
+    expect(getPlayer().elements[0].playbackRate).toBe(1.2);
   });
 
   it("skips by the configured back and forward intervals", async () => {

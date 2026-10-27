@@ -26,7 +26,7 @@ import {
 import { Icon } from "../components/Icon";
 import { Switch } from "../components/Switch";
 
-const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5] as const;
+const SPEEDS = [0.95, 1, 1.05, 1.1, 1.15, 1.2, 1.25] as const;
 
 const SKIP_MIN = 5;
 const SKIP_MAX = 120;

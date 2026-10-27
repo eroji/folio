@@ -145,6 +145,16 @@ describe("PlayerPage (phone)", () => {
     expect(screen.getByTestId("player-elapsed")).toBeTruthy();
   });
 
+  it("the speed popover opens left-aligned so it cannot overflow the viewport", async () => {
+    stubMatchMedia(false);
+    await renderAtPlayer();
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1 times" }));
+    const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
+    expect(dialog.className).toContain("left-0");
+    expect(dialog.className).not.toContain("right-0");
+    expect(within(dialog).getByRole("slider", { name: "Playback speed" })).toBeTruthy();
+  });
+
   it("the Read along tab opens the sheet with pinned controls", async () => {
     stubMatchMedia(false);
     await renderAtPlayer();

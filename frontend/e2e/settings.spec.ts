@@ -18,9 +18,9 @@ test("a changed playback speed persists across a reload", async ({ page }) => {
       response.request().method() === "PUT" &&
       response.ok(),
   );
-  await speed.selectOption("1.5");
+  await speed.selectOption("1.15");
   await saved;
 
   await page.reload();
-  await expect(page.getByLabel("Default playback speed")).toHaveValue("1.5");
+  await expect(page.getByLabel("Default playback speed")).toHaveValue("1.15");
 });

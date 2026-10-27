@@ -174,13 +174,13 @@ describe("SettingsPage", () => {
   it("PUTs only the changed keys and updates optimistically", async () => {
     renderSettings();
     const speed = await screen.findByRole("combobox", { name: "Default playback speed" });
-    fireEvent.change(speed, { target: { value: "1.5" } });
+    fireEvent.change(speed, { target: { value: "1.15" } });
 
-    expect(speed).toHaveProperty("value", "1.5");
-    expect(localStorage.getItem("folio-speed")).toBe("1.5");
+    expect(speed).toHaveProperty("value", "1.15");
+    expect(localStorage.getItem("folio-speed")).toBe("1.15");
 
     await waitFor(() => expect(settingsPutBodies()).toHaveLength(1));
-    expect(settingsPutBodies()[0]).toEqual({ speed: 1.5 });
+    expect(settingsPutBodies()[0]).toEqual({ speed: 1.15 });
   });
 
   it("rejects a skip interval outside 5–120 without saving it", async () => {
@@ -207,8 +207,8 @@ describe("SettingsPage", () => {
     putFails = true;
     renderSettings();
     const speed = await screen.findByRole("combobox", { name: "Default playback speed" });
-    fireEvent.change(speed, { target: { value: "1.5" } });
-    expect(speed).toHaveProperty("value", "1.5"); // optimistic first
+    fireEvent.change(speed, { target: { value: "1.15" } });
+    expect(speed).toHaveProperty("value", "1.15"); // optimistic first
 
     const playback = await screen.findByRole("region", { name: "Playback" });
     const alert = await within(playback).findByRole("alert");

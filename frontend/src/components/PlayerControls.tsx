@@ -1,9 +1,9 @@
 /** Controls shared by every Direction D player surface (player bar, phone
  * mini player, expanded player, phone player and sheet). All of them drive
  * the single PlayerProvider state. */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { SPEED_MAX, SPEED_MIN, formatTime, type SleepChoice } from "../player/PlayerProvider";
+import { SPEED_MAX, SPEED_MIN, SPEED_STEP, formatTime, type SleepChoice } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import { Icon } from "./Icon";
 
@@ -72,19 +72,71 @@ export function ChapterNavButton({ delta }: { delta: -1 | 1 }) {
   );
 }
 
-/** Speed as a text button cycling 0.75× → 2.5× (handoff "Player bar"). */
-export function SpeedButton({ className }: { className?: string }) {
+/** Speed as a text button opening a slider popover (0.95×–1.25×, step 0.05).
+ * The popover anchors right by default; the phone controls pass align="left"
+ * so it cannot overflow the viewport edge. */
+export function SpeedButton({ className, align = "right" }: { className?: string; align?: "left" | "right" }) {
   const player = usePlayer();
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const slider = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    slider.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const onClick = (event: MouseEvent) => {
+      if (!wrap.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("click", onClick);
+    };
+  }, [open]);
   return (
-    <button
-      type="button"
-      aria-label={`Playback speed, ${player.rate} times`}
-      title="Playback speed"
-      onClick={() => player.setRate(player.rate >= SPEED_MAX ? SPEED_MIN : player.rate + 0.25)}
-      className={clsx("tap h-10 shrink-0 rounded-full px-2.5 text-base font-semibold text-fg hover:bg-raised", className)}
-    >
-      {player.rate}×
-    </button>
+    <div ref={wrap} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={`Playback speed, ${player.rate} times`}
+        title="Playback speed"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className={clsx("tap h-10 rounded-full px-2.5 text-base font-semibold text-fg hover:bg-raised", className)}
+      >
+        {player.rate}×
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Playback speed"
+          className={clsx(
+            "absolute bottom-full z-20 mb-2 w-56 rounded-xl border border-border bg-raised p-3 shadow-(--shadow-menu)",
+            align === "right" ? "right-0" : "left-0",
+          )}
+        >
+          <div className="mb-1 text-center text-base font-semibold tabular text-fg">{player.rate}×</div>
+          <input
+            ref={slider}
+            type="range"
+            aria-label="Playback speed"
+            min={SPEED_MIN}
+            max={SPEED_MAX}
+            step={SPEED_STEP}
+            value={player.rate}
+            onChange={(event) => player.setRate(Number(event.target.value))}
+            className="w-full accent-accent"
+          />
+          <div className="flex justify-between text-xs tabular text-fg-2">
+            <span>{SPEED_MIN}×</span>
+            <span>{SPEED_MAX}×</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

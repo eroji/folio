@@ -306,7 +306,7 @@ function PhoneSheet({
         <section aria-label="Playback" className="flex shrink-0 flex-col gap-1.5 px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-2.5">
           <ChapterScrubber />
           <div className="flex items-center justify-between">
-            <SpeedButton className="bg-raised" />
+            <SpeedButton className="bg-raised" align="left" />
             <SkipButton direction="back" />
             <PlayButton size={60} />
             <SkipButton direction="forward" />
@@ -372,7 +372,7 @@ function PhonePlayer({ book }: { book: Book }) {
           <ChapterNavButton delta={1} />
         </div>
         <div className="flex items-center justify-between">
-          <SpeedButton className="bg-raised" />
+          <SpeedButton className="bg-raised" align="left" />
           <SleepButton />
         </div>
         <PlayerTabs
