@@ -17,6 +17,8 @@ export interface Voice {
   on_server?: boolean;
   /** True when the language was set manually (shows the Unassign pill). */
   language_overridden?: boolean;
+  /** Per-voice narration instruction sent with TTS requests; "" when unset. */
+  instructions?: string;
 }
 
 export interface VoicesResponse {
@@ -31,7 +33,11 @@ export function baseLanguage(code: string): string {
 }
 
 /** Body of PATCH /admin/voices/{id}. */
-export type VoicePatch = { display_name?: string | null; language_override?: string | null };
+export type VoicePatch = {
+  display_name?: string | null;
+  language_override?: string | null;
+  instructions?: string;
+};
 
 /** Whether the TTS server still lists this voice (`on_server`, older `available`). */
 export function voiceOnServer(voice: Voice): boolean {

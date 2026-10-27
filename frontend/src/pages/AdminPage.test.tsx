@@ -36,6 +36,7 @@ interface VoiceRowData {
   books_count: number;
   on_server: boolean;
   language_overridden?: boolean;
+  instructions?: string;
 }
 
 let voices: { defaults: Record<string, string>; items: VoiceRowData[] } = { defaults: {}, items: [] };
@@ -46,7 +47,7 @@ function resetVoices(): void {
   voices = {
     defaults: { en: "ashley-en", ja: "haruto-ja", ko: "suri-ko" },
     items: [
-      { id: "ashley-en", language: "en", display_name: "Ashley", is_default: true, books_count: 74, on_server: true },
+      { id: "ashley-en", language: "en", display_name: "Ashley", is_default: true, books_count: 74, on_server: true, instructions: "Warm, and unhurried." },
       { id: "marcus-en", language: "en", display_name: "Marcus", books_count: 9, on_server: true },
       { id: "nora-en", language: "en", display_name: null, books_count: 0, on_server: true },
       { id: "narrator-02", language: "en", display_name: "Ruth", books_count: 0, on_server: true, language_overridden: true },
@@ -107,6 +108,7 @@ beforeEach(() => {
             item.language = body.language_override;
             item.language_overridden = body.language_override != null;
           }
+          if ("instructions" in body) item.instructions = body.instructions ?? undefined;
         }
         return jsonResponse(200, { item });
       }
@@ -419,6 +421,72 @@ describe("AdminPage voices section", () => {
     fireEvent.blur(ashley);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(findCall("/admin/voices/ashley-en", "PATCH")).toBeUndefined();
+  });
+
+  it("shows the saved narration instruction per row and none on removed voices", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
+    expect((ashley as HTMLTextAreaElement).value).toBe("Warm, and unhurried.");
+    expect((within(panel).getByLabelText("Narration instructions for marcus-en") as HTMLTextAreaElement).value).toBe("");
+    expect(within(panel).queryByLabelText("Narration instructions for ashley-fr")).toBeNull();
+  });
+
+  it("saves narration instructions on blur and on Enter", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
+    fireEvent.change(ashley, { target: { value: "Brisk and dry." } });
+    fireEvent.blur(ashley);
+    await vi.waitFor(() => {
+      expect(bodyOf(findCall("/admin/voices/ashley-en", "PATCH"))).toEqual({ instructions: "Brisk and dry." });
+    });
+    await vi.waitFor(() => {
+      const field = within(panel).getByLabelText("Narration instructions for ashley-en") as HTMLTextAreaElement;
+      expect(field.value).toBe("Brisk and dry.");
+    });
+
+    const mei = within(panel).getByLabelText("Narration instructions for mei-zh");
+    fireEvent.change(mei, { target: { value: "Calm, documentary tone." } });
+    fireEvent.keyDown(mei, { key: "Enter" });
+    await vi.waitFor(() => {
+      expect(bodyOf(findCall("/admin/voices/mei-zh", "PATCH"))).toEqual({ instructions: "Calm, documentary tone." });
+    });
+  });
+
+  it("does not save when the instruction is unchanged on blur", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
+    fireEvent.blur(ashley);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(findCall("/admin/voices/ashley-en", "PATCH")).toBeUndefined();
+  });
+
+  it("clears the instruction with an empty string", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
+    fireEvent.change(ashley, { target: { value: "   " } });
+    fireEvent.blur(ashley);
+    await vi.waitFor(() => {
+      expect(bodyOf(findCall("/admin/voices/ashley-en", "PATCH"))).toEqual({ instructions: "" });
+    });
+  });
+
+  it("reverts the instruction and shows an error when the save fails", async () => {
+    patchFails = true;
+    renderAdmin();
+    const panel = await openVoices();
+    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
+    fireEvent.change(ashley, { target: { value: "Nope" } });
+    fireEvent.blur(ashley);
+    const alert = await within(panel).findByRole("alert");
+    expect(alert.textContent).toMatch(/Couldn.t save/);
+    await vi.waitFor(() => {
+      const field = within(panel).getByLabelText("Narration instructions for ashley-en") as HTMLTextAreaElement;
+      expect(field.value).toBe("Warm, and unhurried.");
+    });
   });
 
   it("assigning a language moves the row out of Unassigned immediately", async () => {
