@@ -423,70 +423,132 @@ describe("AdminPage voices section", () => {
     expect(findCall("/admin/voices/ashley-en", "PATCH")).toBeUndefined();
   });
 
-  it("shows the saved narration instruction per row and none on removed voices", async () => {
+  async function instructionsPill(panel: HTMLElement, id: string): Promise<HTMLButtonElement> {
+    return (await within(panel).findByRole("button", {
+      name: `Speaking instructions for ${id}`,
+    })) as HTMLButtonElement;
+  }
+
+  async function openInstructionsEditor(panel: HTMLElement, id: string, fieldLabel: string): Promise<HTMLTextAreaElement> {
+    fireEvent.click(await instructionsPill(panel, id));
+    return (await within(panel).findByLabelText(fieldLabel)) as HTMLTextAreaElement;
+  }
+
+  function rowOf(panel: HTMLElement, id: string): HTMLElement {
+    return within(panel).getByText(id).closest(".border-t") as HTMLElement;
+  }
+
+  it("shows no textareas and one truncated italic instruction line per assigned row", async () => {
     renderAdmin();
     const panel = await openVoices();
-    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
-    expect((ashley as HTMLTextAreaElement).value).toBe("Warm, and unhurried.");
-    expect((within(panel).getByLabelText("Narration instructions for marcus-en") as HTMLTextAreaElement).value).toBe("");
-    expect(within(panel).queryByLabelText("Narration instructions for ashley-fr")).toBeNull();
+    expect(panel.querySelectorAll("textarea")).toHaveLength(0);
+    const line = within(rowOf(panel, "ashley-en")).getByText("Warm, and unhurried.");
+    expect(line.className).toContain("truncate");
+    expect(line.className).toContain("italic");
+    // Assigned voices without instructions say so; there are six of them.
+    expect(within(panel).getAllByText("No speaking instructions")).toHaveLength(6);
+    // Removed and unassigned rows show no instruction line at all.
+    expect(within(rowOf(panel, "ashley-fr")).queryByText(/speaking instructions/i)).toBeNull();
+    expect(within(rowOf(panel, "narrator-01")).queryByText(/speaking instructions/i)).toBeNull();
   });
 
-  it("saves narration instructions on blur and on Enter", async () => {
+  it("has no Instructions pill on unassigned or removed rows", async () => {
     renderAdmin();
     const panel = await openVoices();
-    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
-    fireEvent.change(ashley, { target: { value: "Brisk and dry." } });
-    fireEvent.blur(ashley);
+    await within(panel).findByText("Used by 74 books");
+    expect(within(panel).queryByRole("button", { name: "Speaking instructions for narrator-01" })).toBeNull();
+    expect(within(panel).queryByRole("button", { name: "Speaking instructions for ashley-fr" })).toBeNull();
+  });
+
+  it("opens one editor at a time and reflects it on the pills' aria-expanded", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const ashleyPill = await instructionsPill(panel, "ashley-en");
+    fireEvent.click(ashleyPill);
+    const ashleyField = (await within(panel).findByLabelText("Speaking instructions for Ashley")) as HTMLTextAreaElement;
+    expect(ashleyField.value).toBe("Warm, and unhurried.");
+    expect(ashleyPill.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(await instructionsPill(panel, "marcus-en"));
+    await vi.waitFor(() => {
+      expect(within(panel).queryByLabelText("Speaking instructions for Ashley")).toBeNull();
+      expect(panel.querySelectorAll("textarea")).toHaveLength(1);
+      expect(within(panel).getByLabelText("Speaking instructions for Marcus")).toBeTruthy();
+    });
+    expect(ashleyPill.getAttribute("aria-expanded")).toBe("false");
+    expect((await instructionsPill(panel, "marcus-en")).getAttribute("aria-expanded")).toBe("true");
+
+    // Pressing the open pill again closes its editor.
+    fireEvent.click(await instructionsPill(panel, "marcus-en"));
+    await vi.waitFor(() => expect(panel.querySelectorAll("textarea")).toHaveLength(0));
+  });
+
+  it("shows the draft character count against 1000", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const field = await openInstructionsEditor(panel, "ashley-en", "Speaking instructions for Ashley");
+    expect(within(panel).getByText(/Sent to the TTS server with every request for this voice · 20 \/ 1000/)).toBeTruthy();
+    fireEvent.change(field, { target: { value: "Brisk and dry." } });
+    expect(within(panel).getByText(/· 14 \/ 1000/)).toBeTruthy();
+  });
+
+  it("Save patches the instructions and closes the editor; empty clears", async () => {
+    renderAdmin();
+    const panel = await openVoices();
+    const field = await openInstructionsEditor(panel, "ashley-en", "Speaking instructions for Ashley");
+    fireEvent.change(field, { target: { value: "Brisk and dry." } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(bodyOf(findCall("/admin/voices/ashley-en", "PATCH"))).toEqual({ instructions: "Brisk and dry." });
     });
     await vi.waitFor(() => {
-      const field = within(panel).getByLabelText("Narration instructions for ashley-en") as HTMLTextAreaElement;
-      expect(field.value).toBe("Brisk and dry.");
+      expect(within(panel).queryByLabelText("Speaking instructions for Ashley")).toBeNull();
+      expect(within(rowOf(panel, "ashley-en")).getByText("Brisk and dry.")).toBeTruthy();
     });
 
-    const mei = within(panel).getByLabelText("Narration instructions for mei-zh");
-    fireEvent.change(mei, { target: { value: "Calm, documentary tone." } });
-    fireEvent.keyDown(mei, { key: "Enter" });
+    const mei = await openInstructionsEditor(panel, "mei-zh", "Speaking instructions for Mei");
+    fireEvent.change(mei, { target: { value: "   " } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
-      expect(bodyOf(findCall("/admin/voices/mei-zh", "PATCH"))).toEqual({ instructions: "Calm, documentary tone." });
+      expect(bodyOf(findCall("/admin/voices/mei-zh", "PATCH"))).toEqual({ instructions: "" });
     });
   });
 
-  it("does not save when the instruction is unchanged on blur", async () => {
+  it("Cancel closes the editor without saving and discards the draft", async () => {
     renderAdmin();
     const panel = await openVoices();
-    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
-    fireEvent.blur(ashley);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    const field = await openInstructionsEditor(panel, "ashley-en", "Speaking instructions for Ashley");
+    fireEvent.change(field, { target: { value: "Discard me" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Cancel" }));
+    await vi.waitFor(() => expect(within(panel).queryByLabelText("Speaking instructions for Ashley")).toBeNull());
     expect(findCall("/admin/voices/ashley-en", "PATCH")).toBeUndefined();
+
+    // Reopening starts from the saved value again.
+    const again = await openInstructionsEditor(panel, "ashley-en", "Speaking instructions for Ashley");
+    expect(again.value).toBe("Warm, and unhurried.");
   });
 
-  it("clears the instruction with an empty string", async () => {
+  it("the editor Preview sends the draft instructions, the row Preview the saved ones", async () => {
     renderAdmin();
     const panel = await openVoices();
-    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
-    fireEvent.change(ashley, { target: { value: "   " } });
-    fireEvent.blur(ashley);
+    const field = await openInstructionsEditor(panel, "ashley-en", "Speaking instructions for Ashley");
+    fireEvent.change(field, { target: { value: "Brisk and dry." } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Preview" }));
     await vi.waitFor(() => {
-      expect(bodyOf(findCall("/admin/voices/ashley-en", "PATCH"))).toEqual({ instructions: "" });
+      expect(bodyOf(findCall("/voices/preview", "POST"))).toEqual({ voice: "ashley-en", instructions: "Brisk and dry." });
     });
   });
 
-  it("reverts the instruction and shows an error when the save fails", async () => {
+  it("keeps the editor open with an error when the save fails", async () => {
     patchFails = true;
     renderAdmin();
     const panel = await openVoices();
-    const ashley = await within(panel).findByLabelText("Narration instructions for ashley-en");
-    fireEvent.change(ashley, { target: { value: "Nope" } });
-    fireEvent.blur(ashley);
-    const alert = await within(panel).findByRole("alert");
+    const field = await openInstructionsEditor(panel, "ashley-en", "Speaking instructions for Ashley");
+    fireEvent.change(field, { target: { value: "Nope" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Save" }));
+    const alert = await within(rowOf(panel, "ashley-en")).findByRole("alert");
     expect(alert.textContent).toMatch(/Couldn.t save/);
-    await vi.waitFor(() => {
-      const field = within(panel).getByLabelText("Narration instructions for ashley-en") as HTMLTextAreaElement;
-      expect(field.value).toBe("Warm, and unhurried.");
-    });
+    expect((within(panel).getByLabelText("Speaking instructions for Ashley") as HTMLTextAreaElement).value).toBe("Nope");
   });
 
   it("assigning a language moves the row out of Unassigned immediately", async () => {

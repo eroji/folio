@@ -102,8 +102,10 @@ export function groupVoicesByLanguage(voices: Voice[]): Record<string, Voice[]> 
 
 /** POST /voices/preview answers with audio bytes, so the JSON api client
  * cannot be used; credentials and the CSRF header follow api/client.ts.
+ * `instructions` overrides the saved per-voice instructions for this sample
+ * (the admin editor previews its unsaved draft); omit it to use the saved ones.
  * Returns an object URL; the caller must revoke it. */
-export async function previewVoice(voice: string): Promise<string> {
+export async function previewVoice(voice: string, instructions?: string): Promise<string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = csrfToken();
   if (token) headers["X-CSRF-Token"] = token;
@@ -111,7 +113,7 @@ export async function previewVoice(voice: string): Promise<string> {
     method: "POST",
     credentials: "same-origin",
     headers,
-    body: JSON.stringify({ voice }),
+    body: JSON.stringify(instructions === undefined ? { voice } : { voice, instructions }),
   });
   if (!response.ok) {
     let code = "request_failed";
