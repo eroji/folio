@@ -16,6 +16,7 @@ from folio.main import create_app
 from folio.routers import voices as voices_module
 from folio.tts import TtsClient
 from folio.tts.voices import reset_voice_cache
+from folio.voice_catalog import MAX_INSTRUCTION_LENGTH
 
 ENGINE_VOICES = {
     "voices": ["tts", "ashley-zh", "ashley-ja", "ashley-kr", "ashley-en", "bruno-en", "mystery"]
@@ -301,9 +302,15 @@ async def test_patch_instructions_saves_and_clears_per_voice(
 
 
 async def test_patch_instructions_length_and_csrf(aclient: httpx.AsyncClient) -> None:
+    full = await aclient.patch(
+        "/api/v1/admin/voices/ashley-en",
+        json={"instructions": "x" * MAX_INSTRUCTION_LENGTH},
+        headers=csrf(aclient),
+    )
+    assert full.status_code == 200, full.text  # 1000 characters are allowed
     response = await aclient.patch(
         "/api/v1/admin/voices/ashley-en",
-        json={"instructions": "x" * 501},
+        json={"instructions": "x" * (MAX_INSTRUCTION_LENGTH + 1)},
         headers=csrf(aclient),
     )
     assert response.status_code == 422

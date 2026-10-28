@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 VOICE_DEFAULTS_KEY = "voice_defaults"
 VOICE_LANGUAGES_KEY = "voice_languages"
 VOICE_INSTRUCTIONS_KEY = "voice_instructions"
-MAX_INSTRUCTION_LENGTH = 500
+MAX_INSTRUCTION_LENGTH = 1000
 BASE_LANGUAGES = ("en", "ja", "ko", "zh")
 
 # Trailing language token of a voice id: ``-en``, ``-kr``, ``mina-zh-TW``,

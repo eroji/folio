@@ -262,6 +262,55 @@ async def test_preview_returns_audio_bytes_and_caches(
     assert speech_calls["n"] == 1  # cached via get_or_synthesize, no second synthesis
 
 
+async def test_preview_rejects_oversized_instructions(vclient: httpx.AsyncClient) -> None:
+    # The editor's counter says "{count} / 1000", so 1000 is the contract.
+    response = await vclient.post(
+        "/api/v1/voices/preview",
+        json={"voice": "ashley-en", "instructions": "x" * 1001},
+        headers=csrf(vclient),
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_failed"
+    ok = await vclient.post(
+        "/api/v1/voices/preview",
+        json={"voice": "ashley-en", "instructions": "x" * 1000},
+        headers=csrf(vclient),
+    )
+    assert ok.status_code == 200, ok.text
+
+
+async def test_preview_sends_instructions_and_caches_them_apart(
+    vclient: httpx.AsyncClient, tts_handler: _Handlers, db: Session
+) -> None:
+    """Handoff §Admin · Voices: Preview speaks a sample *with these instructions*;
+    the prompt is part of the cache key, so it never reuses the plain sample."""
+    spoken: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/audio/voices":
+            return httpx.Response(200, json=ENGINE_VOICES)
+        spoken.append(json.loads(request.content))
+        return httpx.Response(200, content=SILENT_OPUS, headers={"content-type": "audio/ogg"})
+
+    tts_handler.fn = handler
+    warm = {"voice": "ashley-en", "instructions": "Warm, expressive."}
+    assert (
+        await vclient.post("/api/v1/voices/preview", json=warm, headers=csrf(vclient))
+    ).status_code == 200
+    assert spoken[0]["instructions"] == "Warm, expressive."
+
+    again = await vclient.post("/api/v1/voices/preview", json=warm, headers=csrf(vclient))
+    assert again.status_code == 200
+    assert len(spoken) == 1  # same prompt, same text: cache hit
+
+    plain = await vclient.post(
+        "/api/v1/voices/preview", json={"voice": "ashley-en"}, headers=csrf(vclient)
+    )
+    assert plain.status_code == 200
+    assert len(spoken) == 2 and "instructions" not in spoken[1]  # no prompt -> not sent
+    assert len({row.cache_key for row in db.scalars(select(Audio))}) == 2
+
+
 async def test_preview_requires_csrf_and_maps_tts_errors_to_502(
     vclient: httpx.AsyncClient,
     tts_handler: _Handlers,

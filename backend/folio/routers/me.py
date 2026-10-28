@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
-from folio.config import get_settings
+from folio.config import Settings, get_settings
 from folio.db import get_session
 from folio.deps import get_current_user
 from folio.errors import ApiError
@@ -99,11 +99,19 @@ def _public_settings(user: User) -> dict[str, Any]:
     return merged
 
 
-def _validated(patch: SettingsPatch) -> dict[str, Any]:
+def _speed_ok(value: float, settings: Settings) -> bool:
+    """``value`` is on the configured grid: within [min, max] and ``min + n*step``.
+    The tolerance absorbs the binary drift of the additions themselves."""
+    if not settings.tts_speed_min <= value <= settings.tts_speed_max:
+        return False
+    steps = (value - settings.tts_speed_min) / settings.tts_speed_step
+    return abs(steps - round(steps)) <= 1e-6
+
+
+def _validated(patch: SettingsPatch, settings: Settings) -> dict[str, Any]:
     values: dict[str, Any] = {}
     if patch.speed is not None:
-        # 0.9-1.15 in 0.05 steps; round guards the binary drift in 1.15.
-        if not 0.9 <= patch.speed <= 1.15 or round(patch.speed * 100) % 5:
+        if not _speed_ok(patch.speed, settings):
             _fail()
         values["speed"] = patch.speed
     for name in ("skip_back", "skip_forward"):
@@ -290,15 +298,30 @@ def get_listening_settings(user: Annotated[User, Depends(get_current_user)]) -> 
     return {"settings": _public_settings(user)}
 
 
+@router.get("/speed-options")
+def speed_options(
+    user: Annotated[User, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """The slider's grid (handoff §Player): positions are ``min + n*step`` up to
+    ``max``. The engine's supported range is configuration, not client code."""
+    return {
+        "min": settings.tts_speed_min,
+        "max": settings.tts_speed_max,
+        "step": settings.tts_speed_step,
+    }
+
+
 @router.put("/settings")
 def put_settings(
     request: Request,
     patch: SettingsPatch,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
     require_csrf(request, request.state.session_row)
-    values = _validated(patch)
+    values = _validated(patch, settings)
     # Rebind (not mutate) so SQLAlchemy flags the JSONB column as changed;
     # the comprehension also drops a theme left over from pre-Direction-D rows.
     user.settings = {
