@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -9,6 +10,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from folio.config import Settings, get_settings
+from folio.main import create_app
 from folio.models import Book, Chapter, Progress, Segment, User
 from folio.routers.me import DEFAULT_SETTINGS
 
@@ -265,3 +268,57 @@ async def test_theme_setting_is_gone(auth_client: httpx.AsyncClient, db: Session
     db.expire_all()
     user = db.scalar(select(User).where(User.username == "testuser"))
     assert user is not None and "theme" not in user.settings
+
+
+async def test_speed_options_are_the_config_grid(auth_client: httpx.AsyncClient) -> None:
+    """GET /me/speed-options: the values the slider builds its positions from."""
+    response = await auth_client.get("/api/v1/me/speed-options")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"min": 0.9, "max": 1.15, "step": 0.05}
+
+
+@pytest.fixture()
+async def grid_client(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[httpx.AsyncClient]:
+    """A logged-in client whose settings use a grid that is not the default one."""
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        tts_speed_min=0.75,
+        tts_speed_max=1.25,
+        tts_speed_step=0.25,
+    )
+    app = create_app()
+    app.dependency_overrides[get_settings] = lambda: settings
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+        await client.post("/api/v1/test/login", json={"username": "testuser", "role": "user"})
+        yield client
+
+
+async def test_speed_options_follow_config(grid_client: httpx.AsyncClient) -> None:
+    assert (await grid_client.get("/api/v1/me/speed-options")).json() == {
+        "min": 0.75,
+        "max": 1.25,
+        "step": 0.25,
+    }
+
+
+async def test_speed_options_require_a_session(client: httpx.AsyncClient) -> None:
+    assert (await client.get("/api/v1/me/speed-options")).status_code == 401
+
+
+async def test_speed_validation_follows_the_config_grid(grid_client: httpx.AsyncClient) -> None:
+    """Accepted values are min + n*step inside [min, max]; the config, not a
+    hard-coded 0.9/1.15/0.05, decides them."""
+    for value in (0.75, 1.0, 1.25):  # the ends and the middle of this grid
+        response = await grid_client.put(
+            "/api/v1/me/settings", json={"speed": value}, headers=csrf(grid_client)
+        )
+        assert response.status_code == 200, (value, response.text)
+        assert response.json()["settings"]["speed"] == value
+    for value in (0.5, 0.9, 1.1, 1.3):  # off-grid or out of range
+        response = await grid_client.put(
+            "/api/v1/me/settings", json={"speed": value}, headers=csrf(grid_client)
+        )
+        assert response.status_code == 422, (value, response.text)

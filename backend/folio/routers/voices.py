@@ -19,7 +19,7 @@ from folio.models import User
 from folio.security import require_csrf
 from folio.tts import TtsClient, TtsError, discover_voices, get_or_synthesize
 from folio.tts.voices import last_refreshed
-from folio.voice_catalog import build_catalog
+from folio.voice_catalog import MAX_INSTRUCTION_LENGTH, build_catalog
 
 router = APIRouter(prefix="/api/v1/voices", tags=["voices"])
 
@@ -45,6 +45,9 @@ def get_tts_client() -> Iterator[TtsClient]:
 class PreviewBody(BaseModel):
     voice: str = Field(min_length=1, max_length=64)
     text: str | None = Field(default=None, min_length=1, max_length=500)
+    # The instruction editor's Preview speaks the sample with this prompt
+    # (handoff §Admin · Voices); empty means the server's default style.
+    instructions: str | None = Field(default=None, max_length=MAX_INSTRUCTION_LENGTH)
 
 
 @router.get("")
@@ -87,8 +90,9 @@ def preview_voice(
     """Speak a short sample in ``voice``; cached like any other clip."""
     require_csrf(request, request.state.session_row)
     text = body.text or _default_sample(body.voice, settings)
+    instructions = (body.instructions or "").strip()
     try:
-        audio, _ = get_or_synthesize(db, settings, client, text, body.voice)
+        audio, _ = get_or_synthesize(db, settings, client, text, body.voice, instructions)
     except (TtsError, httpx.HTTPError):
         raise ApiError("tts_unavailable", "The TTS backend is unreachable.", 502) from None
     path = Path(audio.path)

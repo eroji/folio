@@ -45,6 +45,9 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 | `TTS_LOOKAHEAD` | `6` | optional | Segments generated ahead of playback. |
 | `TTS_CONCURRENCY` | `2` | optional | Max parallel TTS requests across all users (shared GPU). |
 | `TTS_CHARS_PER_SECOND` | `15` | optional | Duration estimate before audio exists. |
+| `TTS_SPEED_MIN` | `0.9` | optional | Lowest playback speed the engine supports; served by `GET /me/speed-options`. |
+| `TTS_SPEED_MAX` | `1.15` | optional | Highest playback speed. |
+| `TTS_SPEED_STEP` | `0.05` | optional | Playback-speed increment; the slider's positions are `MIN + n * STEP`. |
 
 ## Audio cache and metadata
 

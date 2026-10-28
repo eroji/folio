@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     tts_lookahead: int = 6
     tts_concurrency: int = 2
     tts_chars_per_second: float = 15.0
+    # Playback-speed grid the UI builds its slider from (handoff §Player):
+    # positions are min + n*step up to max. Step > 0 is validated here so the
+    # grid check never divides by zero.
+    tts_speed_min: float = 0.9
+    tts_speed_max: float = 1.15
+    tts_speed_step: float = Field(default=0.05, gt=0)
 
     # Audio cache and metadata
     audio_cache_max_gb: int = 50
