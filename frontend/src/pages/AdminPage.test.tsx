@@ -70,6 +70,12 @@ function findCall(fragment: string, method: string): readonly unknown[] | undefi
     .mock.calls.find(([url, init]) => String(url).includes(fragment) && (init?.method ?? "GET") === method);
 }
 
+function lastCall(fragment: string, method: string): readonly unknown[] | undefined {
+  return [...vi.mocked(fetch).mock.calls]
+    .reverse()
+    .find(([url, init]) => String(url).includes(fragment) && (init?.method ?? "GET") === method);
+}
+
 function bodyOf(call: readonly unknown[] | undefined): Record<string, unknown> {
   return JSON.parse(String((call?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
 }
@@ -536,6 +542,11 @@ describe("AdminPage voices section", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Preview" }));
     await vi.waitFor(() => {
       expect(bodyOf(findCall("/voices/preview", "POST"))).toEqual({ voice: "ashley-en", instructions: "Brisk and dry." });
+    });
+    // The row's own Preview uses the saved instructions.
+    fireEvent.click(within(panel).getByRole("button", { name: "Preview ashley-en" }));
+    await vi.waitFor(() => {
+      expect(bodyOf(lastCall("/voices/preview", "POST"))).toEqual({ voice: "ashley-en", instructions: "Warm, and unhurried." });
     });
   });
 

@@ -256,7 +256,7 @@ function VoiceRow({
               className={nameInput}
             />
           )}
-          {!gone && <VoicePreview voice={voice.id} />}
+          {!gone && <VoicePreview voice={voice.id} instructions={voice.instructions} />}
           {!gone && !unassigned && (
             <button
               type="button"

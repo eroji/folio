@@ -66,8 +66,11 @@
   position; `X` stops, saves and unloads; cross-device positions show "Paused ·
   last played on {device}" and a ResumePrompt. One `<audio>` element app-wide —
   bar, mini player, `/player` page and phone player all drive the same state.
-  The speed text button opens a vertical 0.9×–1.15× slider popover (step 0.05)
-  instead of cycling presets; values always show at least one decimal (1.0×).
+  The speed text button opens the 84px vertical speed card (value + SPEED,
+  210px track, step dots, halo thumb); its grid comes from config
+  (`TTS_SPEED_MIN/MAX/STEP`, served by `/me/speed-options`), values always show
+  at least one decimal (1.0×), it closes 3s after the last change, and the chosen
+  speed is remembered per book. The phone card opens in a bottom sheet.
 
 ## Screens
 
@@ -87,9 +90,12 @@
   fill, accent `AudioLines`, "N% · M left".
 - **Player `/player`:** strong cover glow; left cover + chapter title; right tabs
   UP NEXT / READ ALONG / ABOUT. Read along is lyrics-style Figtree (already-read
-  32 %, current full white with `aria-current`, upcoming 68 %, all one size), scrolls in its own
-  area, auto-scroll with a "Back to current" pill. The phone player is full-screen
-  with a 72 px play/pause and sheet tabs.
+  32 %, current full white +4px with `aria-current`, upcoming 68 %), with a
+  five-step Aa picker (Small–Huge, 17/19/22/25/28px, default Large) and a round
+  auto-scroll toggle. It scrolls in its own area with a "Back to current" pill.
+  Closing quotes/brackets stay with the sentence they end. The phone player is
+  full-screen with a 72 px play/pause and sheet tabs; the phone read-along sheet
+  uses the same five steps and toggle.
 - **Search `/search?q=`:** type chips, polite result count, top-result surface
   card (author avatar or cover, white Play pill), book rows with ⋮; empty state
   offers "Upload books".
@@ -122,9 +128,12 @@
   the pane opens only from the drawer (or the Review metadata matches banner).
   The narrator is set only from the book's ⋮ menu.
 - **Admin `/admin`:** Jobs / Cache / Users / Voices in the Settings column.
-  Voices groups by language; each on-server voice has a display name, Preview,
-  a default radio and its own narration instruction (max 500, saved on blur).
-  The instruction is sent to the TTS engine with the book's genre appended.
+  Voices groups by language; assigned on-server rows show a display name,
+  Preview, an Instructions pill and a default radio, plus a truncated italic
+  instruction line ("No speaking instructions" when empty). The pill expands one
+  4-row editor under the row at a time (label, /1000 count, draft Preview,
+  Cancel, Save). The instruction is sent to the TTS engine with the book's genre
+  appended; unassigned/removed voices get no editor.
 - **Restyle-only screens** (Find metadata, narrator dialog, confirms, About tab,
   empty/loading/error/offline/needs-OCR/failed
 

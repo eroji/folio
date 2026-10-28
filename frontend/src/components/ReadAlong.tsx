@@ -182,7 +182,7 @@ export function ReadAlong({
   controls,
 }: {
   className?: string;
-  /** Phone sheet sizes: 21 / 25 px and faded edges. */
+  /** Phone sheet: same five steps, faded edges. */
   phone?: boolean;
   /** Render the "Follows the narration" row (the sheet drives it externally). */
   toolbar?: boolean;
