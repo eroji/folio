@@ -116,6 +116,41 @@ describe("PlayerBar", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeNull());
   });
 
+  it("the speed thumb mirrors the fill: bottom at the minimum, top at the maximum", async () => {
+    const getPlayer = await loadBar();
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
+    const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
+    const thumb = dialog.querySelector("[data-speed-thumb]") as HTMLElement;
+    const fill = dialog.querySelector("[data-speed-fill]") as HTMLElement;
+    const pct = (value: string) => Number.parseFloat(value);
+
+    // The fill grows from the bottom, so the thumb sits at the fill's top edge:
+    // thumb top + fill height always add up to the track.
+    act(() => getPlayer().setRate(0.9));
+    expect(pct(thumb.style.top)).toBeCloseTo(100, 3);
+    expect(pct(fill.style.height)).toBeCloseTo(0, 3);
+
+    act(() => getPlayer().setRate(1));
+    expect(pct(thumb.style.top) + pct(fill.style.height)).toBeCloseTo(100, 3);
+
+    act(() => getPlayer().setRate(1.15));
+    expect(pct(thumb.style.top)).toBeCloseTo(0, 3);
+    expect(pct(fill.style.height)).toBeCloseTo(100, 3);
+  });
+
+  it("the speed button has a fixed width so the value cannot shift the controls", async () => {
+    const getPlayer = await loadBar();
+    const speed = screen.getByRole("button", { name: "Playback speed, 1.0 times" });
+    expect(speed.className).toContain("w-14"); // 56 px box, never content-sized
+    expect(speed.className).toContain("text-center");
+    expect(speed.className).toContain("tabular");
+    expect(speed.className).not.toMatch(/\bpx-/); // no horizontal padding to grow with the label
+
+    act(() => getPlayer().setRate(1.15));
+    expect(speed.textContent).toBe("1.15×");
+    expect(speed.className).toContain("w-14"); // the same box at the widest label
+  });
+
   it("the speed card moves one step with arrows, two with page keys, Home/End to the ends", async () => {
     const getPlayer = await loadBar();
     fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));

@@ -215,6 +215,7 @@ export function SpeedButton({ className, placement = "center" }: { className?: s
       >
         <span aria-hidden className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2 rounded-full bg-[#34343A]" />
         <span
+          data-speed-fill
           aria-hidden
           className="absolute bottom-0 left-1/2 w-2 -translate-x-1/2 rounded-full bg-accent"
           style={{ height: `${fraction * 100}%` }}
@@ -235,7 +236,7 @@ export function SpeedButton({ className, placement = "center" }: { className?: s
           data-speed-thumb
           aria-hidden
           className="absolute left-1/2 size-[22px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg shadow-[0_0_0_4px_rgb(var(--accent-rgb)/0.35),0_2px_6px_rgb(0_0_0/0.5)]"
-          style={{ top: `${fraction * 100}%` }}
+          style={{ top: `${(1 - fraction) * 100}%` }}
         />
       </div>
     </div>
@@ -251,7 +252,8 @@ export function SpeedButton({ className, placement = "center" }: { className?: s
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={clsx(
-          "tap h-10 rounded-full px-2.5 text-base font-semibold text-fg hover:bg-raised",
+          // fixed width + tabular digits: a longer label must not resize the box and shift the row.
+          "tap h-10 w-14 shrink-0 rounded-full text-center text-base font-semibold tabular text-fg hover:bg-raised",
           open && "bg-raised",
           className,
         )}
