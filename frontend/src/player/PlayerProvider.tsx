@@ -18,15 +18,19 @@ import {
   saveProgress,
   secondsAhead,
 } from "../api/progress";
-import { useListeningSettings, type ListeningSettings } from "../api/settings";
+import {
+  readBookSpeed,
+  snapSpeed,
+  useListeningSettings,
+  useSpeedOptions,
+  writeBookSpeed,
+  type ListeningSettings,
+} from "../api/settings";
 import type { ResumePromptProps } from "../components/ResumePrompt";
 import type { Book, BookDetailResponse, Chapter, Progress } from "../api/types";
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
 export const TTS_LOOKAHEAD = 6;
-export const SPEED_MIN = 0.9;
-export const SPEED_MAX = 1.15;
-export const SPEED_STEP = 0.05;
 
 /** Speed as a label number: one decimal minimum, two only when needed
  * (1 → "1.0", 1.1 → "1.1", 1.15 → "1.15"). Callers append the "×". */
@@ -142,6 +146,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const { settings } = useListeningSettings();
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const { options: speedOptions } = useSpeedOptions();
+  const speedOptionsRef = useRef(speedOptions);
+  speedOptionsRef.current = speedOptions;
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
@@ -429,6 +436,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         s.offset = 0;
       }
       s.book = detail.book;
+      // Per-book speed memory: the speed stored for this book wins; a book
+      // never played here starts at the Settings default, both snapped to
+      // the config grid.
+      s.rate = snapSpeed(readBookSpeed(bookId) ?? settingsRef.current.speed, speedOptionsRef.current);
+      for (const element of els) element.playbackRate = s.rate;
       // Excluded chapters are returned for the book-settings UI but must never
       // be opened by the player (their segments endpoint 404s by design).
       // All chapter indices below come from this included list — indexing the
@@ -610,10 +622,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   function setRate(rate: number) {
-    // Round to the step, then drop the float noise Math.round(x/0.05)*0.05 leaves.
-    const stepped = Math.round(rate / SPEED_STEP) * SPEED_STEP;
-    s.rate = Number(Math.min(SPEED_MAX, Math.max(SPEED_MIN, stepped)).toFixed(2));
+    s.rate = snapSpeed(rate, speedOptionsRef.current); // clamp + snap to the config grid
     for (const element of els) element.playbackRate = s.rate;
+    if (s.book) writeBookSpeed(s.book.id, s.rate); // remembered per book
     bump();
   }
 
@@ -639,10 +650,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow });
   fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow };
 
-  // Sync the saved default speed into the player; the speed button can still
-  // override it until the next time the setting itself changes.
+  // Sync the saved default speed into the player. A book with its own stored
+  // speed keeps it: the default only drives books played here for the first
+  // time (and the idle player before anything is loaded).
   useEffect(() => {
-    const rate = Math.min(SPEED_MAX, Math.max(SPEED_MIN, settings.speed));
+    if (s.book && readBookSpeed(s.book.id) !== null) return;
+    const rate = snapSpeed(settings.speed, speedOptionsRef.current);
     if (s.rate === rate) return;
     s.rate = rate;
     for (const element of els) element.playbackRate = rate;

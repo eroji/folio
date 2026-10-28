@@ -6,6 +6,7 @@ import { TTS_LOOKAHEAD, formatSpeed } from "./PlayerProvider";
 import { installMockEventSource, MockEventSource } from "../test/eventsource";
 import { BOOK_ID, BOOK2_ID, CH1, CH2, CH3, installPlayerFetch, makeProgress, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import { deviceLabel } from "../api/progress";
+import { DEFAULT_SETTINGS, settingsQueryKey, speedOptionsQueryKey } from "../api/settings";
 import type { AudioStatus } from "../api/audio";
 
 let prepareCalls: { segment_id: string; count: number; voice?: string }[] = [];
@@ -214,6 +215,50 @@ describe("PlayerProvider", () => {
     const getPlayer = renderPlayer();
     await waitFor(() => expect(getPlayer().rate).toBe(1.1));
     expect(getPlayer().elements[0].playbackRate).toBe(1.1);
+  });
+
+  it("remembers the speed per book and starts new books at the default", async () => {
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    act(() => getPlayer().setRate(1.1));
+    expect(localStorage.getItem(`folio-book-speed-${BOOK_ID}`)).toBe("1.1");
+    await act(async () => {
+      await getPlayer().load(BOOK2_ID);
+    });
+    expect(getPlayer().rate).toBe(1); // a book without a stored speed starts at the default
+    act(() => getPlayer().setRate(0.95));
+    expect(localStorage.getItem(`folio-book-speed-${BOOK2_ID}`)).toBe("0.95");
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().rate).toBe(1.1); // book A keeps its own speed
+  });
+
+  it("a Settings default change does not override a book with a stored speed", async () => {
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    act(() => getPlayer().setRate(1.15));
+    act(() => getPlayer.client.setQueryData(settingsQueryKey, { ...DEFAULT_SETTINGS, speed: 0.95 }));
+    expect(getPlayer().rate).toBe(1.15); // the stored per-book speed wins
+    localStorage.removeItem(`folio-book-speed-${BOOK_ID}`);
+    act(() => getPlayer.client.setQueryData(settingsQueryKey, { ...DEFAULT_SETTINGS, speed: 1.05 }));
+    await waitFor(() => expect(getPlayer().rate).toBe(1.05)); // without one, the default applies
+  });
+
+  it("clamps and rounds to the configured grid, not the fallback", async () => {
+    installPlayerFetch({ speedOptions: { min: 0.9, max: 1.2, step: 0.1 } });
+    const getPlayer = renderPlayer();
+    await waitFor(() =>
+      expect(getPlayer.client.getQueryData(speedOptionsQueryKey)).toEqual({ min: 0.9, max: 1.2, step: 0.1 }),
+    );
+    act(() => getPlayer().setRate(1.14));
+    expect(getPlayer().rate).toBe(1.1); // nearest position on the config grid
+    act(() => getPlayer().setRate(2));
+    expect(getPlayer().rate).toBe(1.2); // clamps to the configured max
   });
 
   it("skips by the configured back and forward intervals", async () => {
