@@ -1,9 +1,10 @@
 /** Controls shared by every Direction D player surface (player bar, phone
  * mini player, expanded player, phone player and sheet). All of them drive
  * the single PlayerProvider state. */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import clsx from "clsx";
-import { SPEED_MAX, SPEED_MIN, SPEED_STEP, formatSpeed, formatTime, type SleepChoice } from "../player/PlayerProvider";
+import { formatSpeed, formatTime, type SleepChoice } from "../player/PlayerProvider";
+import { snapSpeed, speedPositions, useSpeedOptions } from "../api/settings";
 import { usePlayer } from "../player/usePlayer";
 import { Icon } from "./Icon";
 
@@ -72,17 +73,52 @@ export function ChapterNavButton({ delta }: { delta: -1 | 1 }) {
   );
 }
 
-/** Speed as a text button opening a vertical slider popover (0.9×–1.15×,
- * step 0.05, bottom → top). The popover anchors right by default; the phone
- * controls pass align="left" so it cannot overflow the viewport edge. */
-export function SpeedButton({ className, align = "right" }: { className?: string; align?: "left" | "right" }) {
+/** The card closes this long after the last change (timer resets on each). */
+const SPEED_AUTO_CLOSE_MS = 3000;
+
+/** Speed as a text button opening the speed card (handoff "Playback speed
+ * slider"): current value + eyebrow above a 210px vertical track with step
+ * dots; the grid comes from config (useSpeedOptions), never hard-coded. The
+ * card centers above the button — on the phone controls pass
+ * placement="sheet" and the card sits centered in a small bottom sheet.
+ * Closes on Esc, outside click, or 3 s after the last change. */
+export function SpeedButton({ className, placement = "center" }: { className?: string; placement?: "center" | "sheet" }) {
   const player = usePlayer();
+  const { options } = useSpeedOptions();
+  const positions = speedPositions(options);
   const [open, setOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
-  const slider = useRef<HTMLInputElement>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const timer = useRef<number | null>(null);
+  const current = snapSpeed(player.rate, options);
+  const fraction =
+    positions.length > 1 ? (current - options.min) / (options.max - options.min) : 0;
+
+  function armClose() {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setOpen(false), SPEED_AUTO_CLOSE_MS);
+  }
+
+  function change(rate: number) {
+    player.setRate(rate); // apply to playback immediately
+    armClose(); // the 3 s window restarts on every change
+  }
+
+  /** Value at a clientY on the track (bottom = min), snapped to the grid. */
+  function valueFromY(clientY: number): number {
+    const rect = track.current?.getBoundingClientRect();
+    if (!rect || rect.height <= 0) return current;
+    const ratio = 1 - Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    return snapSpeed(options.min + ratio * (options.max - options.min), options);
+  }
+  const dragTo = useRef<(y: number) => void>(() => {});
+  dragTo.current = (y: number) => change(valueFromY(y));
+
   useEffect(() => {
     if (!open) return;
-    slider.current?.focus();
+    track.current?.focus();
+    armClose(); // a card nobody touches closes after 3 s too
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
@@ -94,8 +130,117 @@ export function SpeedButton({ className, align = "right" }: { className?: string
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("click", onClick);
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      timer.current = null;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (event: PointerEvent) => dragTo.current(event.clientY);
+    const onUp = () => setDragging(false);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, [dragging]);
+
+  function onKeyDown(event: ReactKeyboardEvent) {
+    const index = Math.round((current - options.min) / options.step);
+    let next: number;
+    switch (event.key) {
+      case "ArrowUp":
+      case "ArrowRight":
+        next = index + 1;
+        break;
+      case "ArrowDown":
+      case "ArrowLeft":
+        next = index - 1;
+        break;
+      case "PageUp":
+        next = index + 2;
+        break;
+      case "PageDown":
+        next = index - 2;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = positions.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    change(positions[Math.min(positions.length - 1, Math.max(0, next))]!);
+  }
+
+  const card = (
+    <div
+      role="dialog"
+      aria-label="Playback speed"
+      className={clsx(
+        "w-[84px] rounded-2xl border border-border bg-raised px-2.5 pt-4 pb-[18px] shadow-(--shadow-menu)",
+        placement === "sheet"
+          ? "relative z-30"
+          : "absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2",
+      )}
+    >
+      <div className="flex flex-col items-center gap-0.5">
+        <span aria-live="polite" className="font-display text-[20px] tabular">
+          {formatSpeed(player.rate)}×
+        </span>
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-fg-2">Speed</span>
+      </div>
+      <div
+        ref={track}
+        role="slider"
+        tabIndex={0}
+        aria-label="Playback speed"
+        aria-orientation="vertical"
+        aria-valuemin={options.min}
+        aria-valuemax={options.max}
+        aria-valuenow={current}
+        aria-valuetext={`${formatSpeed(player.rate)} times`}
+        className="relative mx-auto mt-3.5 h-[210px] w-7 cursor-pointer touch-none"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          setDragging(true);
+          change(valueFromY(event.clientY));
+        }}
+        onKeyDown={onKeyDown}
+      >
+        <span aria-hidden className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2 rounded-full bg-[#34343A]" />
+        <span
+          aria-hidden
+          className="absolute bottom-0 left-1/2 w-2 -translate-x-1/2 rounded-full bg-accent"
+          style={{ height: `${fraction * 100}%` }}
+        />
+        {positions.map((value, i) => (
+          <span
+            key={value}
+            data-speed-step
+            aria-hidden
+            className={clsx(
+              "absolute left-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full",
+              value <= current ? "bg-bg/55" : "bg-[#5A5A62]",
+            )}
+            style={{ top: `${(1 - i / Math.max(1, positions.length - 1)) * 100}%` }}
+          />
+        ))}
+        <span
+          data-speed-thumb
+          aria-hidden
+          className="absolute left-1/2 size-[22px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg shadow-[0_0_0_4px_rgb(var(--accent-rgb)/0.35),0_2px_6px_rgb(0_0_0/0.5)]"
+          style={{ top: `${fraction * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div ref={wrap} className="relative shrink-0">
       <button
@@ -105,40 +250,31 @@ export function SpeedButton({ className, align = "right" }: { className?: string
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className={clsx("tap h-10 rounded-full px-2.5 text-base font-semibold text-fg hover:bg-raised", className)}
+        className={clsx(
+          "tap h-10 rounded-full px-2.5 text-base font-semibold text-fg hover:bg-raised",
+          open && "bg-raised",
+          className,
+        )}
       >
         {formatSpeed(player.rate)}×
       </button>
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Playback speed"
-          className={clsx(
-            "absolute bottom-full z-20 mb-2 w-28 rounded-xl border border-border bg-raised p-3 shadow-(--shadow-menu)",
-            align === "right" ? "right-0" : "left-0",
-          )}
-        >
-          <div className="text-center text-base font-semibold tabular text-fg">{formatSpeed(player.rate)}×</div>
-          <div className="pt-1 text-center text-xs tabular text-fg-2">{formatSpeed(SPEED_MAX)}×</div>
-          {/* Native range rotated -90deg: bottom is min, top is max; arrow keys
-           * still work because the input itself stays horizontal. */}
-          <div className="relative mx-auto h-40 w-10">
-            <input
-              ref={slider}
-              type="range"
-              aria-label="Playback speed"
-              aria-orientation="vertical"
-              min={SPEED_MIN}
-              max={SPEED_MAX}
-              step={SPEED_STEP}
-              value={player.rate}
-              onChange={(event) => player.setRate(Number(event.target.value))}
-              className="absolute left-1/2 top-1/2 h-10 w-40 -translate-x-1/2 -translate-y-1/2 -rotate-90 accent-accent"
+      {open &&
+        (placement === "sheet" ? (
+          <>
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden
+              className="fixed inset-0 z-20 cursor-default bg-bg/60"
+              onClick={() => setOpen(false)}
             />
-          </div>
-          <div className="pb-1 text-center text-xs tabular text-fg-2">{formatSpeed(SPEED_MIN)}×</div>
-        </div>
-      )}
+            <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center rounded-t-2xl border-t border-border bg-surface pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+              {card}
+            </div>
+          </>
+        ) : (
+          card
+        ))}
     </div>
   );
 }

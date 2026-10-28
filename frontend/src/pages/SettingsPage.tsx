@@ -13,7 +13,7 @@ import {
 } from "react";
 import clsx from "clsx";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useListeningSettings, useUpdateSettings } from "../api/settings";
+import { speedPositions, useListeningSettings, useSpeedOptions, useUpdateSettings } from "../api/settings";
 import {
   baseLanguage,
   groupVoicesByLanguage,
@@ -26,8 +26,6 @@ import {
 import { Icon } from "../components/Icon";
 import { Switch } from "../components/Switch";
 import { formatSpeed } from "../player/PlayerProvider";
-
-const SPEEDS = [0.9, 0.95, 1, 1.05, 1.1, 1.15] as const;
 
 const SKIP_MIN = 5;
 const SKIP_MAX = 120;
@@ -341,6 +339,7 @@ function VoiceRow({
 export function SettingsPage() {
   const { settings, isPending } = useListeningSettings();
   const { update, status } = useUpdateSettings();
+  const speeds = speedPositions(useSpeedOptions().options);
   const { data: voices } = useVoices();
   const params = useParams<{ section?: string }>();
   const navigate = useNavigate();
@@ -482,8 +481,8 @@ export function SettingsPage() {
                   value={String(settings.speed)}
                   onChange={(value) => change("speed", { speed: Number(value) })}
                 >
-                  {(SPEEDS as readonly number[]).includes(settings.speed) ? (
-                    SPEEDS.map((value) => (
+                  {speeds.includes(settings.speed) ? (
+                    speeds.map((value) => (
                       <option key={value} value={String(value)}>
                         {formatSpeed(value)}×
                       </option>
@@ -491,7 +490,7 @@ export function SettingsPage() {
                   ) : (
                     <>
                       <option value={String(settings.speed)}>{formatSpeed(settings.speed)}×</option>
-                      {SPEEDS.map((value) => (
+                      {speeds.map((value) => (
                         <option key={value} value={String(value)}>
                           {formatSpeed(value)}×
                         </option>

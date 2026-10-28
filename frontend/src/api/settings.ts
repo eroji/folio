@@ -29,6 +29,62 @@ export const DEFAULT_SETTINGS: ListeningSettings = {
 
 export const settingsQueryKey = ["settings"] as const;
 
+/** Playback-speed grid from GET /me/speed-options (server config:
+ * TTS_SPEED_MIN/MAX/STEP). The fallback is the pinned TTS backend range. */
+export interface SpeedOptions {
+  min: number;
+  max: number;
+  step: number;
+}
+
+export const DEFAULT_SPEED_OPTIONS: SpeedOptions = { min: 0.9, max: 1.15, step: 0.05 };
+
+export const speedOptionsQueryKey = ["speed-options"] as const;
+
+/** The slider positions on the grid, both ends inclusive (six by default). */
+export function speedPositions(options: SpeedOptions = DEFAULT_SPEED_OPTIONS): number[] {
+  const positions: number[] = [];
+  for (let i = 0; options.min + i * options.step <= options.max + 1e-9; i += 1) {
+    positions.push(Number((options.min + i * options.step).toFixed(2)));
+  }
+  return positions;
+}
+
+/** Clamp into [min,max] and snap to the nearest grid position, float noise gone. */
+export function snapSpeed(value: number, options: SpeedOptions): number {
+  if (!Number.isFinite(value)) return options.min;
+  const clamped = Math.min(options.max, Math.max(options.min, value));
+  return Number((options.min + Math.round((clamped - options.min) / options.step) * options.step).toFixed(2));
+}
+
+export function useSpeedOptions() {
+  const query = useQuery({
+    queryKey: speedOptionsQueryKey,
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<SpeedOptions> => {
+      try {
+        return { ...DEFAULT_SPEED_OPTIONS, ...(await api.get<SpeedOptions>("/me/speed-options")) };
+      } catch {
+        return DEFAULT_SPEED_OPTIONS; // server without the endpoint: the pinned grid
+      }
+    },
+  });
+  return { ...query, options: query.data ?? DEFAULT_SPEED_OPTIONS };
+}
+
+/** Per-book speed memory: the speed last chosen for a book wins over the
+ * Settings default; a book without a stored speed starts at the default. */
+const BOOK_SPEED_PREFIX = "folio-book-speed-";
+
+export function readBookSpeed(bookId: string): number | null {
+  const stored = Number(localStorage.getItem(`${BOOK_SPEED_PREFIX}${bookId}`));
+  return Number.isFinite(stored) && stored > 0 ? stored : null;
+}
+
+export function writeBookSpeed(bookId: string, rate: number): void {
+  localStorage.setItem(`${BOOK_SPEED_PREFIX}${bookId}`, String(rate));
+}
+
 const SPEED_KEY = "folio-speed";
 const VOICE_PREFIX = "folio-voice-";
 

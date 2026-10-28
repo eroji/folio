@@ -145,13 +145,16 @@ describe("PlayerPage (phone)", () => {
     expect(screen.getByTestId("player-elapsed")).toBeTruthy();
   });
 
-  it("the speed popover opens left-aligned so it cannot overflow the viewport", async () => {
+  it("the speed card opens centered in a bottom sheet above the controls", async () => {
     stubMatchMedia(false);
     await renderAtPlayer();
     fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
     const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
-    expect(dialog.className).toContain("left-0");
-    expect(dialog.className).not.toContain("right-0");
+    const sheet = dialog.parentElement!; // fixed bottom sheet, card centered in it
+    expect(sheet.className).toContain("fixed");
+    expect(sheet.className).toContain("inset-x-0");
+    expect(sheet.className).toContain("bottom-0");
+    expect(sheet.className).toContain("justify-center");
     expect(within(dialog).getByRole("slider", { name: "Playback speed" })).toBeTruthy();
   });
 

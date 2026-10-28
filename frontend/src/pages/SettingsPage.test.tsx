@@ -33,6 +33,7 @@ const VOICES = {
 let serverSettings: ListeningSettings;
 let settingsGetFails: boolean;
 let putFails: boolean;
+let speedOptions = { min: 0.9, max: 1.15, step: 0.05 };
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -57,6 +58,7 @@ beforeEach(() => {
   serverSettings = { ...DEFAULT_SETTINGS };
   settingsGetFails = false;
   putFails = false;
+  speedOptions = { min: 0.9, max: 1.15, step: 0.05 };
   URL.createObjectURL = vi.fn(() => "blob:sample") as typeof URL.createObjectURL;
   URL.revokeObjectURL = vi.fn();
   vi.stubGlobal(
@@ -67,6 +69,7 @@ beforeEach(() => {
         return { ok: true, status: 200, blob: async () => new Blob(["opus-bytes"]) } as Response;
       }
       if (url.includes("/voices")) return jsonResponse(200, VOICES);
+      if (url.includes("/me/speed-options")) return jsonResponse(200, speedOptions);
       if (url.includes("/me/settings")) {
         if (init?.method === "PUT") {
           if (putFails) return jsonResponse(500, { error: { code: "server_error", message: "no" } });
@@ -185,6 +188,14 @@ describe("SettingsPage", () => {
 
     await waitFor(() => expect(settingsPutBodies()).toHaveLength(1));
     expect(settingsPutBodies()[0]).toEqual({ speed: 1.15 });
+  });
+
+  it("generates the speed options from the config grid", async () => {
+    speedOptions = { min: 0.9, max: 1.2, step: 0.1 };
+    renderSettings();
+    const speed = await screen.findByRole("combobox", { name: "Default playback speed" });
+    await waitFor(() => expect(optionLabels(speed)).toEqual(["0.9×", "1.0×", "1.1×", "1.2×"]));
+    expect(screen.getByRole("option", { name: "1.2×" })).toHaveProperty("value", "1.2");
   });
 
   it("rejects a skip interval outside 5–120 without saving it", async () => {

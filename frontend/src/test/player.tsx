@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Book, Chapter, Progress } from "../api/types";
 import type { AudioStatus, Segment } from "../api/audio";
-import { DEFAULT_SETTINGS, type ListeningSettings } from "../api/settings";
+import { DEFAULT_SETTINGS, DEFAULT_SPEED_OPTIONS, type ListeningSettings, type SpeedOptions } from "../api/settings";
 import { PlayerProvider, type PlayerContextValue } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 
@@ -64,6 +64,8 @@ export interface PlayerFixture {
   duration_s?: number;
   /** Override the listening settings the player reads (defaults apply). */
   settings?: Partial<ListeningSettings>;
+  /** The GET /me/speed-options grid (the pinned default applies). */
+  speedOptions?: SpeedOptions;
   /** The caller's saved progress on GET /books/{id} (null until set). */
   progress?: Progress | null;
   /** Overrides merged into the default book payload (e.g. narrator_voice). */
@@ -108,6 +110,9 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/me/speed-options")) {
+        return jsonResponse(fixture.speedOptions ?? DEFAULT_SPEED_OPTIONS);
+      }
       if (url.includes("/me/settings")) {
         return jsonResponse({ settings: { ...DEFAULT_SETTINGS, ...fixture.settings } });
       }

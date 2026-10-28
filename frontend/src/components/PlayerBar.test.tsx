@@ -34,6 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -78,8 +79,8 @@ describe("PlayerBar", () => {
     await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH1));
   });
 
-  it("speed button opens a slider popover that sets the rate, and the sleep menu sets the timer", async () => {
-    const getPlayer = await loadBar();
+  it("speed button opens the speed card with a vertical slider", async () => {
+    await loadBar();
     const speed = screen.getByRole("button", { name: "Playback speed, 1.0 times" });
     expect(speed.textContent).toBe("1.0×");
     expect(speed.getAttribute("aria-haspopup")).toBe("dialog");
@@ -88,19 +89,23 @@ describe("PlayerBar", () => {
     fireEvent.click(speed);
     const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
     expect(speed.getAttribute("aria-expanded")).toBe("true");
-    const slider = within(dialog).getByRole("slider", { name: "Playback speed" });
-    expect(slider).toHaveProperty("min", "0.9");
-    expect(slider).toHaveProperty("max", "1.15");
-    expect(slider).toHaveProperty("step", "0.05");
-    expect(slider.getAttribute("aria-orientation")).toBe("vertical");
-    expect(slider.className).toContain("-rotate-90"); // rotated native input, bottom → top
-    expect(document.activeElement).toBe(slider); // focused when opened
-    expect(within(dialog).getByText("1.15×")).toBeTruthy(); // end labels, max on top
-    expect(within(dialog).getByText("0.9×")).toBeTruthy();
+    expect(speed.className).toContain("bg-raised"); // raised fill while open
+    expect(dialog.className).toContain("w-[84px]"); // 84 px card, 20 px radius
+    expect(dialog.className).toContain("rounded-2xl");
+    expect(dialog.className).toContain("-translate-x-1/2"); // centered above the button
+    expect(within(dialog).getByText("1.0×")).toBeTruthy(); // the value: the only number shown
+    expect(within(dialog).getByText("Speed")).toBeTruthy(); // eyebrow
 
-    fireEvent.change(slider, { target: { value: "1.15" } });
-    await waitFor(() => expect(getPlayer().rate).toBe(1.15));
-    expect(screen.getByRole("button", { name: "Playback speed, 1.15 times" }).textContent).toBe("1.15×");
+    const slider = within(dialog).getByRole("slider", { name: "Playback speed" });
+    expect(slider.getAttribute("aria-orientation")).toBe("vertical");
+    expect(slider.getAttribute("aria-valuemin")).toBe("0.9");
+    expect(slider.getAttribute("aria-valuemax")).toBe("1.15");
+    expect(slider.getAttribute("aria-valuenow")).toBe("1");
+    expect(slider.getAttribute("aria-valuetext")).toBe("1.0 times");
+    expect(slider.className).toContain("h-[210px]"); // 210 px track
+    expect(dialog.querySelectorAll("[data-speed-step]")).toHaveLength(6); // dot per position
+    expect(dialog.querySelector("[data-speed-thumb]")).toBeTruthy();
+    expect(document.activeElement).toBe(slider); // focused when opened
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeNull());
@@ -109,7 +114,89 @@ describe("PlayerBar", () => {
     await screen.findByRole("dialog", { name: "Playback speed" });
     fireEvent.click(document.body); // outside click closes
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeNull());
+  });
 
+  it("the speed card moves one step with arrows, two with page keys, Home/End to the ends", async () => {
+    const getPlayer = await loadBar();
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
+    const slider = await screen.findByRole("slider", { name: "Playback speed" });
+    fireEvent.keyDown(slider, { key: "ArrowUp" });
+    expect(getPlayer().rate).toBe(1.05);
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    expect(getPlayer().rate).toBe(1.1);
+    fireEvent.keyDown(slider, { key: "ArrowDown" });
+    expect(getPlayer().rate).toBe(1.05);
+    fireEvent.keyDown(slider, { key: "PageDown" });
+    expect(getPlayer().rate).toBe(0.95);
+    fireEvent.keyDown(slider, { key: "End" });
+    expect(getPlayer().rate).toBe(1.15);
+    fireEvent.keyDown(slider, { key: "PageUp" }); // clamps at the top
+    expect(getPlayer().rate).toBe(1.15);
+    fireEvent.keyDown(slider, { key: "Home" });
+    expect(getPlayer().rate).toBe(0.9);
+    expect(screen.getByRole("button", { name: "Playback speed, 0.9 times" }).textContent).toBe("0.9×");
+  });
+
+  it("clicking the track jumps to the nearest step", async () => {
+    const getPlayer = await loadBar();
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
+    const slider = await screen.findByRole("slider", { name: "Playback speed" });
+    slider.getBoundingClientRect = () =>
+      ({
+        top: 0,
+        left: 0,
+        right: 28,
+        bottom: 210,
+        width: 28,
+        height: 210,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    fireEvent.pointerDown(slider, { clientY: 35 }); // 5/6 up → 1.108 → snaps to 1.1
+    expect(getPlayer().rate).toBe(1.1);
+    fireEvent.pointerDown(slider, { clientY: 210 }); // bottom of the track = min
+    expect(getPlayer().rate).toBe(0.9);
+  });
+
+  it("the speed card closes 3 s after the last change", async () => {
+    vi.useFakeTimers();
+    const getPlayer = renderPlayer(<PlayerBar />);
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
+    const slider = screen.getByRole("slider", { name: "Playback speed" });
+    fireEvent.keyDown(slider, { key: "ArrowUp" }); // 1.05, restarts the timer
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    fireEvent.keyDown(slider, { key: "ArrowUp" }); // 1.1, restarts it again
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2900);
+    });
+    expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeNull();
+    expect(getPlayer().rate).toBe(1.1);
+  });
+
+  it("the speed card positions come from the config grid", async () => {
+    installPlayerFetch({ speedOptions: { min: 0.9, max: 1.2, step: 0.1 } });
+    const getPlayer = await loadBar();
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
+    const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
+    const slider = within(dialog).getByRole("slider", { name: "Playback speed" });
+    expect(slider.getAttribute("aria-valuemax")).toBe("1.2");
+    expect(dialog.querySelectorAll("[data-speed-step]")).toHaveLength(4);
+    fireEvent.keyDown(slider, { key: "End" });
+    await waitFor(() => expect(getPlayer().rate).toBe(1.2));
+  });
+
+  it("the sleep menu sets the timer", async () => {
+    const getPlayer = await loadBar();
     fireEvent.click(screen.getByRole("button", { name: "Sleep timer" }));
     const menu = await screen.findByRole("menu", { name: "Sleep timer" });
     fireEvent.click(within(menu).getByRole("menuitemradio", { name: "30 minutes" }));
