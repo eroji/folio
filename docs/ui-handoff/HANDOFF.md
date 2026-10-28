@@ -26,7 +26,7 @@ The backend stays as it is except for the few data changes listed under "Data an
 | `brand/web/` | Favicon (ICO and SVG), Apple touch icon, PWA icons (192, 512, maskable 512), `site.webmanifest`, `head-snippet.html` → copy into `frontend/public/` and `index.html` |
 | `brand/svg/` | `folio-mark.svg` (bookmark mark, in-app logo), `folio-mark-mono.svg` (`currentColor`), `folio-logo.svg` (mark + "folio" for dark backgrounds), `folio-logo-on-light.svg`, `folio-wordmark.svg` (`currentColor`), `app-icon.svg` |
 | `brand/png/` | 1024 px mark and app icon, 1200 px logo, favicon PNGs |
-| `reference/desktop-*.html` | Desktop screens: home, library, book, book menu, book manage, edit details drawer, edit details with find metadata, player, search, upload, settings (playback, voices), account menu, admin voices, login |
+| `reference/desktop-*.html` | Desktop screens: home, library, book, book menu, book manage, edit details drawer, edit details with find metadata, player, player text size, speed slider, search, upload, settings (playback, voices), account menu, admin voices, login |
 | `reference/phone-*.html` | Phone screens: home, book, player, read along |
 | `screenshots/*.png` | A PNG of every reference file (same names), rendered with the real fonts: desktop at 1440 px wide (full page), phone at 390 × 844 (2×). Use these when you can't open the HTML; if a screenshot and this document disagree, this document wins |
 
@@ -191,8 +191,17 @@ Three regions: **sidebar** (left), **main pane** (scrolls), **player bar** (bott
 **Player bar** (72 px min, `--color-surface`, 1 px top border, a 3 px progress line along its top edge in accent over `--color-border`):
 - Left: previous chapter, back 15 s, **play/pause** (48 px white circle, dark icon), forward 30 s, next chapter, then "8:12 / 12:40" (13 px, secondary, tabular).
 - Middle: 32 px cover, chapter title (15 px, 600) and "Book title · Author" (13 px, secondary, ellipsis). The whole block is a link that opens the expanded player.
-- Right: speed as a text button ("1.25×", cycles 0.75→2.5 or opens a small menu), sleep timer (`Moon`; a small countdown badge when set), **stop and close** (`X`, secondary color), and **open player** (`ChevronUp`; becomes `ChevronDown` "Close player" on the player page).
-- **No narrator voice button.**
+- Right: speed as a text button ("1.15×") that opens the **Playback speed slider** — `reference/desktop-speed.html` (keeps the current vertical slider idea, polished):
+- The TTS backend supports **0.9× to 1.15× in steps of 0.05** (six positions). Build positions from config (`TTS_SPEED_MIN=0.9`, `TTS_SPEED_MAX=1.15`, `TTS_SPEED_STEP=0.05`), not hard-coded.
+- Opens above the speed button in the player bar (the button shows the current speed, e.g. "1.05×", and gets a raised fill while open; `aria-haspopup="dialog"`, `aria-expanded`). Closes on Esc, outside click, or 3 s after the last change.
+- **Card**: 84 px wide, centered above the speed button, raised fill, 20 px radius, 1 px border, menu shadow, padding 16 / 10 / 18.
+  - Top: the current value in Sora 20 px ("1.05×", tabular, `aria-live="polite"`), and under it an eyebrow "SPEED". **This is the only place a speed number appears**; there are no labels beside the track.
+  - **Track**: 210 px tall, 8 px wide pill in `#34343A`; the part **below** the thumb is filled with the accent.
+  - **Step dots**: a 4 px dot at each of the six positions on the track (dark at 55% on the filled part, `#5A5A62` on the empty part), so the snapping points are visible.
+  - **Thumb**: 22 px white circle with a 4 px accent halo at 35% and a small shadow.
+- **Behaviour**: drag, or click anywhere on the track to jump; the thumb snaps to the nearest step while dragging; Up/Right and Down/Left move one step, Home/End go to the ends, PageUp/PageDown move two steps. Changes apply immediately to playback. Implement as a real slider (`input type="range"` with `writing-mode: vertical-lr; direction: rtl`, or a custom element with `role="slider"`, `aria-orientation="vertical"`, `aria-valuemin/max/now`, `aria-valuetext="1.05 times"`).
+- The chosen speed is remembered for this book; new books start at the default speed from Settings.
+- Phone: the same slider, centered in a small bottom sheet above the player controls.
 
 **Player visibility rules** (carried over unchanged from the old handoff, applied to the bar):
 - The bar shows whenever a book is **loaded**, playing or paused. It never appears or disappears on play/pause.
@@ -315,6 +324,9 @@ Opened from the player bar (middle block or `ChevronUp`). The sidebar stays; the
 - **Left**: cover up to 360 px (14 px radius, shadow), then the chapter title (Sora 30 px) and "Chapter 3 · Book · Author" (secondary), centered.
 - **Right** (up to 620 px): tabs **UP NEXT / READ ALONG / ABOUT** (uppercase, 14 px, 700, 0.08em; selected tab white with a 2 px white underline, others secondary).
   - **Read along**: a small row with "Follows the narration", a text-size button and an "Auto-scroll on" pill. The text: past sentences at 38% white, the current sentence full white and larger, upcoming sentences at 62% white. The text scrolls inside its own area (the window never scrolls) and keeps the current sentence about a third from the top while auto-scroll is on. If the user scrolls, auto-scroll pauses and a "Back to current" pill appears.
+  - **Read-along header** (replaces the A− / A+ buttons and the "Auto-scroll on" text pill): "Follows the narration" on the left; on the right an **"Aa"** outlined pill (Sora 15 px, 700) and a 36 px round **auto-scroll toggle** (`ChevronsDown`; on = accent fill with a dark icon, off = transparent with a border; `aria-pressed`, tooltip "Auto-scroll: on/off").
+  - **Text size popover** (`reference/desktop-player-text-size.html`): opens below "Aa" (which gets a raised fill and a white border while open). 300 px, raised fill, 16 px radius. "Text size" with the current size name on the right ("Large"); a radio group of five "A" buttons drawn at 13 / 16 / 19 / 22 / 26 px inside one pill track (selected = white pill, dark letter): Small, Medium, Large, Extra large, Huge. Read-along body sizes for these steps: 17 / 19 / 22 / 25 / 28 px (current sentence +4 px). One secondary line "Used for read along in every book." Saved per user; the phone Read along uses the same five steps.
+  - **Fix in the current build**: sentence splitting attaches a closing quote to the start of the next sentence (lines begin with ’ or ’ ‘). Keep closing quotes and closing brackets with the sentence they end.
   - **Up next**: the remaining chapters of this book as chapter rows (same component as the book page).
   - **About**: the book's cover, title, author, short description and a link to the book page.
 - **Phone player**: full screen, no bottom nav or mini player. Header: `ChevronDown` (close), "NOW PLAYING" eyebrow, ⋮. Cover 236 px, chapter title and "Book · Ch. 3", the scrubber (accent) with times, then previous, back 15, **72 px white play/pause**, forward 30, next; then a speed pill and sleep. Bottom tabs UP NEXT / READ ALONG / ABOUT open their panel as a sheet over the player.
@@ -340,7 +352,7 @@ Opened from the player bar (middle block or `ChevronUp`). The sidebar stays; the
 Title "Settings", then two columns: on the left a vertical list of section buttons, **Playback** and **Voices** (44 px pills; selected = raised fill, primary text, 700; others transparent with secondary text). On the right **only the selected section's settings** are shown (max 760 px). Playback is selected by default. Implement as a vertical tab list (`role="tablist"`, `aria-orientation="vertical"`, `role="tab"` with `aria-selected`/`aria-controls`, `role="tabpanel"`, arrow keys move between tabs). Reflect the section in the URL (`/settings/playback`, `/settings/voices`) so it survives reload and can be linked. On phone the two buttons sit side by side above the content. Nothing else (no Appearance/Theme, no Account section).
 
 - **Playback** rows (bold title, secondary one-line explanation, control on the right, divider between rows):
-  - Default speed: pill select (0.75× to 2.5×).
+  - Default speed: pill select with the same values as the speed menu (0.9× to 1.15× in steps of 0.05; default 1.0×).
   - Skip back / Skip forward: a **stepper** (− value +, 5 to 120 seconds, step 5) followed by "sec". The player's skip labels use these values.
   - Auto-play next chapter, Speak chapter titles: **switches** (44×26 pill; on = accent track with a dark knob; off = `--color-off` track with a white knob; `role="switch"`).
 - **Voices**: one secondary line: "Your narrator for each language. You can still pick a different narrator for any book from its ⋮ menu." Then **one row per language: English, Japanese, Korean, Chinese.**
@@ -365,7 +377,7 @@ Replaces the current "Voice names" section. It uses **exactly the same styling a
 - **Voice row** (Settings row component):
   - Title: voice ID in monospace, 15 px, 600.
   - Description: usage, "Used by 74 books" / "Not used yet".
-  - Controls: 200 px pill input for the display name (placeholder "Display name"; empty shows the ID), a 40 px outlined round Preview (`Play`/`Pause`), and the **default control**:
+  - Controls: 200 px pill input for the display name (placeholder "Display name"; empty shows the ID), a 40 px outlined round Preview (`Play`/`Pause`), the **Instructions** pill, and the **default control**:
     - the language's default: accent-filled pill "✓ Default" (`role="radio"`, `aria-checked="true"`);
     - other voices: outlined pill "Set default" (`aria-checked="false"`); choosing it moves the default in that group and saves immediately.
   - Exactly one default per language. A language's first voice becomes its default automatically when it appears. This is the server-wide default (previously `TTS_VOICE_MAP`); a listener's own choice in Settings and a book's own narrator still override it.
@@ -374,7 +386,12 @@ Replaces the current "Voice names" section. It uses **exactly the same styling a
   - **Undo** is the "Unassign" pill only (no toast or popup). It returns the voice to Unassigned, clears its language override and keeps any display name it was given (shown again when it is re-assigned). If it was that language's default, the next voice in the group becomes the default. Voices whose language was detected automatically have no "Unassign" control.
   - Store the manual choice as `language_override` on the voice (null = use detection). Detection otherwise uses the same suffix rules as before (`-en`, `-ja`, `-kr`/`-ko`, `-zh`, or a `language` field from the server); all Chinese variants map to one **Chinese** group.
   - **No longer on the server** group: rows show a warning description ("Not on the TTS server · 1 book falls back to its language default") and a "Remove" pill instead of Preview and Default. If the removed voice was a language default, the next voice in that language becomes the default.
-- **Saving**: names save on blur or Enter; defaults save on click; errors appear under the row. No Save button.
+- **Speaking instructions** (per voice; sent to the TTS backend with every request for that voice) — kept compact so a long voice list stays readable:
+  - In each row's description, a second line with a `AlignLeft` icon and the instructions as **one italic line, truncated with an ellipsis**, or "No speaking instructions" in secondary text.
+  - An outlined **"Instructions"** pill (`Pencil`) between Preview and the Default control. Always the same label so every row's controls line up.
+  - Pressing it **expands an editor under that row only** (and collapses any other open editor): label "Speaking instructions for {display name}", a 4-row text area (18 px radius), and a footer line "Sent to the TTS server with every request for this voice · {count} / 1000" with **Preview** (speaks a sample with these instructions), **Cancel** and **Save** (white). While open, the Instructions pill gets a raised fill and a white border, `aria-expanded="true"`.
+  - Never show text areas for every voice at once. Empty instructions are allowed (the voice uses the server's default style).
+- **Saving**: names save on blur or Enter; defaults save on click; instructions save with the editor's Save button; errors appear under the row.
 - **Where names and grouping are used elsewhere**:
   - Settings → Voices: each language's dropdown lists **only that language's voices** by display name, with "Server default ({name})" first.
   - The book's Narrator voice dialog lists the book language's voices first, then "Other languages" collapsed.
