@@ -48,7 +48,7 @@ describe("PlayerPage (desktop)", () => {
       return node!;
     });
     expect(current.className).toContain("ra-current");
-    expect(current.getAttribute("style")).toBeNull(); // colour only, same size as the rest
+    expect(current.getAttribute("style")).toContain("font-size: 26px"); // 22px body + 4
     const past = document.querySelector(".ra-past");
     const next = document.querySelector(".ra-next");
     expect(past?.textContent).toContain(`One ${CH1}-seg0 here`);
@@ -161,14 +161,22 @@ describe("PlayerPage (phone)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Read along" }));
     const playback = await screen.findByRole("region", { name: "Playback" });
     expect(within(playback).getByRole("button", { name: "Play" })).toBeTruthy();
-    expect(within(playback).getByRole("button", { name: "Auto-scroll on" }).getAttribute("aria-pressed")).toBe("true");
+    const toggle = within(playback).getByRole("button", { name: "Auto-scroll" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(within(playback).getByRole("button", { name: "Back 15 seconds" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back to player" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Increase font size/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Decrease font size/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Text size" }).textContent).toBe("Aa");
+    expect(screen.queryByRole("button", { name: /^Increase font size/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Decrease font size/ })).toBeNull();
 
-    fireEvent.click(within(playback).getByRole("button", { name: "Auto-scroll on" }));
-    expect(within(playback).getByRole("button", { name: "Auto-scroll off" }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+
+    // The sheet's Aa control is the same five-step picker.
+    fireEvent.click(screen.getByRole("button", { name: "Text size" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Huge" }));
+    const box = document.querySelector('article[aria-label="Read along"]')!;
+    expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 28px");
 
     fireEvent.click(screen.getByRole("button", { name: "Back to player" }));
     await waitFor(() => expect(screen.queryByRole("region", { name: "Playback" })).toBeNull());

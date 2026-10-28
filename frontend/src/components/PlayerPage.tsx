@@ -14,7 +14,7 @@ import { BookCover } from "./BookCard";
 import { ChapterRow } from "./ChapterRow";
 import { Icon } from "./Icon";
 import { ChapterNavButton, ChapterScrubber, PlayButton, SkipButton, SleepButton, SpeedButton, iconButton } from "./PlayerControls";
-import { FontSizeButtons, ReadAlong, useReadAlongControls } from "./ReadAlong";
+import { AutoScrollToggle, ReadAlong, TextSizePicker, useReadAlongControls } from "./ReadAlong";
 import { ResumePrompt } from "./ResumePrompt";
 
 type PanelTab = "next" | "read" | "about";
@@ -280,7 +280,7 @@ function PhoneSheet({
               <span className="truncate text-sm text-fg-2">{book.title}</span>
             </span>
           </Link>
-          <FontSizeButtons controls={controls} />
+          <TextSizePicker step={controls.sizeStep} onStep={controls.setSizeStep} />
         </div>
         <PlayerTabs tab={tab} onSelect={onSelect} className="mt-1" />
       </div>
@@ -310,16 +310,7 @@ function PhoneSheet({
             <SkipButton direction="back" />
             <PlayButton size={60} />
             <SkipButton direction="forward" />
-            <button
-              type="button"
-              aria-label={`Auto-scroll ${controls.autoScroll ? "on" : "off"}`}
-              aria-pressed={controls.autoScroll}
-              title="Auto-scroll"
-              onClick={() => controls.setAutoScroll(!controls.autoScroll)}
-              className={clsx(iconButton, controls.autoScroll && "text-accent")}
-            >
-              <Icon name="ChevronsDown" size={22} />
-            </button>
+            <AutoScrollToggle value={controls.autoScroll} onChange={controls.setAutoScroll} />
           </div>
         </section>
       )}

@@ -1,5 +1,5 @@
 /** Read-along (handoff "Now playing, expanded"): the chapter as lyrics-style
- * sentences — already-read darker, the current one full white (same size),
+ * sentences — already-read darker, the current one full white and 4px larger,
  * upcoming lighter. The text scrolls inside its own area (never the window)
  * and keeps the current sentence about a third from the top while auto-scroll
  * is on; a manual scroll pauses the follow and shows "Back to current".
@@ -11,7 +11,8 @@ import clsx from "clsx";
 import { usePlayer, type PlayerContextValue } from "../player/usePlayer";
 import { Icon } from "./Icon";
 
-const SENTENCES = /[^.!?。！？…]+[.!?。！？…]*/g;
+/** Closing quotes/brackets stay with the sentence they end (handoff fix). */
+const SENTENCES = /[^.!?。！？…]+[.!?。！？…]*[\u2019\u201D"')\]}»]*/g;
 
 /** Sentence split for the read-along; handles punctuation without a trailing
  * space (CJK "。" / "！"). */
@@ -49,73 +50,128 @@ function activeSentenceIndex(all: Sentence[], spoken: number): number {
 }
 
 const SCROLL_ANIM_MS = 300; // ease-out animation toward the target
-const FONT_KEY = "folio-readalong-font-v2";
-/** Text-size steps around the 20px (phone 19px) default. The default is the
- * middle step so both A− and A+ work out of the box. */
-const FONT_SCALES = [0.9, 1, 1.15];
-const DEFAULT_FONT_STEP = 1;
+const SIZE_KEY = "folio-readalong-size";
+/** The five text-size steps (handoff "Text size popover"): read-along body px,
+ * picker glyph px, and names. Default is Large; the current sentence is +4px. */
+export const TEXT_SIZES = [17, 19, 22, 25, 28];
+const SIZE_GLYPHS = [13, 16, 19, 22, 26];
+export const SIZE_NAMES = ["Small", "Medium", "Large", "Extra large", "Huge"];
+export const DEFAULT_SIZE_STEP = 2;
+const CURRENT_BUMP_PX = 4;
 
 export interface ReadAlongControls {
   autoScroll: boolean;
   setAutoScroll: (value: boolean) => void;
-  fontStep: number;
-  decFont: () => void;
-  incFont: () => void;
+  sizeStep: number;
+  setSizeStep: (step: number) => void;
 }
 
 export function useReadAlongControls(): ReadAlongControls {
   const [autoScroll, setAutoScroll] = useState(true);
-  const [fontStep, setFontStep] = useState(() => {
-    const raw = localStorage.getItem(FONT_KEY);
+  const [sizeStep, setStep] = useState(() => {
+    const raw = localStorage.getItem(SIZE_KEY);
     const stored = raw === null ? NaN : Number(raw);
-    const valid = Number.isInteger(stored) && stored >= 0 && stored < FONT_SCALES.length;
-    return valid ? stored : DEFAULT_FONT_STEP;
+    const valid = Number.isInteger(stored) && stored >= 0 && stored < TEXT_SIZES.length;
+    return valid ? stored : DEFAULT_SIZE_STEP;
   });
-  const stepFont = useCallback(
-    (delta: number) =>
-      setFontStep((current) => {
-        const next = Math.max(0, Math.min(FONT_SCALES.length - 1, current + delta));
-        localStorage.setItem(FONT_KEY, String(next));
-        return next;
-      }),
-    [],
-  );
-  return {
-    autoScroll,
-    setAutoScroll,
-    fontStep,
-    decFont: () => stepFont(-1),
-    incFont: () => stepFont(1),
-  };
+  const setSizeStep = useCallback((step: number) => {
+    localStorage.setItem(SIZE_KEY, String(step));
+    setStep(step);
+  }, []);
+  return { autoScroll, setAutoScroll, sizeStep, setSizeStep };
 }
 
-/** The A− / A+ pair used by the read-along toolbar and the phone sheet strip. */
-export function FontSizeButtons({ controls }: { controls: ReadAlongControls }) {
-  const step = ` (size ${controls.fontStep + 1} of ${FONT_SCALES.length})`;
-  const button = "tap grid size-9 shrink-0 place-items-center rounded-full border border-border text-fg hover:bg-raised disabled:opacity-40";
+/** The "Aa" pill with the text-size popover below it (handoff
+ * reference/desktop-player-text-size.html). */
+export function TextSizePicker({ step, onStep }: { step: number; onStep: (step: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const onClick = (event: MouseEvent) => {
+      if (!wrap.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("click", onClick);
+    };
+  }, [open]);
   return (
-    <>
+    <span ref={wrap} className="relative inline-flex shrink-0">
       <button
         type="button"
-        aria-label={`Decrease font size${step}`}
-        title="Decrease font size"
-        onClick={controls.decFont}
-        disabled={controls.fontStep === 0}
-        className={button}
+        aria-label="Text size"
+        title="Text size"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className={clsx(
+          "tap h-9 rounded-full border px-3.5 font-display text-[15px] leading-none text-fg",
+          open ? "border-fg bg-raised" : "border-border hover:bg-raised",
+        )}
       >
-        <Icon name="TextDecrease" size={18} />
+        Aa
       </button>
-      <button
-        type="button"
-        aria-label={`Increase font size${step}`}
-        title="Increase font size"
-        onClick={controls.incFont}
-        disabled={controls.fontStep === FONT_SCALES.length - 1}
-        className={button}
-      >
-        <Icon name="TextIncrease" size={18} />
-      </button>
-    </>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Text size"
+          className="absolute top-[46px] right-0 z-20 flex w-[300px] flex-col gap-3 rounded-2xl border border-border bg-raised p-4 shadow-(--shadow-menu)"
+        >
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-bold text-fg">Text size</span>
+            <span className="text-[13px] text-fg-2">{SIZE_NAMES[step]}</span>
+          </div>
+          <div role="radiogroup" aria-label="Text size" className="flex items-center justify-between rounded-full border border-border bg-bg p-1">
+            {SIZE_GLYPHS.map((glyph, i) => (
+              <button
+                key={glyph}
+                type="button"
+                role="radio"
+                aria-checked={i === step}
+                aria-label={SIZE_NAMES[i]}
+                onClick={() => {
+                  onStep(i);
+                  setOpen(false);
+                }}
+                style={{ fontSize: glyph }}
+                className={clsx(
+                  "tap grid h-11 w-12 place-items-center rounded-full font-bold leading-none",
+                  i === step ? "bg-fg text-on-fg" : "text-fg hover:bg-border",
+                )}
+              >
+                A
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-fg-2">Used for read along in every book.</span>
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** 36px round auto-scroll toggle: accent fill when on, outlined when off. */
+export function AutoScrollToggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      aria-label="Auto-scroll"
+      title={`Auto-scroll: ${value ? "on" : "off"}`}
+      aria-pressed={value}
+      onClick={() => onChange(!value)}
+      className={clsx(
+        "tap grid size-9 shrink-0 place-items-center rounded-full",
+        value ? "bg-accent text-on-fg" : "border border-border text-fg hover:bg-raised",
+      )}
+    >
+      <Icon name="ChevronsDown" size={20} />
+    </button>
   );
 }
 
@@ -242,24 +298,16 @@ export function ReadAlong({
     player.seekSegment(sentence.segmentIdx, ((sentence.start - segment.char_start) / span) * seconds);
   };
 
-  const scale = FONT_SCALES[c.fontStep] ?? 1;
-  const base = (phone ? 19 : 20) * scale;
+  const base = TEXT_SIZES[c.sizeStep] ?? TEXT_SIZES[DEFAULT_SIZE_STEP]!;
 
   return (
     <div className={clsx("relative mx-auto flex min-h-0 w-full max-w-[620px] flex-col", className)}>
       {toolbar && (
         <div className="flex shrink-0 items-center justify-between gap-3 pb-3">
           <span className="text-sm text-fg-2">Follows the narration</span>
-          <div className="flex items-center gap-1.5">
-            <FontSizeButtons controls={c} />
-            <button
-              type="button"
-              aria-pressed={c.autoScroll}
-              onClick={() => c.setAutoScroll(!c.autoScroll)}
-              className="tap h-9 rounded-full bg-raised px-3.5 text-sm font-semibold text-fg hover:bg-border"
-            >
-              Auto-scroll {c.autoScroll ? "on" : "off"}
-            </button>
+          <div className="flex items-center gap-2">
+            <TextSizePicker step={c.sizeStep} onStep={c.setSizeStep} />
+            <AutoScrollToggle value={c.autoScroll} onChange={c.setAutoScroll} />
           </div>
         </div>
       )}
@@ -270,7 +318,7 @@ export function ReadAlong({
         onKeyDown={markManual}
         lang={player.book?.language}
         aria-label="Read along"
-        data-font-step={c.fontStep}
+        data-size-step={c.sizeStep}
         className={clsx(
           "min-h-0 flex-1 overflow-y-auto overscroll-contain",
           phone ? "no-scrollbar" : "scroll-thin",
@@ -288,6 +336,7 @@ export function ReadAlong({
             <p
               key={`${sentence.start}-${sentence.segmentIdx}`}
               aria-current={i === active ? "true" : undefined}
+              style={i === active ? { fontSize: base + CURRENT_BUMP_PX } : undefined}
               onClick={() => tapSentence(sentence)}
               className={clsx("m-0 cursor-pointer", i < active ? "ra-past" : i === active ? "ra-current" : "ra-next")}
             >
