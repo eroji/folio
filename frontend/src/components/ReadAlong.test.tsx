@@ -1,15 +1,24 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import TextDecrease from "@material-symbols/svg-400/rounded/text_decrease.svg?react";
-import TextIncrease from "@material-symbols/svg-400/rounded/text_increase.svg?react";
 import { installMockEventSource } from "../test/eventsource";
 import { BOOK_ID, CH1, installPlayerFetch, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import type { PlayerContextValue } from "../player/usePlayer";
-import { ReadAlong, splitSentences } from "./ReadAlong";
+import { ReadAlong, SIZE_NAMES, TEXT_SIZES, splitSentences } from "./ReadAlong";
 
 describe("splitSentences", () => {
   it("splits on Latin and CJK sentence punctuation", () => {
     expect(splitSentences("One two. Three four! Five。Six")).toEqual(["One two.", "Three four!", "Five。", "Six"]);
+  });
+
+  it("keeps closing quotes and brackets with the sentence they end", () => {
+    expect(splitSentences("He said \u2018gone.\u2019 Then left. \u201CAway!\u201D Done.")).toEqual([
+      "He said \u2018gone.\u2019",
+      "Then left.",
+      "\u201CAway!\u201D",
+      "Done.",
+    ]);
+    expect(splitSentences("It ended.\u2019 Next day.")).toEqual(["It ended.\u2019", "Next day."]);
+    expect(splitSentences("She left (at noon). Then came back.")).toEqual(["She left (at noon).", "Then came back."]);
   });
 });
 
@@ -40,7 +49,7 @@ describe("ReadAlong", () => {
     return document.querySelector<HTMLElement>('article[aria-label="Read along"]')!;
   }
 
-  it("marks the current sentence bright, past dimmer, upcoming mid — all the same size", async () => {
+  it("marks the current sentence bright and 4px larger, past dimmer, upcoming mid", async () => {
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer);
     act(() => {
@@ -49,7 +58,7 @@ describe("ReadAlong", () => {
     const current = document.querySelector('[aria-current="true"]');
     expect(current?.textContent).toContain(`Two ${CH1}-seg1 here`);
     expect(current?.className).toContain("ra-current");
-    expect(current?.getAttribute("style")).toBeNull(); // the highlight is colour only
+    expect(current?.getAttribute("style")).toContain("font-size: 26px"); // 22px body + 4
     expect(document.querySelector(".ra-past")).toBeTruthy();
     expect(document.querySelector(".ra-next")).toBeTruthy();
     expect(document.querySelector(".sr-only")?.textContent).toContain(`Two ${CH1}-seg1 here`);
@@ -181,16 +190,18 @@ describe("ReadAlong", () => {
     expect(starts.length).toBeGreaterThan(before); // and the follow resumed
   });
 
-  it("the auto-scroll pill turns the follow off and on", async () => {
+  it("the round auto-scroll toggle turns the follow off and on", async () => {
     vi.useFakeTimers();
     const { starts } = stubFrames();
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer, true);
     stubPanelGeometry(panel());
-    const pill = screen.getByRole("button", { name: "Auto-scroll on" });
-    expect(pill.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(pill);
-    expect(screen.getByRole("button", { name: "Auto-scroll off" }).getAttribute("aria-pressed")).toBe("false");
+    const toggle = screen.getByRole("button", { name: "Auto-scroll" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("title")).toBe("Auto-scroll: on");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("title")).toBe("Auto-scroll: off");
     const before = starts.length;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
@@ -201,8 +212,8 @@ describe("ReadAlong", () => {
       el.dispatchEvent(new Event("timeupdate"));
     });
     expect(starts.length).toBe(before); // no follow while off
-    fireEvent.click(screen.getByRole("button", { name: "Auto-scroll off" }));
-    expect(screen.getByRole("button", { name: "Auto-scroll on" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("follows the current sentence on segment change without toggling auto-scroll", async () => {
@@ -225,7 +236,7 @@ describe("ReadAlong", () => {
     expect(scrollTop()).toBeCloseTo(900 - 400 / 3, 0);
   });
 
-  it("reads at the default size in a 620px column that scrolls internally", () => {
+  it("reads at the default Large size in a 620px column that scrolls internally", () => {
     renderPlayer(<ReadAlong />);
     const box = panel();
     const column = box.parentElement!;
@@ -236,63 +247,87 @@ describe("ReadAlong", () => {
     expect(box.className).toContain("overflow-y-auto");
     expect(box.className).toContain("scroll-thin"); // desktop shows the styled scrollbar
     expect(box.className).not.toContain("no-scrollbar");
+    expect(box.dataset.sizeStep).toBe("2");
     const text = box.firstElementChild as HTMLElement;
-    expect(text.getAttribute("style")).toContain("font-size: 20px");
+    expect(text.getAttribute("style")).toContain("font-size: 22px");
     expect(text.getAttribute("style")).toContain("line-height: 1.55");
   });
 
-  it("hides the scrollbar and uses the phone sizes in the sheet", () => {
+  it("hides the scrollbar in the phone sheet and uses the same five steps", () => {
     renderPlayer(<ReadAlong phone />);
     const box = panel();
     expect(box.className).toContain("no-scrollbar");
     expect(box.className).not.toContain("scroll-thin");
-    expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 19px");
+    expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 22px");
+    fireEvent.click(screen.getByRole("button", { name: "Text size" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Small" }));
+    expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 17px");
   });
 
-  it("the font-size buttons start at the default (both directions available), clamp, and persist", () => {
+  it("the header has the Aa pill and the round toggle, no A−/A+", () => {
+    renderPlayer(<ReadAlong />);
+    expect(screen.getByRole("button", { name: "Text size" }).textContent).toBe("Aa");
+    expect(screen.getByRole("button", { name: "Auto-scroll" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Increase font size/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Decrease font size/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Auto-scroll (on|off)$/ })).toBeNull();
+  });
+
+  it("the text size popover opens below Aa and closes on toggle, outside click or Escape", async () => {
+    renderPlayer(<ReadAlong />);
+    const trigger = screen.getByRole("button", { name: "Text size" });
+    expect(trigger.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(await screen.findByRole("dialog", { name: "Text size" })).toBeTruthy();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("dialog", { name: "Text size" })).toBeNull();
+    fireEvent.click(trigger);
+    await screen.findByRole("dialog", { name: "Text size" });
+    fireEvent.click(document.body); // outside click
+    expect(screen.queryByRole("dialog", { name: "Text size" })).toBeNull();
+    fireEvent.click(trigger);
+    await screen.findByRole("dialog", { name: "Text size" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Text size" })).toBeNull();
+  });
+
+  it("the popover lists five named steps with the current one selected", () => {
+    renderPlayer(<ReadAlong />);
+    fireEvent.click(screen.getByRole("button", { name: "Text size" }));
+    const dialog = screen.getByRole("dialog", { name: "Text size" });
+    expect(dialog.className).toContain("w-[300px]");
+    expect(dialog.className).toContain("rounded-2xl");
+    expect(dialog.className).toContain("bg-raised");
+    expect(screen.getByText("Text size", { selector: "[role='dialog'] span" })).toBeTruthy();
+    expect(screen.getByText("Used for read along in every book.")).toBeTruthy();
+    const radios = screen.getAllByRole("radio");
+    expect(radios.map((r) => r.getAttribute("aria-label"))).toEqual(SIZE_NAMES);
+    expect(radios.map((r) => (r as HTMLElement).style.fontSize)).toEqual(["13px", "16px", "19px", "22px", "26px"]);
+    expect(radios.map((r) => r.getAttribute("aria-checked"))).toEqual(["false", "false", "true", "false", "false"]);
+    expect(dialog.textContent).toContain("Large"); // current name on the right
+  });
+
+  it("choosing a step resizes the body, marks the radio, and persists", () => {
     renderPlayer(<ReadAlong />);
     const box = panel();
-    const inc = screen.getByRole("button", { name: /^Increase font size/ }) as HTMLButtonElement;
-    const dec = screen.getByRole("button", { name: /^Decrease font size/ }) as HTMLButtonElement;
-    expect(box.dataset.fontStep).toBe("1");
-    expect(dec.disabled).toBe(false);
-    expect(inc.disabled).toBe(false);
-    fireEvent.click(inc);
-    expect(box.dataset.fontStep).toBe("2");
-    expect(localStorage.getItem("folio-readalong-font-v2")).toBe("2");
-    expect(inc.disabled).toBe(true);
-    fireEvent.click(inc); // stays clamped at the top
-    expect(box.dataset.fontStep).toBe("2");
-    fireEvent.click(dec);
-    expect(box.dataset.fontStep).toBe("1");
-    fireEvent.click(dec);
-    expect(box.dataset.fontStep).toBe("0");
-    expect(dec.disabled).toBe(true);
-    fireEvent.click(dec);
-    expect(box.dataset.fontStep).toBe("0");
-    expect(localStorage.getItem("folio-readalong-font-v2")).toBe("0");
-  });
-
-  it("the accessible labels name the current step", () => {
-    renderPlayer(<ReadAlong />);
-    expect(screen.getByRole("button", { name: "Increase font size (size 2 of 3)" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Decrease font size (size 2 of 3)" })).toBeTruthy();
-  });
-
-  it("uses the text_decrease / text_increase glyphs, not plus and minus", () => {
-    const glyphPath = (Glyph: typeof TextIncrease) =>
-      render(<Glyph />).container.querySelector("path")!.getAttribute("d");
-    renderPlayer(<ReadAlong />);
-    const dec = screen.getByRole("button", { name: /^Decrease font size/ });
-    const inc = screen.getByRole("button", { name: /^Increase font size/ });
-    expect(dec.querySelector("path")?.getAttribute("d")).toBe(glyphPath(TextDecrease));
-    expect(inc.querySelector("path")?.getAttribute("d")).toBe(glyphPath(TextIncrease));
+    for (const [i, name] of SIZE_NAMES.entries()) {
+      fireEvent.click(screen.getByRole("button", { name: "Text size" })); // the pick closes the popover
+      fireEvent.click(screen.getByRole("radio", { name }));
+      expect((box.firstElementChild as HTMLElement).getAttribute("style")).toContain(`font-size: ${TEXT_SIZES[i]}px`);
+      expect(box.dataset.sizeStep).toBe(String(i));
+      expect(localStorage.getItem("folio-readalong-size")).toBe(String(i));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Text size" }));
+    expect(screen.getByRole("radio", { name: "Huge" }).getAttribute("aria-checked")).toBe("true");
   });
 
   it("restores the persisted text size on mount", () => {
-    localStorage.setItem("folio-readalong-font-v2", "2");
+    localStorage.setItem("folio-readalong-size", "4");
     renderPlayer(<ReadAlong />);
-    expect(panel().dataset.fontStep).toBe("2");
+    expect(panel().dataset.sizeStep).toBe("4");
+    expect((panel().firstElementChild as HTMLElement).getAttribute("style")).toContain("font-size: 28px");
   });
 
   it("tapping a sentence seeks there and prepares that segment", async () => {
