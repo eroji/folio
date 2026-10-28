@@ -1,9 +1,10 @@
 /** Admin → Voices (HANDOFF §Admin · Voices): flat Settings-style rows on the
  * page background, grouped by language — languages that have books first
  * (most books), then other languages alphabetically, then Unassigned, then
- * No longer on the server. Names and narration instructions save on blur/Enter,
- * defaults on click, language assignment moves the row at once; there is no
- * Save button. */
+ * No longer on the server. Names save on blur/Enter, defaults on click,
+ * language assignment moves the row at once. Speaking instructions stay
+ * compact: one truncated italic line per row plus an "Instructions" pill that
+ * expands an editor under that row only (one open at a time). */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
@@ -12,6 +13,7 @@ import {
   useSetVoiceDefault,
   useUpdateVoice,
   useVoices,
+  voiceLabel,
   voiceLanguage,
   voiceOnServer,
   type Voice,
@@ -41,7 +43,14 @@ const smallPill =
 const nameInput =
   "tap h-10 w-[200px] max-w-full rounded-full border border-border bg-raised px-[18px] text-base text-fg placeholder:text-fg-2";
 const instructionsInput =
-  "tap mb-4 w-full resize-y rounded-[18px] border border-border bg-raised px-[18px] py-2.5 text-base leading-[1.55] text-fg placeholder:text-fg-2";
+  "tap w-full resize-y rounded-[18px] border border-border bg-raised px-[18px] py-3 text-[15px] leading-[1.55] text-fg placeholder:text-fg-2";
+const editorPill =
+  "tap inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border bg-transparent px-4 text-base font-semibold text-fg hover:bg-raised disabled:opacity-50";
+const savePill =
+  "tap inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-fg px-[18px] text-base font-bold text-on-fg hover:opacity-90 disabled:opacity-50";
+
+/** Max characters of per-voice speaking instructions (mirrors the backend). */
+const INSTRUCTIONS_MAX = 1000;
 
 /** "2 min ago" style age of the last voice fetch. */
 function timeAgo(ms: number): string {
@@ -102,17 +111,79 @@ function buildGroups(items: Voice[]): VoiceGroup[] {
   return groups;
 }
 
-/** One voice row. Normal language groups get name + Preview + default
- * radio; Unassigned gets Preview + an "Assign language…" select; voices
- * the server dropped get a warning line + Remove instead of Preview/Default. */
-function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | null; isDefault: boolean }) {
+/** The expanded instructions editor under one row. Mounts with the draft
+ * initialised from the saved value; closing discards it. Save PATCHes the
+ * draft (empty clears) and closes; a failure keeps it open and the row shows
+ * the error. */
+function InstructionsEditor({
+  voice,
+  update,
+  onClose,
+}: {
+  voice: Voice;
+  update: ReturnType<typeof useUpdateVoice>;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(voice.instructions ?? "");
+  return (
+    <div className="flex flex-col gap-2.5 pb-4">
+      <label htmlFor={`instructions-${voice.id}`} className="text-[13px] font-semibold">
+        Speaking instructions for {voiceLabel(voice)}
+      </label>
+      <textarea
+        id={`instructions-${voice.id}`}
+        rows={4}
+        maxLength={INSTRUCTIONS_MAX}
+        placeholder="Warm, expressive, speak with a brisk pace."
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        className={instructionsInput}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        <span className="text-xs text-fg-2">
+          Sent to the TTS server with every request for this voice · {draft.length} / {INSTRUCTIONS_MAX}
+        </span>
+        <div className="flex items-center gap-2">
+          <VoicePreview voice={voice.id} instructions={draft} label="Preview" />
+          <button type="button" onClick={onClose} className={editorPill}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={update.isPending}
+            onClick={() => update.mutate({ id: voice.id, instructions: draft.trim() }, { onSuccess: onClose })}
+            className={savePill}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One voice row. Normal language groups get name + Preview + Instructions
+ * pill + default radio; Unassigned gets Preview + an "Assign language…"
+ * select; voices the server dropped get a warning line + Remove instead of
+ * Preview/Default. Only assigned, on-server rows show instructions. */
+function VoiceRow({
+  voice,
+  code,
+  isDefault,
+  open,
+  onOpenChange,
+}: {
+  voice: Voice;
+  code: string | null;
+  isDefault: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const update = useUpdateVoice();
   const setDefault = useSetVoiceDefault();
   const remove = useDeleteVoice();
   const [name, setName] = useState(voice.display_name ?? "");
   useEffect(() => setName(voice.display_name ?? ""), [voice.display_name]);
-  const [instructions, setInstructions] = useState(voice.instructions ?? "");
-  useEffect(() => setInstructions(voice.instructions ?? ""), [voice.instructions]);
 
   const gone = !voiceOnServer(voice);
   const unassigned = !gone && code === null;
@@ -122,12 +193,6 @@ function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | nul
   function commitName(): void {
     const next = name.trim();
     if (next !== (voice.display_name ?? "").trim()) update.mutate({ id: voice.id, display_name: next });
-  }
-
-  function commitInstructions(): void {
-    const next = instructions.trim();
-    if (next === (voice.instructions ?? "").trim()) return;
-    update.mutate({ id: voice.id, instructions: next }, { onError: () => setInstructions(voice.instructions ?? "") });
   }
 
   return (
@@ -144,20 +209,30 @@ function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | nul
             ) : unassigned ? (
               "Assign a language to name it and offer it to listeners"
             ) : (
-              <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                {books > 0 ? `Used by ${countBooks(books)}` : "Not used yet"}
-                {voice.language_overridden && (
-                  <button
-                    type="button"
-                    aria-label={`Unassign ${voice.id}`}
-                    disabled={update.isPending}
-                    onClick={() => update.mutate({ id: voice.id, language_override: null })}
-                    className={smallPill}
-                  >
-                    <Icon name="RotateCcw" size={14} />
-                    Unassign
-                  </button>
-                )}
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                  {books > 0 ? `Used by ${countBooks(books)}` : "Not used yet"}
+                  {voice.language_overridden && (
+                    <button
+                      type="button"
+                      aria-label={`Unassign ${voice.id}`}
+                      disabled={update.isPending}
+                      onClick={() => update.mutate({ id: voice.id, language_override: null })}
+                      className={smallPill}
+                    >
+                      <Icon name="RotateCcw" size={14} />
+                      Unassign
+                    </button>
+                  )}
+                </span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <Icon name="AlignLeft" size={14} />
+                  {voice.instructions ? (
+                    <span className="min-w-0 truncate italic">{voice.instructions}</span>
+                  ) : (
+                    "No speaking instructions"
+                  )}
+                </span>
               </span>
             )}
           </span>
@@ -182,6 +257,22 @@ function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | nul
             />
           )}
           {!gone && <VoicePreview voice={voice.id} />}
+          {!gone && !unassigned && (
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-label={`Speaking instructions for ${voice.id}`}
+              title="Speaking instructions"
+              onClick={() => onOpenChange(!open)}
+              className={clsx(
+                "tap inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-base font-semibold text-fg hover:bg-raised",
+                open ? "border-fg bg-raised" : "border-border",
+              )}
+            >
+              <Icon name="Pencil" size={16} />
+              Instructions
+            </button>
+          )}
           {gone ? (
             <button
               type="button"
@@ -236,24 +327,7 @@ function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | nul
           )}
         </div>
       </div>
-      {!gone && (
-        <textarea
-          aria-label={`Narration instructions for ${voice.id}`}
-          rows={2}
-          maxLength={500}
-          placeholder="Warm, expressive, speak with a brisk pace."
-          value={instructions}
-          onChange={(event) => setInstructions(event.target.value)}
-          onBlur={commitInstructions}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              commitInstructions();
-            }
-          }}
-          className={instructionsInput}
-        />
-      )}
+      {open && !gone && <InstructionsEditor voice={voice} update={update} onClose={() => onOpenChange(false)} />}
       {failed && (
         <p role="alert" className="pb-3 text-sm text-danger">
           Couldn’t save — {failed.message}
@@ -263,7 +337,17 @@ function VoiceRow({ voice, code, isDefault }: { voice: Voice; code: string | nul
   );
 }
 
-function GroupBlock({ group, defaults }: { group: VoiceGroup; defaults: Record<string, string> }) {
+function GroupBlock({
+  group,
+  defaults,
+  openId,
+  setOpenId,
+}: {
+  group: VoiceGroup;
+  defaults: Record<string, string>;
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
+}) {
   const heading = (
     <>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 pb-2 pt-6">
@@ -274,7 +358,14 @@ function GroupBlock({ group, defaults }: { group: VoiceGroup; defaults: Record<s
         <span className="text-sm text-fg-2">{group.note ?? countVoices(group.voices.length)}</span>
       </div>
       {group.voices.map((voice) => (
-        <VoiceRow key={voice.id} voice={voice} code={group.code} isDefault={group.code !== null && defaults[group.code] === voice.id} />
+        <VoiceRow
+          key={voice.id}
+          voice={voice}
+          code={group.code}
+          isDefault={group.code !== null && defaults[group.code] === voice.id}
+          open={openId === voice.id}
+          onOpenChange={(next) => setOpenId(next ? voice.id : null)}
+        />
       ))}
     </>
   );
@@ -290,6 +381,7 @@ function GroupBlock({ group, defaults }: { group: VoiceGroup; defaults: Record<s
 export function AdminVoices() {
   const refresh = useRefreshVoices();
   const { data, dataUpdatedAt } = useVoices();
+  const [openId, setOpenId] = useState<string | null>(null);
   const items = (data?.items ?? []).filter((voice) => voice.id !== "tts");
   const groups = buildGroups(items);
   const onServer = items.filter(voiceOnServer).length;
@@ -346,7 +438,7 @@ export function AdminVoices() {
         />
       )}
       {groups.map((group) => (
-        <GroupBlock key={group.key} group={group} defaults={defaults} />
+        <GroupBlock key={group.key} group={group} defaults={defaults} openId={openId} setOpenId={setOpenId} />
       ))}
     </section>
   );
