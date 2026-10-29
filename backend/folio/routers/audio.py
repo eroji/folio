@@ -31,7 +31,9 @@ _last_touch: dict[str, float] = {}
 
 class PrepareBody(BaseModel):
     segment_id: UUID
-    count: int | None = Field(default=None, ge=0, le=100)
+    # A player prefetches its whole chapter on playback start; chapters stay
+    # well under this, so the cap only rejects junk (see PlayerProvider).
+    count: int | None = Field(default=None, ge=0, le=2000)
     voice: str | None = Field(default=None, min_length=1, max_length=64)
 
 

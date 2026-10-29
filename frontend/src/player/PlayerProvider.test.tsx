@@ -49,6 +49,49 @@ describe("PlayerProvider", () => {
     expect(played).toContain(getPlayer().elements[0]);
   });
 
+  it("queues the rest of the chapter once playback starts, once per chapter", async () => {
+    prepareCalls = installPlayerFetch({
+      segmentsByChapter: { [CH1]: makeSegments(CH1, 12), [CH2]: makeSegments(CH2, 12) },
+      settings: { voices: { en: "danny-en" } },
+    }).prepareCalls;
+    const getPlayer = renderPlayer();
+    await waitFor(() => expect(getPlayer().settings.voices.en).toBe("danny-en"));
+    await loadAndPlay(getPlayer);
+    const chapterCalls = () => prepareCalls.filter((call) => call.count > TTS_LOOKAHEAD);
+    await waitFor(() => expect(chapterCalls()).toHaveLength(1));
+    expect(chapterCalls()[0]).toEqual({ segment_id: `${CH1}-seg0`, count: 12, voice: "danny-en" });
+
+    act(() => {
+      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().index).toBe(1));
+    expect(chapterCalls()).toHaveLength(1); // the next segment does not re-queue the chapter
+
+    await act(async () => {
+      await getPlayer().goToChapter(CH2);
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(chapterCalls()).toHaveLength(2); // a new chapter queues its own remainder
+    expect(chapterCalls()[1]).toEqual({ segment_id: `${CH2}-seg0`, count: 12, voice: "danny-en" });
+  });
+
+  it("reloadVoice queues the chapter again for the new voice", async () => {
+    prepareCalls = installPlayerFetch({
+      segmentsByChapter: { [CH1]: makeSegments(CH1, 12), [CH2]: makeSegments(CH2, 12) },
+    }).prepareCalls;
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const chapterCalls = () => prepareCalls.filter((call) => call.count > TTS_LOOKAHEAD);
+    await waitFor(() => expect(chapterCalls()).toHaveLength(1));
+
+    act(() => {
+      getPlayer().reloadVoice(BOOK_ID);
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    await waitFor(() => expect(chapterCalls()).toHaveLength(2));
+    expect(chapterCalls()[1]?.segment_id).toBe(`${CH1}-seg0`);
+  });
+
   it("hands off to the second element on ended without reloading the source", async () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
