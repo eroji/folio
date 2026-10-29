@@ -281,6 +281,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         s.playing = true;
         s.preparing = false;
         s.error = null;
+        prefetchChapter();
         preloadNext();
         bump();
       })
@@ -322,13 +323,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (toppingUp.current) return;
     toppingUp.current = true;
     try {
-      // Book narrator wins over the per-language preference (server: book →
-      // listener preference → server default). Pins are keyed by base language.
-      const voice =
-        s.book.narrator_voice ??
-        settingsRef.current.voices[baseLanguage(s.book.language)] ??
-        undefined;
-      const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, voice);
+      const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, effectiveVoice(s.book));
       s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
       preloadNext();
     } catch (error) {
@@ -338,6 +333,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     pump();
     bump();
+  }
+
+  /** Book narrator wins over the per-language preference (server: book →
+   * listener preference → server default). Pins are keyed by base language. */
+  function effectiveVoice(book: Book): string | undefined {
+    return book.narrator_voice ?? settingsRef.current.voices[baseLanguage(book.language)] ?? undefined;
+  }
+
+  /** Once audio actually starts, queue the rest of the chapter in the
+   * background: the lookahead only covers the next few segments, so a listener
+   * who keeps playing would otherwise wait on the queue at every boundary.
+   * The backend slices from the current segment (and keeps it PRIORITY_NOW),
+   * so `count` = the chapter's segment length covers the chapter. Statuses are
+   * deliberately ignored — the normal top-up still merges the lookahead. */
+  const prefetchedChapter = useRef<string | null>(null);
+  function prefetchChapter() {
+    const book = s.book;
+    const chapter = s.chapters[s.chapterIdx];
+    const segment = s.segments[s.index];
+    if (!book || !chapter || !segment || prefetchedChapter.current === chapter.id) return;
+    prefetchedChapter.current = chapter.id;
+    void prepareAudio(book.id, segment.id, s.segments.length, effectiveVoice(book)).catch(
+      () => {
+        prefetchedChapter.current = null; // silent; retried when the next segment starts
+      },
+    );
   }
 
   async function openChapter(idx: number, autoplay: boolean) {
@@ -560,6 +581,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.time = offset;
     silence();
     s.status = {};
+    prefetchedChapter.current = null; // the new voice has to be synthesized for the whole chapter
     // A playing listener buffers the lookahead before resuming; a paused one
     // reloads paused and starts normally when the user presses play.
     s.prebuffering = wasPlaying;

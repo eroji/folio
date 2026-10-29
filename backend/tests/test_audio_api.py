@@ -18,6 +18,7 @@ from folio.main import create_app
 from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
 from folio.routers import admin as admin_module
 from folio.tts.cache import cache_key, cache_path
+from folio.tts.queue import PRIORITY_LOOKAHEAD, PRIORITY_NOW
 from folio.tts.text import normalize_speech_text
 
 
@@ -100,6 +101,33 @@ async def test_prepare_queues_window_and_is_idempotent(
     )
     assert [i["segment_id"] for i in again.json()["items"]] == [str(s.id) for s in segments]
     assert len(db.scalars(select(SegmentAudio)).all()) == 3  # no duplicate rows
+
+
+async def test_prepare_accepts_a_whole_chapter_beyond_the_old_cap(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    """A player prefetching its chapter asks for every remaining segment."""
+    book, segments = _book_with_segments(db, count=150)
+    response = await auth_client.post(
+        f"/api/v1/books/{book.id}/audio/prepare",
+        json={"segment_id": str(segments[7].id), "count": len(segments)},
+        headers=csrf(auth_client),
+    )
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert [item["segment_id"] for item in items] == [str(s.id) for s in segments[7:]]
+    rows = db.scalars(select(SegmentAudio)).all()
+    assert len(rows) == len(segments) - 7  # the rest of the chapter is queued
+    priority = {row.segment_id: row.priority for row in rows}
+    assert priority[segments[7].id] == PRIORITY_NOW  # the current segment goes first
+    assert [priority[s.id] for s in segments[8:]] == [PRIORITY_LOOKAHEAD] * (len(segments) - 8)
+
+    too_big = await auth_client.post(
+        f"/api/v1/books/{book.id}/audio/prepare",
+        json={"segment_id": str(segments[0].id), "count": 2001},
+        headers=csrf(auth_client),
+    )
+    assert too_big.status_code == 422
 
 
 async def test_prepare_returns_ready_url_and_duration(
