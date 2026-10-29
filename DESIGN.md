@@ -66,6 +66,9 @@
   position; `X` stops, saves and unloads; cross-device positions show "Paused ·
   last played on {device}" and a ResumePrompt. One `<audio>` element app-wide —
   bar, mini player, `/player` page and phone player all drive the same state.
+  When playback actually starts, the player queues the remainder of the current
+  chapter in the background (current segment priority first, the rest as
+  lookahead), keeping the normal 6-segment top-up for immediate playback.
   The speed text button opens the 84px vertical speed card (value + SPEED,
   210px track, step dots, halo thumb); its grid comes from config
   (`TTS_SPEED_MIN/MAX/STEP`, served by `/me/speed-options`), values always show
