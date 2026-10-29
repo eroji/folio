@@ -11,7 +11,6 @@ import DarkMode from "@material-symbols/svg-400/rounded/dark_mode.svg?react";
 import Delete from "@material-symbols/svg-400/rounded/delete.svg?react";
 import DragIndicator from "@material-symbols/svg-400/rounded/drag_indicator.svg?react";
 import Edit from "@material-symbols/svg-400/rounded/edit.svg?react";
-import Forward from "@material-symbols/svg-400/rounded/forward.svg?react";
 import FormatAlignLeft from "@material-symbols/svg-400/rounded/format_align_left.svg?react";
 import GraphicEq from "@material-symbols/svg-400/rounded/graphic_eq.svg?react";
 import GridView from "@material-symbols/svg-400/rounded/grid_view.svg?react";
@@ -59,7 +58,6 @@ const OUTLINED = {
   TextDecrease,
   TextIncrease,
   RotateCcw: Replay,
-  RotateCw: Forward,
   Gauge: Speed,
   Moon: DarkMode,
   Speech: RecordVoiceOver,

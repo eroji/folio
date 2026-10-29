@@ -173,9 +173,15 @@ function DesktopPlayer({ book }: { book: Book }) {
   return (
     <div className="mx-auto grid h-full min-h-0 w-full max-w-[1080px] grid-cols-1 gap-12 overflow-hidden pt-6 lg:grid-cols-[340px_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col items-center gap-6">
-        <span className="relative block aspect-[2/3] w-full max-w-[300px] self-start overflow-hidden rounded-xl shadow-(--shadow-cover)">
-          <BookCover book={book} showPlaceholderText={false} className="absolute inset-0 h-full w-full" />
-        </span>
+        <Link
+          to={`/books/${book.id}`}
+          aria-label={`Open ${book.title}`}
+          className="block w-full max-w-[300px] self-start no-underline"
+        >
+          <span className="relative block aspect-[2/3] w-full overflow-hidden rounded-xl shadow-(--shadow-cover)">
+            <BookCover book={book} showPlaceholderText={false} className="absolute inset-0 h-full w-full" />
+          </span>
+        </Link>
         <div className="flex flex-col items-center gap-1.5 text-center">
           <h1 className="font-display text-2xl" lang={book.language}>
             {player.chapter?.title}
@@ -341,9 +347,15 @@ function PhonePlayer({ book }: { book: Book }) {
         <PhoneMoreMenu />
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-6 px-4">
-        <span className="relative mx-auto block aspect-[2/3] w-[236px] shrink-0 overflow-hidden rounded-lg shadow-(--shadow-cover)">
-          <BookCover book={book} showPlaceholderText={false} className="absolute inset-0 h-full w-full" />
-        </span>
+        <Link
+          to={`/books/${book.id}`}
+          aria-label={`Open ${book.title}`}
+          className="mx-auto block shrink-0 no-underline"
+        >
+          <span className="relative block aspect-[2/3] w-[236px] overflow-hidden rounded-lg shadow-(--shadow-cover)">
+            <BookCover book={book} showPlaceholderText={false} className="absolute inset-0 h-full w-full" />
+          </span>
+        </Link>
         <div className="flex flex-col items-center gap-1.5 text-center">
           <h1 className="font-display text-xl" lang={book.language}>
             {player.chapter?.title}

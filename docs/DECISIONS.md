@@ -295,3 +295,5 @@ One line each: decision, why, what it costs.
 - Read along now has five sizes (17/19/22/25/28 px, default Large) behind an Aa popover and a round accent auto-scroll toggle; the current sentence is +4 px (handoff reversal of the earlier uniform-size request). Sentence splitting carries closing quotes/brackets with the sentence they end, fixing lines that began with a stray ’.
 
 - Admin voice instructions are edited in a compact per-row editor (one open at a time) with a 1000-character limit, saved via PATCH `instructions`; unassigned and removed voices have no editor. Previews accept the saved or draft instruction so the sample reflects the style.
+- Home Continue covers link to `/books/{id}` like every other cover, and the player surfaces' covers link to the book too (supersedes the Phase 5 (D) click-intercept resume); costs: resuming from Home is one extra tap on the book page.
+- The Forward skip renders the same Material Replay glyph as Back, mirrored with `-scale-x-100`, instead of the arrow-shaped Forward icon; costs: one more className, and `RotateCw` left the icon map.

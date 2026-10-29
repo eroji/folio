@@ -1,8 +1,7 @@
 /** Home (Direction D §4): filter chips, the Continue listening, Next chapters
  * and Recently added shelves from GET /me/home, and a "Browse by genre" block
- * of genre shelves from GET /books?group=genre. Clicking a Continue card resumes
- * playback in place; its href still points at /player so the card works without
- * JS (docs/DECISIONS.md). */
+ * of genre shelves from GET /books?group=genre. A Continue card's cover and
+ * title both link to the book; playback resumes from there (docs/DECISIONS.md). */
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
@@ -249,19 +248,15 @@ export function HomePage() {
   const continueRow = useCarouselRow(
     items.map((item) => (
       <div key={item.book.id} className={clsx("flex min-w-0 shrink-0 flex-col gap-2.5", cardWidth)}>
-        <a
-          href={`/player?book=${item.book.id}&chapter=${item.progress.chapter_id}`}
+        <Link
+          to={`/books/${item.book.id}`}
           aria-label={`${item.book.title}, ${
             item.progress.finished_at
               ? "finished"
               : item.progress.percent > 0
                 ? `${Math.round(item.progress.percent)}% listened`
                 : "not started"
-          }, resume`}
-          onClick={(event) => {
-            event.preventDefault();
-            void start(item.book.id, item.progress.chapter_id);
-          }}
+          }`}
           className="rounded-md no-underline"
         >
           <Cover
@@ -269,7 +264,7 @@ export function HomePage() {
             percent={item.progress.finished_at ? null : Math.round(item.progress.percent)}
             finished={Boolean(item.progress.finished_at)}
           />
-        </a>
+        </Link>
         <CardText book={item.book} meta={continueMeta(item)} />
       </div>
     )),

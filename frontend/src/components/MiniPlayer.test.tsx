@@ -1,8 +1,9 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installMockEventSource } from "../test/eventsource";
-import { BOOK_ID, installPlayerFetch, renderPlayer, stubMedia } from "../test/player";
+import { BOOK_ID, CH1, installPlayerFetch, renderPlayer, stubMedia } from "../test/player";
+import type { AudioStatus } from "../api/audio";
 import { MiniPlayer } from "./MiniPlayer";
 
 function Where() {
@@ -62,5 +63,23 @@ describe("MiniPlayer", () => {
     await waitFor(() => expect(getPlayer().playing).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "Back 15 seconds" }));
     await waitFor(() => expect(getPlayer().chapterElapsed).toBe(0));
+  });
+
+  it("shows Preparing audio… instead of the book title while buffering", async () => {
+    vi.useFakeTimers();
+    const fixture: { statuses: Record<string, AudioStatus> } = { statuses: { [`${CH1}-seg0`]: "generating" } };
+    installPlayerFetch(fixture);
+    const getPlayer = await loadMini();
+    const mini = screen.getByRole("region", { name: "Now playing" });
+    expect(within(mini).queryByRole("status")).toBeNull();
+    expect(within(mini).getByText("Dune")).toBeTruthy();
+
+    await act(async () => {
+      getPlayer().toggle();
+    });
+    expect(getPlayer().preparing).toBe(true);
+    expect(within(mini).getByRole("status").textContent).toBe("Preparing audio…");
+    expect(within(mini).queryByText("Dune")).toBeNull();
+    expect(within(mini).getByText("Chapter One")).toBeTruthy(); // the chapter title stays
   });
 });

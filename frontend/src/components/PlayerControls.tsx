@@ -39,7 +39,8 @@ export function PlayButton({ size }: { size: 40 | 44 | 48 | 60 | 72 }) {
   );
 }
 
-/** RotateCcw / RotateCw; the accessible name carries the configured seconds. */
+/** Both directions use the Replay glyph — forward is the same glyph mirrored
+ * horizontally, never a different icon; the name carries the seconds. */
 export function SkipButton({ direction }: { direction: "back" | "forward" }) {
   const player = usePlayer();
   const seconds = direction === "back" ? player.settings.skip_back : player.settings.skip_forward;
@@ -52,7 +53,7 @@ export function SkipButton({ direction }: { direction: "back" | "forward" }) {
       onClick={direction === "back" ? player.skipBack : player.skipForward}
       className={iconButton}
     >
-      <Icon name={direction === "back" ? "RotateCcw" : "RotateCw"} size={22} />
+      <Icon name="RotateCcw" size={22} className={direction === "forward" ? "-scale-x-100" : undefined} />
     </button>
   );
 }

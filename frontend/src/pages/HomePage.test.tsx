@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -187,26 +187,26 @@ describe("HomePage", () => {
     });
   });
 
-  it("resumes playback when a Continue card is clicked, without navigating", async () => {
+  it("links the Continue cover to the book without starting playback", async () => {
     stubMedia();
     mockHome();
     renderHome();
     const shelf = await screen.findByRole("region", { name: "Continue listening" });
-    const card = within(shelf).getByRole("link", { name: "Dune, 38% listened, resume" });
-    expect(card.getAttribute("href")).toBe(`/player?book=${BOOK_ID}&chapter=${CH1}`);
+    const card = within(shelf).getByRole("link", { name: "Dune, 38% listened" });
+    expect(card.getAttribute("href")).toBe(`/books/${BOOK_ID}`);
     // The percent pill lives on Home, top-right, at the larger size.
     const pill = within(card).getByTestId("cover-percent");
     expect(pill.textContent).toBe("38%");
     expect(pill.className).toContain("top-1.5");
     expect(pill.className).toContain("right-1.5");
     expect(pill.className).toContain("text-base");
-    fireEvent.click(card);
-    await vi.waitFor(() => {
-      const call = vi
-        .mocked(fetch)
-        .mock.calls.find(([url]) => String(url).includes(`/books/${BOOK_ID}/chapters/${CH1}/segments`));
-      expect(call).toBeTruthy();
+    // The title still goes to the book as well.
+    expect(within(shelf).getByRole("link", { name: "Dune" }).getAttribute("href")).toBe(`/books/${BOOK_ID}`);
+    await act(async () => {
+      fireEvent.click(card);
     });
+    // No playback: the click never loads the book or prepares audio.
+    expect(vi.mocked(fetch).mock.calls.every(([url]) => !String(url).includes("/audio/prepare"))).toBe(true);
     // Still on Home: the shelves remain rendered and nothing navigated.
     expect(screen.getByRole("region", { name: "Next chapters" })).toBeTruthy();
   });

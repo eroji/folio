@@ -31,7 +31,13 @@ export function MiniPlayer() {
         <BookCover book={book} showPlaceholderText={false} className="aspect-[2/3] w-8 shrink-0 rounded-xs" />
         <span className="flex min-w-0 flex-col text-left">
           <span className="truncate text-md font-semibold text-fg">{player.chapter?.title}</span>
-          <span className="truncate text-sm text-fg-2">{book.title}</span>
+          {player.preparing ? (
+            <span role="status" className="truncate text-sm text-fg-2">
+              Preparing audio…
+            </span>
+          ) : (
+            <span className="truncate text-sm text-fg-2">{book.title}</span>
+          )}
         </span>
       </Link>
       <SkipButton direction="back" />

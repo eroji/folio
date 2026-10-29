@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installMockEventSource } from "../test/eventsource";
 import { BOOK_ID, CH1, CH2, installPlayerFetch, makeProgress, renderPlayer, stubMedia } from "../test/player";
+import type { AudioStatus } from "../api/audio";
 import { deviceLabel } from "../api/progress";
 import { PlayerBar } from "./PlayerBar";
 import type { PlayerContextValue } from "../player/usePlayer";
@@ -77,6 +78,43 @@ describe("PlayerBar", () => {
     await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
     fireEvent.click(screen.getByRole("button", { name: "Previous chapter" }));
     await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH1));
+  });
+
+  it("the forward skip mirrors the back glyph instead of using a different icon", async () => {
+    await loadBar();
+    const pathD = (name: string) =>
+      screen.getByRole("button", { name }).querySelector("path")!.getAttribute("d");
+    expect(pathD("Forward 30 seconds")).toBe(pathD("Back 15 seconds"));
+    const forward = screen.getByRole("button", { name: "Forward 30 seconds" }).querySelector("svg")!;
+    expect(forward.getAttribute("class")).toContain("-scale-x-100");
+    expect(
+      screen.getByRole("button", { name: "Back 15 seconds" }).querySelector("svg")!.getAttribute("class") ?? "",
+    ).not.toContain("-scale-x-100");
+  });
+
+  it("replaces the subtitle with Preparing audio… while buffering, then restores it", async () => {
+    vi.useFakeTimers();
+    const fixture: { statuses: Record<string, AudioStatus> } = { statuses: { [`${CH1}-seg0`]: "generating" } };
+    installPlayerFetch(fixture);
+    const getPlayer = await loadBar();
+    const bar = screen.getByRole("region", { name: "Now playing" });
+    expect(within(bar).queryByRole("status")).toBeNull();
+    expect(within(bar).getByText("Dune · Frank Herbert")).toBeTruthy();
+
+    await act(async () => {
+      getPlayer().toggle();
+    });
+    expect(getPlayer().preparing).toBe(true);
+    expect(within(bar).getByRole("status").textContent).toBe("Preparing audio…");
+    expect(within(bar).getByText("Chapter One")).toBeTruthy(); // the chapter title stays
+
+    fixture.statuses![`${CH1}-seg0`] = "ready";
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(getPlayer().playing).toBe(true);
+    expect(within(bar).queryByRole("status")).toBeNull();
+    expect(within(bar).getByText("Dune · Frank Herbert")).toBeTruthy();
   });
 
   it("speed button opens the speed card with a vertical slider", async () => {

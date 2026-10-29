@@ -75,6 +75,11 @@ describe("PlayerPage (desktop)", () => {
     expect(within(panel).getByRole("link", { name: "Open book" }).getAttribute("href")).toBe(`/books/${BOOK_ID}`);
   });
 
+  it("the large cover links to the book page", async () => {
+    await renderAtPlayer();
+    expect(screen.getByRole("link", { name: "Open Dune" }).getAttribute("href")).toBe(`/books/${BOOK_ID}`);
+  });
+
   it("leaves no side panel or focus-mode remnants", async () => {
     await renderAtPlayer();
     expect(screen.queryByRole("complementary", { name: "Now playing" })).toBeNull();
@@ -143,6 +148,12 @@ describe("PlayerPage (phone)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
     await waitFor(() => expect(getPlayer().playing).toBe(true));
     expect(screen.getByTestId("player-elapsed")).toBeTruthy();
+  });
+
+  it("the 236 px cover links to the book page", async () => {
+    stubMatchMedia(false);
+    await renderAtPlayer();
+    expect(screen.getByRole("link", { name: "Open Dune" }).getAttribute("href")).toBe(`/books/${BOOK_ID}`);
   });
 
   it("the speed card opens centered in a bottom sheet above the controls", async () => {
