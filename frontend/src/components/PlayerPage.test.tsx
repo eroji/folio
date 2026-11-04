@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installMockEventSource } from "../test/eventsource";
 import { BOOK_ID, CH1, CH2, installPlayerFetch, renderPlayer, stubMedia } from "../test/player";
@@ -12,6 +13,11 @@ function stubMatchMedia(matches: boolean): void {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }));
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="path">{location.pathname}</span>;
 }
 
 async function renderAtPlayer(): Promise<() => import("../player/usePlayer").PlayerContextValue> {
@@ -204,12 +210,29 @@ describe("PlayerPage (phone)", () => {
     expect(within(panel).getByRole("button", { name: /Chapter Two/ })).toBeTruthy();
   });
 
-  it("⋮ stops and unloads the book", async () => {
+  /** Opens ⋮ → Stop and close at `entries` and waits for the book to unload. */
+  async function stopAndClose(entries: string[]): Promise<void> {
     stubMatchMedia(false);
-    const getPlayer = await renderAtPlayer();
+    const getPlayer = renderPlayer(
+      <>
+        <PlayerPage />
+        <LocationProbe />
+      </>,
+      entries,
+    );
+    await waitFor(() => expect(getPlayer().book).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "More options" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Stop and close" }));
     await waitFor(() => expect(getPlayer().book).toBeNull());
-    expect(screen.getByText("Nothing to play")).toBeTruthy();
+  }
+
+  it("⋮ Stop and close returns to the page the player was opened from", async () => {
+    await stopAndClose([`/books/${BOOK_ID}`, `/player?book=${BOOK_ID}&chapter=${CH1}`]);
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe(`/books/${BOOK_ID}`));
+  });
+
+  it("⋮ Stop and close on a direct load falls back to the book", async () => {
+    await stopAndClose([`/player?book=${BOOK_ID}&chapter=${CH1}`]);
+    await waitFor(() => expect(screen.getByTestId("path").textContent).toBe(`/books/${BOOK_ID}`));
   });
 });

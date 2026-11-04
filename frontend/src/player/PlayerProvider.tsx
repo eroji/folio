@@ -159,6 +159,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const els = useMemo(() => [new Audio(), new Audio()] as const, []);
   const sleepTimer = useRef<number | null>(null);
   const saveTimer = useRef<number | null>(null);
+  /** The last page before /player, so "Stop and close" can return to it. */
+  const lastPath = useRef<string | null>(null);
 
   const activeEl = () => (s.active === 0 ? els[0] : els[1]);
   const idleEl = () => (s.active === 0 ? els[1] : els[0]);
@@ -547,6 +549,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   function stop() {
+    const bookId = s.book?.id;
     silence();
     s.intent = false;
     s.preparing = false;
@@ -562,7 +565,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.error = null;
     s.resumePrompt = null;
     s.lastDevice = null;
-    if (location.search) navigate(location.pathname, { replace: true }); // /player must not reload the book
+    if (location.pathname === "/player") {
+      // "Stop and close" returns to the page the listener opened the player from;
+      // a direct load has no entry to return to, so fall back to the book.
+      navigate(lastPath.current ?? (bookId ? `/books/${bookId}` : "/library"), { replace: true });
+    } else if (location.search) {
+      navigate(location.pathname, { replace: true }); // /player must not reload the book
+    }
     bump();
   }
 
@@ -849,6 +858,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const syncBookId = book?.id;
   const syncChapterId = s.chapters[s.chapterIdx]?.id;
+  useEffect(() => {
+    if (location.pathname !== "/player") lastPath.current = location.pathname + location.search;
+  }, [location]);
   useEffect(() => {
     if (location.pathname !== "/player" || !syncBookId) return;
     const search = new URLSearchParams({ book: syncBookId });
