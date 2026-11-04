@@ -28,6 +28,10 @@ os.environ.setdefault("FOLIO_LDAP_ADMIN_GROUP", "cn=folio-admin,dc=test")
 os.environ.setdefault("FOLIO_LDAP_USER_GROUP", "cn=folio-user,dc=test")
 # No test hits the metadata providers unless it opts in (monkeypatch metadata_online).
 os.environ.setdefault("METADATA_ONLINE", "false")
+# No test reaches a real TTS engine either: an unreachable url leaves voice
+# discovery with no list, so a requested voice is trusted and no clip is keyed
+# by a real engine's audio.
+os.environ.setdefault("TTS_BASE_URL", "http://tts-harness.test/v1")
 
 import httpx
 import psycopg

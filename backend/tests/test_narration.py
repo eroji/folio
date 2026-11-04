@@ -79,6 +79,11 @@ def test_get_or_synthesize_passes_instructions_to_the_client(
     again, cached = get_or_synthesize(db, settings, client, "hi", "ashley-en", "Warm tone.")
     assert cached is True and len(client.instructions) == 2
     assert again.cache_key == cache_key(
-        settings.tts_model, "ashley-en", settings.tts_format, "hi", "Warm tone."
+        settings.tts_model,
+        "ashley-en",
+        settings.tts_format,
+        "hi",
+        "Warm tone.",
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
     )
     assert Path(row.path).is_file()

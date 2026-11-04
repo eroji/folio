@@ -1,7 +1,7 @@
 """Content-addressed audio cache: keys, paths, synthesis and LRU eviction.
 
-A segment is synthesized once per (model, voice, format, normalized text,
-narration instruction); the key deliberately excludes playback speed because
+A segment is synthesized once per (endpoint, model, voice, format, normalized
+text, narration instruction); the key deliberately excludes playback speed because
 speed is a browser ``playbackRate`` only (spec: Backend contract). Files live under
 ``DATA_DIR/audio/<key[:2]>/<key>.<ext>``.
 """
@@ -28,13 +28,20 @@ if TYPE_CHECKING:
 _RECENT = timedelta(minutes=10)  # never evict a file created in the last 10 minutes
 
 
-def cache_key(model: str, voice: str, fmt: str, text: str, instructions: str = "") -> str:
-    """sha256 of ``model|voice|fmt|text[|instructions]`` (speed is absent by design).
+def cache_key(
+    model: str, voice: str, fmt: str, text: str, instructions: str = "", endpoint: str = ""
+) -> str:
+    """sha256 of ``[endpoint|]model|voice|fmt|text[|instructions]``.
 
-    Empty instructions are not appended: keys stay exactly what they were
-    before narration existed, so clearing the instruction re-hits the cache.
+    The endpoint is part of the seed because two engines serve different audio
+    under the same voice id: without it, switching ``TTS_BASE_URL`` replays the
+    old engine's clips (and any id the new engine substitutes stays poisoned
+    under that id). Empty instructions/endpoint are not appended, so keys
+    without them are unchanged.
     """
     seed = f"{model}|{voice}|{fmt}|{text}"
+    if endpoint:
+        seed = f"{endpoint}|{seed}"
     if instructions:
         seed += f"|{instructions}"
     return hashlib.sha256(seed.encode()).hexdigest()
@@ -64,7 +71,14 @@ def get_or_synthesize(
 ) -> tuple[Audio, bool]:
     """Return ``(audio_row, was_cached)``; a cache hit makes no HTTP call."""
     normalized = normalize_speech_text(text)
-    key = cache_key(settings.tts_model, voice, settings.tts_format, normalized, instructions)
+    key = cache_key(
+        settings.tts_model,
+        voice,
+        settings.tts_format,
+        normalized,
+        instructions,
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
+    )
     row = session.get(Audio, key)
     if row is not None and Path(row.path).exists():
         row.last_played_at = datetime.now(UTC)

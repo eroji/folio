@@ -45,7 +45,13 @@ def _book_with_segments(db: Session, count: int = 2) -> tuple[Book, list[Segment
 
 
 def _audio(db: Session, settings: Settings, text: str, voice: str = "ashley-en") -> Audio:
-    key = cache_key(settings.tts_model, voice, settings.tts_format, normalize_speech_text(text))
+    key = cache_key(
+        settings.tts_model,
+        voice,
+        settings.tts_format,
+        normalize_speech_text(text),
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
+    )
     path = cache_path(settings, key, settings.tts_format)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(SILENT_OPUS)

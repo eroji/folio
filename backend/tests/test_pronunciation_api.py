@@ -255,7 +255,11 @@ def test_cache_key_changes_with_a_rule_and_prepare_requeues(
     book = _book(db)
     segment = _segment(db, book)
     raw_key = cache_key(
-        settings.tts_model, "ashley-en", settings.tts_format, normalize_speech_text(segment.text)
+        settings.tts_model,
+        "ashley-en",
+        settings.tts_format,
+        normalize_speech_text(segment.text),
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
     )
     _seed_audio(db, settings, raw_key)
     window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
@@ -269,6 +273,7 @@ def test_cache_key_changes_with_a_rule_and_prepare_requeues(
         "ashley-en",
         settings.tts_format,
         normalize_speech_text(apply_rules(segment.text, [rule])),
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
     )
     assert corrected_key != raw_key  # the rule changes what the segment hashes to
 

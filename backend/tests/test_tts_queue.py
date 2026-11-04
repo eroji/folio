@@ -71,7 +71,13 @@ def _rows(db: Session) -> list[SegmentAudio]:
 
 def _seed_audio(db: Session, settings: Settings, text: str, voice: str = "ashley-en") -> Audio:
     """Put a clip in the cache the way get_or_synthesize would."""
-    key = cache_key(settings.tts_model, voice, settings.tts_format, normalize_speech_text(text))
+    key = cache_key(
+        settings.tts_model,
+        voice,
+        settings.tts_format,
+        normalize_speech_text(text),
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
+    )
     path = cache_path(settings, key, settings.tts_format)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(SILENT_OPUS)
@@ -116,6 +122,9 @@ class _FakeClient:
 class _Synth:
     def __init__(self, captured: list[str | None] | None = None) -> None:
         self.captured = captured if captured is not None else []
+
+    def list_voices(self) -> list[Voice]:
+        return []  # no engine list: prepare trusts the requested voice
 
     def synthesize(
         self, _text: str, _voice: str, instructions: str | None = None
@@ -166,10 +175,15 @@ def test_prepare_is_idempotent(db: Session, settings: Settings) -> None:
     assert db.scalar(select(func.count()).select_from(SegmentAudio)) == 3
     assert [row.status for _, row in second] == ["queued"] * 3
     assert [row.priority for _, row in second] == [10, 100, 100]
+    endpoint = (settings.tts_base_url or "").rstrip("/")
     expected = {
-        cache_key("tts", "ashley-en", "opus", normalize_speech_text(s.text)) for s, _ in first
+        cache_key("tts", "ashley-en", "opus", normalize_speech_text(s.text), endpoint=endpoint)
+        for s, _ in first
     }
-    got = {cache_key("tts", "ashley-en", "opus", normalize_speech_text(s.text)) for s, _ in second}
+    got = {
+        cache_key("tts", "ashley-en", "opus", normalize_speech_text(s.text), endpoint=endpoint)
+        for s, _ in second
+    }
     assert got == expected  # same cache keys for the same text
 
 
@@ -204,6 +218,36 @@ def test_prepare_resolves_voice_by_selection_when_not_given(
     book = _book(db, language="zh-TW")
     window = prepare(db, settings, book, _segments(db, book)[0].id, count=0)
     assert {row.voice for _, row in window} == {"ashley-zh"}  # zh-TW -> zh map entry
+
+
+def test_prepare_ignores_a_requested_voice_the_engine_does_not_list(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale pin from a previous TTS server must not be handed to the engine:
+    it would synthesize with whatever the engine substitutes and cache the clip
+    under the wrong id. ``ashley-en`` (the en map entry) is not on the engine,
+    so the fallback lands on the first English engine voice."""
+    monkeypatch.setattr(
+        queue_module,
+        "discover_voices",
+        lambda _s, _c, refresh=False: [Voice(id="tess", language="en")],
+    )
+    book = _book(db)
+    window = prepare(db, settings, book, _segments(db, book)[0].id, count=1, voice="jack-en")
+    assert {row.voice for _, row in window} == {"tess"}
+
+
+def test_prepare_honours_a_requested_voice_the_engine_lists(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        queue_module,
+        "discover_voices",
+        lambda _s, _c, refresh=False: [Voice(id="tess", language="en")],
+    )
+    book = _book(db)
+    window = prepare(db, settings, book, _segments(db, book)[0].id, count=1, voice="tess")
+    assert {row.voice for _, row in window} == {"tess"}
 
 
 def test_prepare_raises_priority_of_an_already_queued_segment(
@@ -421,6 +465,7 @@ def test_prepare_requeues_when_the_voice_instruction_changes(
         settings.tts_format,
         normalize_speech_text(segment.text),
         "Warm, expressive. You're narrating a Mystery novel.",
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
     )
     assert claimed.cache_key == key
     window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")

@@ -48,12 +48,28 @@ PRIORITY_LOOKAHEAD = 100
 
 
 def _resolve_voice(
-    session: Session, settings: Settings, book: Book, user_settings: dict[str, Any] | None = None
+    session: Session,
+    settings: Settings,
+    book: Book,
+    user_settings: dict[str, Any] | None = None,
+    requested: str | None = None,
 ) -> str:
     """Run the selection order against the engine's current voice list and
-    the admin-set per-language defaults."""
+    the admin-set per-language defaults.
+
+    ``requested`` is the voice the player asked for. It is honoured only while
+    the engine still lists it: an id left over from a previous TTS server (or a
+    stale pin) would otherwise be synthesized by whatever that engine substitutes
+    for an unknown voice, and cached under the wrong id. An unreachable engine
+    (no voice list) still trusts the request.
+    """
     with TtsClient(settings) as client:
         voices = discover_voices(settings, client)
+    known = {v.id for v in voices}
+    if requested is not None:
+        if not known or requested in known:
+            return requested
+        logger.warning("voice %r is not offered by the TTS engine; falling back", requested)
     return select_voice(
         book, user_settings or {}, settings, voices, effective_defaults(session, voices)
     )
@@ -116,8 +132,7 @@ def prepare(
     ``generating`` row is preserved, a ``queued`` row only gains priority (a
     seek raises it), and ``failed`` waits for the retry button.
     """
-    if voice is None:
-        voice = _resolve_voice(session, settings, book, user_settings)
+    voice = _resolve_voice(session, settings, book, user_settings, requested=voice)
     if count is None:
         count = settings.tts_lookahead
     rules = _rules(session, book.id)
@@ -141,6 +156,7 @@ def prepare(
             settings.tts_format,
             normalize_speech_text(apply_rules(segment.text, rules)),
             instructions,
+            endpoint=(settings.tts_base_url or "").rstrip("/"),
         )
         audio = session.get(Audio, key)
         if audio is not None and not Path(audio.path).is_file():

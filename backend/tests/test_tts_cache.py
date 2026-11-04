@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import os
 import subprocess
@@ -44,6 +45,18 @@ def test_cache_key_is_stable_and_speed_free() -> None:
     assert cache_key("tts", "ashley-en", "mp3", "hello world") != a
     # speed is not even an argument, so it can never enter the key (shared across speeds)
     assert "speed" not in inspect.signature(cache_key).parameters
+
+
+def test_cache_key_separates_tts_endpoints() -> None:
+    """Two engines serve different audio under the same voice id."""
+    a = cache_key("tts", "ashley-en", "opus", "hello world", endpoint="http://a/v1")
+    assert a == cache_key("tts", "ashley-en", "opus", "hello world", endpoint="http://a/v1")
+    assert a != cache_key("tts", "ashley-en", "opus", "hello world", endpoint="http://b/v1")
+
+
+def test_cache_key_without_endpoint_keeps_legacy_hash() -> None:
+    key = cache_key("tts", "ashley-en", "opus", "hello world")
+    assert key == hashlib.sha256(b"tts|ashley-en|opus|hello world").hexdigest()
 
 
 def test_miss_synthesizes_then_hit_makes_no_http_call(db: Session, settings: Settings) -> None:
