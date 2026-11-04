@@ -12,6 +12,9 @@ x-app-env: &app-env
 services:
   db:
     image: postgres:16
+    # Same policy as api/worker: without it a daemon restart leaves db down
+    # while api crash-loops on "failed to resolve host 'db'".
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-folio}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-folio}
