@@ -39,6 +39,10 @@ export function formatSpeed(value: number): string {
   return (hundredths / 100).toFixed(hundredths % 10 === 0 ? 1 : 2);
 }
 const POLL_MS = 1000;
+/** While playing, refresh the lookahead statuses on a slow beat: an SSE frame
+ * that lands during an in-flight topUp is dropped by the in-flight guard, and
+ * a stale "queued" for the next segment stalls playback at the boundary. */
+const PLAYING_POLL_MS = 5000;
 /** Segments after the current one that must be ready before a voice-change
  * reload starts: starting on the first one alone made playback stall a few
  * seconds later while the queued lookahead caught up. */
@@ -717,12 +721,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- els and the s ref are stable; handlers read live state through them
   }, [els]);
 
-  // Poll prepare while waiting on generation (SSE `audio` frames accelerate it).
+  // Poll prepare while waiting on generation, and keep a slow beat while
+  // playing so a status the in-flight guard dropped cannot leave the next
+  // segment stale ("queued") at a boundary. SSE `audio` frames accelerate it.
   useEffect(() => {
-    if (!(s.intent && s.preparing)) return;
-    const timer = window.setInterval(() => void fns.current.topUp(), POLL_MS);
+    if (!s.intent || (!s.playing && !s.preparing)) return;
+    const timer = window.setInterval(
+      () => void fns.current.topUp(),
+      s.playing ? PLAYING_POLL_MS : POLL_MS,
+    );
     return () => window.clearInterval(timer);
-  }, [s.intent, s.preparing]);
+  }, [s.intent, s.playing, s.preparing]);
 
   // Background tabs throttle timers; catching up on return avoids a dead
   // "Preparing audio…" after the user comes back to the tab.

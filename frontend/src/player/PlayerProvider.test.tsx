@@ -253,6 +253,26 @@ describe("PlayerProvider", () => {
     expect(getPlayer().playing).toBe(true);
   });
 
+  it("keeps refreshing the lookahead statuses while playing so a boundary cannot stall", async () => {
+    vi.useFakeTimers();
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+      getPlayer().toggle();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(getPlayer().playing).toBe(true);
+    const before = prepareCalls.length;
+
+    // The bug: the prepare poll stopped when `preparing` cleared, so a status
+    // update lost to an in-flight topUp left the next segment "queued" forever.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(prepareCalls.length).toBeGreaterThan(before);
+    expect(getPlayer().playing).toBe(true); // the heartbeat must not start audio
+  });
+
   it("starts at the saved default speed", async () => {
     installPlayerFetch({ settings: { speed: 1.1 } });
     const getPlayer = renderPlayer();
