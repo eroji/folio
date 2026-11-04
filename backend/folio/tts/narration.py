@@ -1,9 +1,9 @@
 """The ``instructions`` string sent to the TTS engine for one synthesis.
 
-Per voice (``app_settings.voice_instructions``, see ``voice_catalog.py``): the
-admin's style instruction for the voice being used, plus the book's genre.
-Empty when there is nothing to say -- the request then carries no
-``instructions`` field and the audio cache keys stay what they were.
+The admin's per-voice style instruction (``app_settings.voice_instructions``,
+see ``voice_catalog.py``) falls back to ``DEFAULT_INSTRUCTION``, plus the book's
+genre. Every synthesis carries a prompt: measured on the engine, an instructions
+field is what makes it pause between sentences instead of running them together.
 """
 
 from __future__ import annotations
@@ -15,17 +15,24 @@ from folio.voice_catalog import load_voice_instructions
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+# Voice style used whenever a voice has no admin override, so a voice added to
+# the engine inherits the house narration without anyone setting it up.
+DEFAULT_INSTRUCTION = (
+    "Perform this like a seasoned audiobook narrator: emotionally engaged, never monotone. "
+    "Vary pitch, pace and emphasis with the text. Soften for tension, lift the energy for "
+    "action, and give each character of dialogue a subtly distinct voice. Leave a short pause "
+    "between sentences and a longer one at scene breaks."
+)
+
 _SENTENCE_END = (".", "!", "?")
 
 
 def narration_prompt(db: Session, voice: str, genre: str | None) -> str:
-    """The voice's instruction (made sentence-terminal) + the genre sentence."""
-    instruction = load_voice_instructions(db).get(voice, "").strip()
-    genre = (genre or "").strip()
-    if not instruction:
-        return f"You're narrating a {genre} novel." if genre else ""
+    """The voice's instruction (admin override, else the default) + the genre sentence."""
+    instruction = load_voice_instructions(db).get(voice, "").strip() or DEFAULT_INSTRUCTION
     if not instruction.endswith(_SENTENCE_END):
         instruction += "."
+    genre = (genre or "").strip()
     if genre:
         instruction += f" You're narrating a {genre} novel."
     return instruction

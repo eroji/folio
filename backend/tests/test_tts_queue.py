@@ -19,6 +19,7 @@ from folio.models import Audio, Book, Chapter, Job, Segment, SegmentAudio
 from folio.tts import TtsClient, Voice
 from folio.tts import queue as queue_module
 from folio.tts.cache import cache_key, cache_path
+from folio.tts.narration import narration_prompt
 from folio.tts.queue import claim_next_tts, prepare, retry, run_tts_job
 from folio.tts.text import normalize_speech_text
 from folio.voice_catalog import save_voice_instructions
@@ -69,13 +70,16 @@ def _rows(db: Session) -> list[SegmentAudio]:
     )
 
 
-def _seed_audio(db: Session, settings: Settings, text: str, voice: str = "ashley-en") -> Audio:
+def _seed_audio(
+    db: Session, settings: Settings, text: str, voice: str = "ashley-en", genre: str | None = None
+) -> Audio:
     """Put a clip in the cache the way get_or_synthesize would."""
     key = cache_key(
         settings.tts_model,
         voice,
         settings.tts_format,
         normalize_speech_text(text),
+        narration_prompt(db, voice, genre),
         endpoint=(settings.tts_base_url or "").rstrip("/"),
     )
     path = cache_path(settings, key, settings.tts_format)

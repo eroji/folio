@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from folio.config import Settings
 from folio.models import AppSetting
 from folio.tts import cache_key, get_or_synthesize
-from folio.tts.narration import narration_prompt
+from folio.tts.narration import DEFAULT_INSTRUCTION, narration_prompt
 from folio.voice_catalog import load_voice_instructions, save_voice_instructions
 
 MYSTERY = "You're narrating a Mystery novel."
@@ -42,9 +42,11 @@ def test_narration_prompt_punctuation_and_genre(db: Session) -> None:
     for end in (".", "!", "?"):
         save_voice_instructions(db, {"v": f"Calm tone{end}"})
         assert narration_prompt(db, "v", "Mystery") == f"Calm tone{end} " + MYSTERY
-    # No instruction: only the genre sentence; neither: nothing.
-    assert narration_prompt(db, "ghost", "Mystery") == MYSTERY
-    assert narration_prompt(db, "ghost", None) == ""
+    # No instruction: the default style, plus the genre sentence when there is one.
+    assert narration_prompt(db, "ghost", "Mystery") == DEFAULT_INSTRUCTION + " " + MYSTERY
+    assert narration_prompt(db, "ghost", None) == DEFAULT_INSTRUCTION
+    # The default never goes out as an empty instructions field.
+    assert narration_prompt(db, "ghost", None) != ""
 
 
 def test_cache_key_instructions_are_optional_and_isolate(db: Session) -> None:

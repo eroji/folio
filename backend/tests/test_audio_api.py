@@ -18,6 +18,7 @@ from folio.main import create_app
 from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
 from folio.routers import admin as admin_module
 from folio.tts.cache import cache_key, cache_path
+from folio.tts.narration import narration_prompt
 from folio.tts.queue import PRIORITY_LOOKAHEAD, PRIORITY_NOW
 from folio.tts.text import normalize_speech_text
 
@@ -50,6 +51,7 @@ def _audio(db: Session, settings: Settings, text: str, voice: str = "ashley-en")
         voice,
         settings.tts_format,
         normalize_speech_text(text),
+        narration_prompt(db, voice, None),
         endpoint=(settings.tts_base_url or "").rstrip("/"),
     )
     path = cache_path(settings, key, settings.tts_format)

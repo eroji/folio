@@ -19,6 +19,7 @@ from folio.models import Audio, Book, Chapter, PronunciationRule, Segment, Segme
 from folio.tts import TtsClient
 from folio.tts import queue as queue_module
 from folio.tts.cache import cache_key, cache_path
+from folio.tts.narration import narration_prompt
 from folio.tts.pronunciation import apply_rules
 from folio.tts.queue import claim_next_tts, invalidate_book_audio, prepare, run_tts_job
 from folio.tts.text import normalize_speech_text
@@ -259,6 +260,7 @@ def test_cache_key_changes_with_a_rule_and_prepare_requeues(
         "ashley-en",
         settings.tts_format,
         normalize_speech_text(segment.text),
+        narration_prompt(db, "ashley-en", book.genre),
         endpoint=(settings.tts_base_url or "").rstrip("/"),
     )
     _seed_audio(db, settings, raw_key)
@@ -273,6 +275,7 @@ def test_cache_key_changes_with_a_rule_and_prepare_requeues(
         "ashley-en",
         settings.tts_format,
         normalize_speech_text(apply_rules(segment.text, [rule])),
+        narration_prompt(db, "ashley-en", book.genre),
         endpoint=(settings.tts_base_url or "").rstrip("/"),
     )
     assert corrected_key != raw_key  # the rule changes what the segment hashes to
