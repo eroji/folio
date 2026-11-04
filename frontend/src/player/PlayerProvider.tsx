@@ -91,8 +91,11 @@ export interface PlayerContextValue {
   lastDevice: { label: string; at: string } | null;
   /** Seconds played within the current chapter. */
   chapterElapsed: number;
-  /** Sum of the current chapter's known segment durations, in seconds. */
+  /** Sum of the current chapter's segment durations, in seconds: measured where
+   * the clip exists, estimated from character counts where it does not. */
   chapterTotal: number;
+  /** True while any of the chapter's durations is still a character estimate. */
+  chapterTotalApprox: boolean;
   elements: readonly [HTMLAudioElement, HTMLAudioElement];
   /** Index (into `elements`) of the element currently playing. */
   active: 0 | 1;
@@ -170,8 +173,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const idleEl = () => (s.active === 0 ? els[1] : els[0]);
   const currentItem = () => s.status[s.segments[s.index]?.id ?? ""];
   const durationOf = (segment: Segment | undefined) => (segment ? s.status[segment.id]?.duration_s ?? 0 : 0);
-  const chapterTotal = () => s.segments.reduce((total, seg) => total + durationOf(seg), 0);
-  const elapsed = () => s.segments.slice(0, s.index).reduce((total, seg) => total + durationOf(seg), 0) + s.time;
+  /** Estimated seconds per character, from the book's measured average (server)
+   * or 15 chars per second when the book has no measurement yet. */
+  const secondsPerChar = () => {
+    const est = s.book?.est_duration_s;
+    const chars = s.book?.total_chars;
+    return est && chars ? est / chars : 1 / 15;
+  };
+  /** A segment's real duration once its clip exists, else a character estimate. */
+  const estimateOf = (segment: Segment | undefined) =>
+    segment ? durationOf(segment) || (segment.char_end - segment.char_start) * secondsPerChar() : 0;
+  const chapterTotal = () => s.segments.reduce((total, seg) => total + estimateOf(seg), 0);
+  const elapsed = () => s.segments.slice(0, s.index).reduce((total, seg) => total + estimateOf(seg), 0) + s.time;
 
   /** The current segment plus the next BUFFER_AHEAD (or the rest of the chapter)
    * are all playable. Only consulted while a voice reload is prebuffering. */
@@ -495,12 +508,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const local = readPosition(bookId);
         if (local && saved.device_label !== deviceLabel() && secondsAhead(saved, local, detail.book) > AHEAD_PROMPT_S) {
           const segment = s.segments.find((seg) => seg.id === saved.segment_id);
-          const secondsPerChar =
-            detail.book.est_duration_s && detail.book.total_chars ? detail.book.est_duration_s / detail.book.total_chars : 1 / 15;
           s.resumePrompt = {
             device: saved.device_label,
             chapter: included[ci]!.title,
-            time: formatTime(saved.offset_s + (segment ? segment.char_start * secondsPerChar : 0)),
+            time: formatTime(saved.offset_s + (segment ? segment.char_start * secondsPerChar() : 0)),
             onContinue: () => void applyResume(saved),
             onStartHere: () => void applyResume(local),
           };
@@ -624,7 +635,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const target = Math.min(Math.max(0, seconds), total);
     let acc = 0;
     for (let i = 0; i < s.segments.length; i += 1) {
-      const d = durationOf(s.segments[i]);
+      const d = estimateOf(s.segments[i]);
       if (target < acc + d || i === s.segments.length - 1) {
         seekSegment(i, target - acc);
         return;
@@ -901,6 +912,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     lastDevice: s.lastDevice,
     chapterElapsed: elapsed(),
     chapterTotal: chapterTotal(),
+    chapterTotalApprox: s.segments.some((seg) => durationOf(seg) <= 0),
     elements: els,
     active: s.active,
     load,

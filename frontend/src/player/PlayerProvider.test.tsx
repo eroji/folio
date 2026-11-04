@@ -335,6 +335,30 @@ describe("PlayerProvider", () => {
     expect(getPlayer().chapterElapsed).toBeCloseTo(3, 5);
   });
 
+  it("estimates the chapter total from characters while no clip has a measured duration", async () => {
+    installPlayerFetch({ duration_s: 0 }); // prepare answers without durations: nothing measured yet
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    const chars = getPlayer().segments.reduce((total, seg) => total + seg.char_end - seg.char_start, 0);
+    expect(getPlayer().chapterTotal).toBeGreaterThan(0);
+    expect(getPlayer().chapterTotal).toBeCloseTo(chars * (600 / 1200), 5); // the fixture book's measured s/char
+    expect(getPlayer().chapterTotalApprox).toBe(true);
+    act(() => getPlayer().seekChapter(80)); // 72 s of estimated segment 0, so 80 s is inside segment 1
+    expect(getPlayer().index).toBe(1);
+    expect(getPlayer().chapterElapsed).toBeCloseTo(80, 5);
+  });
+
+  it("counts the measured durations once the chapter has them", async () => {
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().chapterTotal).toBe(20); // two segments of 10 s, no estimate added
+    expect(getPlayer().chapterTotalApprox).toBe(false);
+  });
+
   it("stops at the chapter end when auto-play-next is off", async () => {
     installPlayerFetch({
       segmentsByChapter: { [CH1]: makeSegments(CH1, 1), [CH2]: makeSegments(CH2, 1) },

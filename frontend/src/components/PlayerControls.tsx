@@ -389,7 +389,10 @@ export function ChapterScrubber({ className }: { className?: string }) {
         onChange={(event) => player.seekChapter(Number(event.target.value))}
         className="min-w-0 flex-1 accent-accent"
       />
-      <span className="whitespace-nowrap">−{formatTime(Math.max(0, total - elapsed))}</span>
+      <span className="whitespace-nowrap" data-testid="player-total">
+        {player.chapterTotalApprox ? "~" : ""}
+        {formatTime(total)}
+      </span>
     </div>
   );
 }

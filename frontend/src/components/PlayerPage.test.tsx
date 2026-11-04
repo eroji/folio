@@ -156,6 +156,14 @@ describe("PlayerPage (phone)", () => {
     expect(screen.getByTestId("player-elapsed")).toBeTruthy();
   });
 
+  it("marks the chapter total with ~ while the chapter has estimated durations", async () => {
+    stubMatchMedia(false);
+    installPlayerFetch({ duration_s: 0 }); // no clip has a measured duration yet
+    await renderAtPlayer();
+    expect(screen.getByTestId("player-total").textContent).toMatch(/^~/);
+    expect(screen.getByTestId("player-elapsed")).toBeTruthy();
+  });
+
   it("the 236 px cover links to the book page", async () => {
     stubMatchMedia(false);
     await renderAtPlayer();
