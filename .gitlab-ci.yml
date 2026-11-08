@@ -80,10 +80,14 @@ deploy:
       ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
         "$DEPLOY_USER@$DEPLOY_HOST" \
         "mkdir -p $DEPLOY_PATH/config/nginx $DEPLOY_PATH/tls"
-    - scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+    # Block scalars, not folded plain scalars: a folded "\\\n" becomes "\\ " and scp
+    # then looks for a file whose name starts with a space.
+    - |
+      scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
         compose.yaml deploy/compose.https.yaml \
         "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
-    - scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+    - |
+      scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
         deploy/nginx/folio.conf \
         "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/config/nginx/folio.conf"
     - printf '%s' "$HARBOR_TOKEN" > /tmp/harbor_token && chmod 600 /tmp/harbor_token
