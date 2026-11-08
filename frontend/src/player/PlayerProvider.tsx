@@ -151,6 +151,8 @@ interface Machine {
   /** The segment we last pre-rolled the idle element for: a locked screen keeps
    * this element playing across the boundary. Cleared by any pause or seek. */
   prerolled: string | null;
+  /** The active element is buffering (`waiting`): the lock-screen clock must stop. */
+  stalled: boolean;
   resumeLoading: boolean; // resume not applied yet: saves stay quiet
   finished: boolean;
   finishedMarked: boolean; // the finished PUT fires once per session
@@ -172,7 +174,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, prebuffering: false, error: null,
-    time: 0, rate: 1, sleep: null, offset: 0, active: 0, prerolled: null,
+    time: 0, rate: 1, sleep: null, offset: 0, active: 0, prerolled: null, stalled: false,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
   const els = useMemo(() => [new Audio(), new Audio()] as const, []);
@@ -274,6 +276,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * is already playing: the only handoff is handleEnded, which stops, swaps and
    * pumps — so exactly one element ever plays at a time. */
   function pump() {
+    // A stale flag (the element was paused behind our back) must not block a resume.
+    if (s.playing && activeEl().paused && !activeEl().ended && activeEl().src) s.playing = false;
     if (!s.intent || s.playing) return;
     const item = currentItem();
     if (item?.status === "failed") {
@@ -312,7 +316,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         s.playing = true;
         s.preparing = false;
+        s.stalled = false;
         s.error = null;
+        publishSession();
         prefetchChapter();
         preloadNext();
         bump();
@@ -320,6 +326,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         s.intent = false;
         s.playing = false;
+        publishSession();
         bump();
       });
   }
@@ -328,6 +335,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * audio is pump() starting the active element. */
   function silence() {
     s.playing = false;
+    s.stalled = false;
     s.prerolled = null; // a stale muted element must never be handed off as playback
     for (const element of els) element.pause();
   }
@@ -462,6 +470,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (s.sleep === "chapter") s.intent = false;
       void advanceChapter();
     }
+    publishSession(); // synchronously: a locked screen may not render again soon
     bump();
   }
 
@@ -471,6 +480,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.playing = false;
       s.preparing = false;
       if (s.book && s.chapterIdx + 1 >= s.chapters.length) markBookFinished();
+      publishSession();
       bump();
       return;
     }
@@ -615,6 +625,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.prebuffering = false;
     silence(); // both elements: the preloaded one may have been left running
     saveNow(); // spec: save on pause
+    publishSession();
     bump();
   }
 
@@ -752,9 +763,49 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     void topUp();
   }
 
+  /** Mirror the player into the lock screen. Called synchronously from media
+   * events as well as after renders: iOS extrapolates the clock from the last
+   * published position while playbackState is "playing", and a locked screen
+   * may not render React again for a long time. Metadata is only replaced when
+   * it changes — every new MediaMetadata makes iOS reload the artwork. */
+  const sessionKeys = useRef({ metadata: "", position: "" });
+  function publishSession() {
+    const ms = typeof navigator !== "undefined" ? navigator.mediaSession : undefined;
+    if (!ms) return;
+    const book = s.book;
+    const title = s.chapters[s.chapterIdx]?.title ?? book?.title ?? "";
+    const metadataKey = book ? `${book.id}|${title}|${book.cover_url ?? ""}|${book.authors.join(", ")}` : "";
+    if (metadataKey !== sessionKeys.current.metadata && typeof MediaMetadata !== "undefined") {
+      sessionKeys.current.metadata = metadataKey;
+      ms.metadata = book
+        ? new MediaMetadata({
+            title,
+            artist: book.authors.join(", "),
+            album: book.title,
+            artwork: book.cover_url ? [{ src: book.cover_url }] : [],
+          })
+        : null;
+    }
+    const state: MediaSessionPlaybackState = s.playing && !s.stalled ? "playing" : "paused";
+    if (ms.playbackState !== state) ms.playbackState = state;
+    // Without this iOS shows the element's own ~40 s clip as the whole track.
+    const duration = chapterTotal();
+    const position = Math.min(elapsed(), duration);
+    // Once per playback second, and at once on a seek or a state change.
+    const key = `${duration}|${Math.floor(position)}|${s.rate}|${state}`;
+    if (duration > 0 && ms.setPositionState && sessionKeys.current.position !== key) {
+      sessionKeys.current.position = key;
+      try {
+        ms.setPositionState({ duration, position, playbackRate: s.rate });
+      } catch {
+        /* iOS rejects an out-of-range position */
+      }
+    }
+  }
+
   // Latest closures for the stable effects below (state lives in `s`, not closures).
-  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, preroll, saveNow });
-  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, preroll, saveNow };
+  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, preroll, saveNow, publishSession });
+  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, preroll, saveNow, publishSession };
 
   // Sync the saved default speed into the player. A book with its own stored
   // speed keeps it: the default only drives books played here for the first
@@ -778,18 +829,49 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         s.time = source.currentTime;
         const left = source.duration - source.currentTime;
         if (source.duration > 0 && left <= PREROLL_S) fns.current.preroll();
+        fns.current.publishSession();
         bump();
       }
     };
-    for (const element of els) {
-      element.addEventListener("ended", onEnded);
-      element.addEventListener("timeupdate", onTime);
-    }
+    // iOS pauses the element itself on interruptions (calls, Siri, unplugged
+    // headphones, background suspension). Our own pauses clear s.playing first,
+    // and the pause that precedes `ended` has `ended` set, so anything else is
+    // external: adopt it, or the app and lock screen both believe it still plays.
+    const onPause = (event: Event) => {
+      const source = event.target as HTMLMediaElement;
+      if (source !== activeEl() || !s.playing || source.ended) return;
+      s.time = source.currentTime;
+      s.intent = false;
+      s.preparing = false;
+      s.prebuffering = false;
+      s.playing = false;
+      s.stalled = false;
+      s.prerolled = null;
+      idleEl().pause(); // a running pre-roll must not carry on alone
+      fns.current.saveNow();
+      fns.current.publishSession();
+      bump();
+    };
+    const onWaiting = (event: Event) => {
+      if (event.target !== activeEl() || !s.playing) return;
+      s.stalled = true;
+      fns.current.publishSession();
+    };
+    const onPlaying = (event: Event) => {
+      if (event.target !== activeEl() || !s.stalled) return;
+      s.stalled = false;
+      fns.current.publishSession();
+    };
+    const listeners: [string, (event: Event) => void][] = [
+      ["ended", onEnded],
+      ["timeupdate", onTime],
+      ["pause", onPause],
+      ["waiting", onWaiting],
+      ["playing", onPlaying],
+    ];
+    for (const element of els) for (const [name, fn] of listeners) element.addEventListener(name, fn);
     return () => {
-      for (const element of els) {
-        element.removeEventListener("ended", onEnded);
-        element.removeEventListener("timeupdate", onTime);
-      }
+      for (const element of els) for (const [name, fn] of listeners) element.removeEventListener(name, fn);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- els and the s ref are stable; handlers read live state through them
   }, [els]);
@@ -921,41 +1003,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- s.book is a ref; values compared above
   }, [settings.voices, s.book]);
 
-  const book = s.book;
-  const chapterTitle = s.chapters[s.chapterIdx]?.title;
-  const playing = s.playing;
-  const rate = s.rate;
-  const positionTick = Math.floor(elapsed()); // changes on every playback second
-  const positionState = useRef("");
-  useEffect(() => {
-    const ms = navigator.mediaSession;
-    if (!ms) return;
-    ms.playbackState = playing ? "playing" : "paused";
-    if (book && typeof MediaMetadata !== "undefined") {
-      ms.metadata = new MediaMetadata({
-        title: chapterTitle ?? book.title,
-        artist: book.authors.join(", "),
-        album: book.title,
-        artwork: book.cover_url ? [{ src: book.cover_url }] : [],
-      });
-    }
-    // Without this iOS shows the element's own ~40 s clip as the whole track.
-    const duration = chapterTotal();
-    const position = Math.min(elapsed(), duration);
-    // The tick dependency already limits this to once a second; the ref drops
-    // repeats of the same position so a seek still publishes immediately.
-    const key = `${duration}|${position}|${rate}`;
-    if (duration > 0 && ms.setPositionState && positionState.current !== key) {
-      positionState.current = key;
-      try {
-        ms.setPositionState({ duration, position, playbackRate: rate });
-      } catch {
-        /* iOS rejects an out-of-range position */
-      }
-    }
-  }, [book, chapterTitle, playing, positionTick, rate]); // eslint-disable-line react-hooks/exhaustive-deps -- elapsed()/chapterTotal() read the live s ref; positionTick re-runs this on every playback second
+  // Seeks, chapter changes, rate changes and the like all re-render; publish
+  // after each (cheap: publishSession drops repeats).
+  useEffect(() => publishSession());
 
-  const syncBookId = book?.id;
+  const syncBookId = s.book?.id;
   const syncChapterId = s.chapters[s.chapterIdx]?.id;
   useEffect(() => {
     if (location.pathname !== "/player") lastPath.current = location.pathname + location.search;

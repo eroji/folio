@@ -192,13 +192,20 @@ export function makeProgress(overrides: Partial<Progress>): Progress {
 export function stubMedia(): { played: HTMLMediaElement[]; paused: HTMLMediaElement[] } {
   const played: HTMLMediaElement[] = [];
   const paused: HTMLMediaElement[] = [];
+  // Like a browser: play() clears `paused` and pause() sets it again.
+  const running = new WeakSet<HTMLMediaElement>();
+  vi.spyOn(HTMLMediaElement.prototype, "paused", "get").mockImplementation(function (this: HTMLMediaElement) {
+    return !running.has(this);
+  });
   vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
+    running.add(this);
     // The silent clip iOS needs to unlock an element on the first gesture is a
     // gesture artifact, not playback, so tests that count starts never see it.
     if (this.getAttribute("src") !== SILENT_SRC) played.push(this);
     return Promise.resolve();
   });
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) {
+    running.delete(this);
     paused.push(this);
     return undefined;
   });

@@ -817,6 +817,122 @@ describe("PlayerProvider on iOS", () => {
     }
   });
 
+  /** A plain mediaSession stand-in that counts metadata assignments. */
+  function installMediaSession() {
+    const session = {
+      playbackState: "none" as MediaSessionPlaybackState,
+      metadataWrites: 0,
+      _metadata: null as unknown,
+      get metadata() {
+        return this._metadata;
+      },
+      set metadata(value: unknown) {
+        this.metadataWrites += 1;
+        this._metadata = value;
+      },
+      setActionHandler: vi.fn(),
+      setPositionState: vi.fn(),
+    };
+    Object.defineProperty(navigator, "mediaSession", { configurable: true, value: session });
+    vi.stubGlobal(
+      "MediaMetadata",
+      class {
+        constructor(init: object) {
+          Object.assign(this, init);
+        }
+      },
+    );
+    return session;
+  }
+
+  it("sets the lock-screen metadata once instead of on every playback second", async () => {
+    // A fresh MediaMetadata makes iOS reload the artwork: the cover flickered.
+    const session = installMediaSession();
+    try {
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      const writes = session.metadataWrites;
+      expect(writes).toBeGreaterThan(0);
+      const [a] = getPlayer().elements;
+      for (const t of [1, 2, 3, 4]) {
+        a.currentTime = t;
+        act(() => {
+          a.dispatchEvent(new Event("timeupdate"));
+        });
+      }
+      expect(session.setPositionState.mock.calls.at(-1)![0]).toMatchObject({ position: 4 });
+      expect(session.metadataWrites).toBe(writes);
+    } finally {
+      Reflect.deleteProperty(navigator, "mediaSession");
+    }
+  });
+
+  it("an iOS-initiated pause stops the player and the lock-screen clock", async () => {
+    // Interruptions (calls, Siri, route changes) pause the element directly; the
+    // lock screen kept extrapolating while the app still thought it was playing.
+    const session = installMediaSession();
+    const installed = installPlayerFetch();
+    try {
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      expect(session.playbackState).toBe("playing");
+      const [a] = getPlayer().elements;
+      a.currentTime = 6;
+      const saves = installed.saveCalls.length;
+      act(() => {
+        a.dispatchEvent(new Event("pause"));
+      });
+      expect(getPlayer().playing).toBe(false);
+      expect(session.playbackState).toBe("paused");
+      expect(session.setPositionState.mock.calls.at(-1)![0]).toMatchObject({ position: 6 });
+      await waitFor(() => expect(installed.saveCalls.length).toBeGreaterThan(saves));
+      expect(installed.saveCalls.at(-1)).toMatchObject({ offset_s: 6 });
+
+      // The lock-screen play button must work again afterwards.
+      const starts = played.length;
+      await act(async () => {
+        await getPlayer().play();
+      });
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      expect(played.length).toBeGreaterThan(starts);
+    } finally {
+      Reflect.deleteProperty(navigator, "mediaSession");
+    }
+  });
+
+  it("a buffering stall pauses the lock-screen clock until audio flows again", async () => {
+    const session = installMediaSession();
+    try {
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      const [a] = getPlayer().elements;
+      act(() => {
+        a.dispatchEvent(new Event("waiting"));
+      });
+      expect(session.playbackState).toBe("paused");
+      expect(getPlayer().playing).toBe(true); // still the listener's intent; not a pause
+      act(() => {
+        a.dispatchEvent(new Event("playing"));
+      });
+      expect(session.playbackState).toBe("playing");
+    } finally {
+      Reflect.deleteProperty(navigator, "mediaSession");
+    }
+  });
+
+  it("ignores the pause event that precedes ended at a clip boundary", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const [a] = getPlayer().elements;
+    vi.spyOn(a, "ended", "get").mockReturnValue(true);
+    act(() => {
+      a.dispatchEvent(new Event("pause"));
+      a.dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().index).toBe(1));
+    expect(getPlayer().playing).toBe(true);
+  });
+
   it("pre-rolls the next segment muted and unmutes it at the handoff", async () => {
     vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(40);
     const getPlayer = renderPlayer();
