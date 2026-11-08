@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -86,6 +87,31 @@ def _ordered_segments(session: Session, book: Book) -> list[Segment]:
     )
 
 
+def _segment_row(
+    session: Session, segment_id: UUID, voice: str, priority: int
+) -> tuple[SegmentAudio, bool]:
+    """The (segment, voice) row, inserted when missing; ``(row, created)``.
+
+    The player's prepare, the HLS playlist and its timeline queue the same
+    segment at the same moment. ON CONFLICT DO NOTHING waits for a concurrent
+    insert to commit and then skips, so the loser re-reads the winner's row
+    instead of failing on the unique index.
+    """
+    inserted = session.execute(
+        pg_insert(SegmentAudio)
+        .values(id=uuid4(), segment_id=segment_id, voice=voice, status="queued", priority=priority)
+        .on_conflict_do_nothing(index_elements=["segment_id", "voice"])
+        .returning(SegmentAudio.id)
+    ).scalar_one_or_none()
+    row = session.scalar(
+        select(SegmentAudio)
+        .where(SegmentAudio.segment_id == segment_id, SegmentAudio.voice == voice)
+        .execution_options(populate_existing=True)
+    )
+    assert row is not None  # inserted above, or by the concurrent winner
+    return row, inserted is not None
+
+
 def _rules(session: Session, book_id: UUID) -> list[PronunciationRule]:
     """The book's pronunciation rules in creation order (apply_rules order)."""
     return list(
@@ -142,8 +168,6 @@ def prepare(
     if start is None:
         raise ApiError("not_found", "Segment not found.", 404)
 
-    # ponytail: concurrent prepares of the same (segment, voice) can race the
-    # unique index and surface a 500; re-select on IntegrityError if it bites.
     window: list[tuple[Segment, SegmentAudio]] = []
     # Only a real status transition is worth an SSE frame. Preparing is polled
     # every second by every listener; notifying on idempotent calls makes the
@@ -161,21 +185,13 @@ def prepare(
         audio = session.get(Audio, key)
         if audio is not None and not Path(audio.path).is_file():
             audio = None  # row survived an eviction that removed the file
-        row = session.scalar(
-            select(SegmentAudio).where(
-                SegmentAudio.segment_id == segment.id, SegmentAudio.voice == voice
-            )
-        )
         # Lookahead ranks by distance: every row of one prepare shares created_at
         # (Postgres now() is the transaction start), so a flat priority left the
         # order to the random UUID and a prefetched chapter was synthesized out
         # of order. A nearer request only ever raises a row (min below).
         priority = PRIORITY_NOW if offset == 0 else PRIORITY_LOOKAHEAD + offset
-        created = row is None
-        before = row.status if row is not None else None
-        if row is None:
-            row = SegmentAudio(segment_id=segment.id, voice=voice, priority=priority)
-            session.add(row)
+        row, created = _segment_row(session, segment.id, voice, priority)
+        before = None if created else row.status
         if audio is not None:
             row.cache_key, row.status, row.error = audio.cache_key, "ready", None
         elif row.status == "queued":

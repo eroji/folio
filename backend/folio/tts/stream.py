@@ -11,18 +11,22 @@ with the ID3 PRIV timestamp that HLS packed audio requires.
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from urllib.parse import quote
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from folio.config import Settings
 from folio.errors import ApiError
 from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
 from folio.tts.queue import prepare
+
+logger = logging.getLogger(__name__)
 
 STREAM_FORMAT = "aac"
 # Constant so a growing playlist never changes it (RFC 8216 §4.3.3.1); clips
@@ -101,8 +105,14 @@ def stream_window(session: Session, book: Book, voice: str, origin: UUID) -> Str
 def keep_generating(session: Session, settings: Settings, book: Book, window: StreamWindow) -> None:
     """Queue the first missing segment (needed now) and its lookahead: on a
     locked phone only the media player is polling, not the page's top-up."""
-    if window.next_missing is not None:
+    if window.next_missing is None:
+        return
+    try:
         prepare(session, settings, book, window.next_missing, None, window.voice)
+    except SQLAlchemyError:
+        # A side effect only: the player's own prepare and the next poll retry.
+        session.rollback()
+        logger.warning("stream top-up failed book=%s", book.id, exc_info=True)
 
 
 def render_playlist(window: StreamWindow) -> str:

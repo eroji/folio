@@ -255,3 +255,23 @@ async def test_prepare_says_whether_the_book_can_stream(
         assert response.json()["stream"] is expected
     finally:
         app.dependency_overrides.pop(get_settings, None)
+
+
+async def test_a_failed_top_up_never_fails_the_playlist(
+    auth_client: httpx.AsyncClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Queueing is a side effect: the media player must still get its playlist."""
+    from sqlalchemy.exc import IntegrityError
+
+    from folio.tts import stream as stream_module
+
+    def boom(*_args: object, **_kw: object) -> None:
+        raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+    monkeypatch.setattr(stream_module, "prepare", boom)
+    settings = get_settings()
+    book, segs = _book(db, chapters=(2,))
+    _ready(db, settings, segs[0], 20)
+    response = await auth_client.get(_playlist_url(book, segs[0]))
+    assert response.status_code == 200
+    assert response.text.count("#EXTINF") == 1

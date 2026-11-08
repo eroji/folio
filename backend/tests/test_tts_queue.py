@@ -564,3 +564,45 @@ def test_tts_instructions_off_sends_no_prompt_and_keys_without_it(
     )
     window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
     assert window[0][1].status == "ready"  # prepare keys it the same way
+
+
+def test_concurrent_prepares_of_the_same_segment_never_collide(
+    db: Session, settings: Settings
+) -> None:
+    """The player's prepare, the HLS playlist and its timeline all queue the same
+    segment at once: the loser of the insert race used to 500 the playlist."""
+    import threading
+    import time
+
+    book = _book(db, chapters=1, per_chapter=1)
+    book_id, segment_id = book.id, _segments(db, book)[0].id
+    other = SessionLocal()
+    result: dict[str, Any] = {}
+
+    def racing_prepare() -> None:
+        session = SessionLocal()
+        try:
+            racing_book = session.get(Book, book_id)
+            assert racing_book is not None
+            result["window"] = prepare(session, settings, racing_book, segment_id, 0, "ashley-en")
+        except Exception as exc:  # noqa: BLE001 - surfaced by the assert below
+            result["error"] = exc
+        finally:
+            session.close()
+
+    try:
+        # Another request has inserted the row but not committed yet.
+        other.add(SegmentAudio(segment_id=segment_id, voice="ashley-en", priority=100))
+        other.flush()
+        thread = threading.Thread(target=racing_prepare)
+        thread.start()
+        time.sleep(0.5)  # the racing insert is now waiting on the uncommitted row
+        other.commit()
+        thread.join(10)
+    finally:
+        other.close()
+
+    assert "error" not in result, result.get("error")
+    rows = db.scalars(select(SegmentAudio).where(SegmentAudio.segment_id == segment_id)).all()
+    assert len(rows) == 1
+    assert rows[0].priority == 10  # the racing prepare still raised it to needed-now
