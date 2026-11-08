@@ -23,6 +23,7 @@ from folio.security import (
     create_session,
     login_rate_limiter,
     require_csrf,
+    set_csrf_cookie,
     set_session_cookies,
 )
 
@@ -110,6 +111,11 @@ def logout(
 
 
 @router.get("/me")
-def me(request: Request, user: Annotated[User, Depends(get_current_user)]) -> dict[str, Any]:
+def me(
+    request: Request, response: Response, user: Annotated[User, Depends(get_current_user)]
+) -> dict[str, Any]:
     row: Any = request.state.session_row
+    # The app calls /me on every launch: re-issue the CSRF cookie so a device
+    # that lost it (or got it before it persisted) can write again.
+    set_csrf_cookie(response, row.csrf_token)
     return {"user": UserPublic.model_validate(user), "csrf_token": row.csrf_token}

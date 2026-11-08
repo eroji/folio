@@ -84,6 +84,10 @@ async def test_login_success_sets_cookies_and_creates_session_row(
     assert "HttpOnly" in session_cookie and "Secure" in session_cookie
     assert "samesite=lax" in session_cookie.lower()
     assert "HttpOnly" not in csrf_cookie  # the SPA must read it
+    # Both persist for the session's 30 days: a browser-session CSRF cookie was
+    # dropped when iOS relaunched the PWA, and every POST/PUT then got a 403.
+    assert "Max-Age=2592000" in session_cookie
+    assert "Max-Age=2592000" in csrf_cookie
 
     row = _session_row(db, token)
     assert row is not None and str(row.user_id) == body["user"]["id"]

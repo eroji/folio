@@ -19,6 +19,7 @@ from folio.config import get_settings
 from folio.db import get_session
 from folio.models import Session as SessionRow
 from folio.models import User
+from folio.security import set_csrf_cookie
 
 router = APIRouter(prefix="/api/v1/test", tags=["test"])
 
@@ -62,7 +63,7 @@ def test_login(
     response.set_cookie(
         "folio_session", token, httponly=True, secure=True, samesite="lax", max_age=30 * 86400
     )
-    response.set_cookie("folio_csrf", csrf, httponly=False, secure=True, samesite="lax")
+    set_csrf_cookie(response, csrf)
     return {
         "user": {
             "id": str(user.id),

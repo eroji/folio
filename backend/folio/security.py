@@ -61,9 +61,21 @@ def set_session_cookies(response: Response, session_token: str, csrf_token: str)
         samesite="lax",
         path="/",
     )
-    # Readable on purpose: the SPA echoes it in the X-CSRF-Token header.
+    set_csrf_cookie(response, csrf_token)
+
+
+def set_csrf_cookie(response: Response, csrf_token: str) -> None:
+    """Readable on purpose: the SPA echoes it in the X-CSRF-Token header. It
+    lives as long as the session cookie: as a browser-session cookie iOS dropped
+    it when the PWA relaunched while the session survived, so every write 403'd."""
     response.set_cookie(
-        CSRF_COOKIE, csrf_token, httponly=False, secure=True, samesite="lax", path="/"
+        CSRF_COOKIE,
+        csrf_token,
+        max_age=int(SESSION_MAX_AGE.total_seconds()),
+        httponly=False,
+        secure=True,
+        samesite="lax",
+        path="/",
     )
 
 
