@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from folio.config import Settings
 from folio.models.audio import Audio, SegmentAudio
 from folio.storage import audio_path, ensure_dirs
+from folio.tts.adts import adts_duration
 from folio.tts.text import normalize_speech_text
 
 if TYPE_CHECKING:
@@ -52,7 +53,13 @@ def cache_path(settings: Settings, key: str, fmt: str) -> Path:
 
 
 def duration_seconds(path: Path) -> float:
-    """Exact duration via mutagen; 0.0 if the file cannot be read."""
+    """Exact duration (ADTS frames counted for AAC, mutagen otherwise); 0.0 if
+    the file cannot be read."""
+    if path.suffix == ".aac":
+        try:
+            return adts_duration(path.read_bytes())
+        except OSError:
+            return 0.0
     try:
         import mutagen
 

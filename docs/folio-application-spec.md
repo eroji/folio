@@ -256,6 +256,7 @@ The player plays a book as a continuous sequence of segment audio files and save
 ### Player behavior
 
 - Gapless-feeling playback: fetch the next segment's audio into memory ahead of time and start it on the same `<audio>` element from its `ended` handler, without a visible pause (one element: iOS ties the lock screen and background playback to it).
+- Where the browser plays HLS natively (Safari, iOS) and `TTS_FORMAT=aac`, the book plays as one HLS stream instead (`GET /api/v1/books/{id}/stream.m3u8?voice=&from=`): the media player itself fetches clip after clip, so playback continues across clip and chapter boundaries on a locked iPhone, whose page JavaScript is frozen. The playlist lists the generated run of AAC clips from `from` (EVENT, `EXT-X-ENDLIST` once the book is complete); each segment is the clip prefixed with its ID3 timestamp; `stream.json` gives the player the same timeline to map `currentTime` to a segment.
 - Controls: play/pause, back 15 s, forward 30 s, previous/next chapter, a scrubber for the current chapter, speed 0.75×–2.5× in 0.25 steps, and a sleep timer (15, 30, 45, 60 min, or end of chapter).
 - Seeking past segments that aren't generated yet: jump to that segment, raise its priority, show a short "Preparing audio…" state.
 - Chapter list sheet showing each chapter's title, estimated length, and a check mark once finished.

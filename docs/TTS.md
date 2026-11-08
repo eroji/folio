@@ -44,3 +44,7 @@ When a request carries `instructions`, voxcpm2-openai prefixes them as `(style)t
 | duration | 31–40 s | 32.5–36.8 s |
 
 Different segments behave like different seeds, so with a prompt the narrator's pitch, level and pace jump at segment boundaries. Head-vs-tail drift inside a clip was small either way, so segment length is not the cause. **Set `TTS_INSTRUCTIONS=false` for VoxCPM2.** Changing it changes every cache key, so clips re-synthesize on demand.
+
+## AAC and the HLS book stream
+
+`TTS_FORMAT=aac` asks the engine for AAC-LC in ADTS framing (voxcpm2-openai ≥ 0.3.16, Q-028). Folio counts ADTS frames for exact clip durations and, on Safari/iOS, plays a book as one HLS stream built from those clips (see the spec, "Gapless-feeling playback"). The interaction with the engine is otherwise unchanged: one `/v1/audio/speech` request per segment, same queue and cache, only `response_format` differs. Switching the format re-keys every clip, so they re-synthesize on demand.

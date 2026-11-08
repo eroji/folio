@@ -7,8 +7,8 @@ from time import monotonic
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
@@ -19,10 +19,17 @@ from folio.errors import ApiError
 from folio.models import Audio, Book, Chapter, Segment, User
 from folio.security import require_csrf
 from folio.tts.queue import prepare, retry
+from folio.tts.stream import (
+    STREAM_FORMAT,
+    hls_timestamp_tag,
+    keep_generating,
+    render_playlist,
+    stream_window,
+)
 
 router = APIRouter(tags=["audio"])
 
-_MEDIA_TYPE = {"opus": "audio/ogg", "mp3": "audio/mpeg"}
+_MEDIA_TYPE = {"opus": "audio/ogg", "mp3": "audio/mpeg", "aac": "audio/aac"}
 _HEX64_RE = re.compile(r"[0-9a-f]{64}")
 # last_played_at drives LRU eviction; a per-minute touch per key is plenty.
 TOUCH_INTERVAL_S = 60.0
@@ -74,7 +81,90 @@ def prepare_audio(
                 "duration_s": audio.duration_s if audio else None,
             }
         )
-    return {"items": items, "language": book.language, "voice": rows[0][1].voice}
+    return {
+        "items": items,
+        "language": book.language,
+        "voice": rows[0][1].voice,
+        # The book can be played as one HLS stream (iOS lock screen) in this voice.
+        "stream": settings.tts_format == STREAM_FORMAT,
+    }
+
+
+_StreamVoice = Annotated[str, Query(alias="voice", min_length=1, max_length=64)]
+_StreamFrom = Annotated[UUID, Query(alias="from")]
+
+
+@router.get("/api/v1/books/{book_id}/stream.m3u8")
+def stream_playlist(
+    book_id: UUID,
+    voice: _StreamVoice,
+    origin: _StreamFrom,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Response:
+    """The book from ``from`` on as one HLS track; re-fetched by the media player."""
+    book = _get_book(db, book_id)
+    window = stream_window(db, book, voice, origin)
+    keep_generating(db, settings, book, window)
+    return Response(
+        render_playlist(window),
+        media_type="application/vnd.apple.mpegurl",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/api/v1/books/{book_id}/stream/{n}.aac")
+def stream_segment(
+    book_id: UUID,
+    n: int,
+    voice: _StreamVoice,
+    origin: _StreamFrom,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_session)],
+) -> Response:
+    """Segment ``n`` of the stream: its timeline timestamp, then the cached clip."""
+    window = stream_window(db, _get_book(db, book_id), voice, origin)
+    if not 0 <= n < len(window.entries):
+        raise ApiError("not_found", "Segment not found.", 404)
+    entry = window.entries[n]
+    try:
+        clip = Path(entry.path).read_bytes()
+    except OSError:
+        raise ApiError("not_found", "Segment not found.", 404) from None
+    return Response(
+        hls_timestamp_tag(entry.start) + clip,
+        media_type="audio/aac",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.get("/api/v1/books/{book_id}/stream.json")
+def stream_timeline(
+    book_id: UUID,
+    voice: _StreamVoice,
+    origin: _StreamFrom,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """The stream's timeline, so the player maps ``currentTime`` to a segment."""
+    book = _get_book(db, book_id)
+    window = stream_window(db, book, voice, origin)
+    keep_generating(db, settings, book, window)
+    return {
+        "voice": window.voice,
+        "complete": window.complete,
+        "entries": [
+            {
+                "segment_id": str(e.segment_id),
+                "chapter_id": str(e.chapter_id),
+                "start": e.start,
+                "duration": e.duration,
+            }
+            for e in window.entries
+        ],
+    }
 
 
 @router.post("/api/v1/books/{book_id}/audio/retry", status_code=202)
