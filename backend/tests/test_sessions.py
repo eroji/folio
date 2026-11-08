@@ -156,3 +156,30 @@ def test_test_mode_never_reaches_the_directory() -> None:
 
     assert get_settings().folio_test_mode
     assert get_account_checker(get_settings()) is None
+
+
+async def test_a_broken_ldap_setup_never_fails_ordinary_requests(
+    client: httpx.AsyncClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A missing LDAP_CA_FILE made constructing the authenticator raise on every
+    request once the account re-check ran there: the whole app answered 500."""
+    from folio import deps
+    from folio.config import get_settings
+
+    app: FastAPI = client._transport.app  # type: ignore[attr-defined]
+    settings = get_settings().model_copy(update={"folio_test_mode": False})
+    app.dependency_overrides[deps.get_settings] = lambda: settings
+
+    def broken() -> None:
+        raise RuntimeError("invalid CA public key file")
+
+    monkeypatch.setattr(deps, "get_authenticator", broken)
+    _signed_in(client, db, checked_ago=None)
+    try:
+        assert (await client.get("/api/v1/auth/me")).status_code == 200
+        assert "account check skipped" in caplog.text
+    finally:
+        app.dependency_overrides.pop(deps.get_settings, None)

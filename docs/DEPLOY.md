@@ -55,6 +55,7 @@ Then as `deploy`:
 
 ### `.env` pitfalls
 
+- **Run compose with both files**, as the pipeline does: `docker compose -f compose.yaml -f compose.https.yaml …`. A bare `docker compose up -d` drops the https overlay, so the api starts without `/etc/ssl/folio/ldap-ca.pem` (LDAP fails) and nginx is not managed. Adding `COMPOSE_FILE=compose.yaml:compose.https.yaml` to `/opt/folio/.env` makes plain `docker compose` commands use both.
 - **Single-quote any value containing `$`.** Compose interpolates `env_file` values, so an
   unquoted bind password like `ab$cd` reaches the container empty or truncated. `'ab$cd'` is
   taken literally.

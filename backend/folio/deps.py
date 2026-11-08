@@ -33,6 +33,7 @@ REFRESH_INTERVAL = timedelta(hours=1)
 ACCOUNT_CHECK_INTERVAL = timedelta(hours=1)
 
 _authenticator: LdapAuthenticator | None = None
+_checker_broken_logged = False
 
 
 def get_authenticator() -> LdapAuthenticator:
@@ -50,7 +51,19 @@ def get_account_checker(
     whose users never came from LDAP."""
     if settings.folio_test_mode:
         return None
-    authenticator = get_authenticator()
+    try:
+        authenticator = get_authenticator()
+    except Exception as exc:  # noqa: BLE001 - e.g. LDAP_CA_FILE missing: never 500 every request
+        global _checker_broken_logged
+        if not _checker_broken_logged:
+            _checker_broken_logged = True
+            logger.warning(
+                "account check skipped: the LDAP client cannot be built (%s: %s); "
+                "sessions stay valid, logins will fail until LDAP is fixed",
+                type(exc).__name__,
+                exc,
+            )
+        return None
     return authenticator if isinstance(authenticator, Ldap3Authenticator) else None
 
 
