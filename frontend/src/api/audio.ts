@@ -91,3 +91,9 @@ export function useSegments(bookId: string, chapterId: string) {
     enabled: Boolean(bookId && chapterId),
   });
 }
+
+/** One ready clip (its `/api/v1/audio/{key}` URL) as a Blob, so the player can
+ * switch to it at a boundary without waiting on the network. */
+export function fetchAudioClip(url: string): Promise<Blob> {
+  return api.blob(url);
+}

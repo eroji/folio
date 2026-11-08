@@ -1,12 +1,13 @@
-/** Player state machine (plan Task C): two <audio> elements with a handoff
- * swap on `ended`, lookahead prepare, chapter auto-advance, sleep timer,
+/** Player state machine (plan Task C): one <audio> element that loads the next
+ * clip from its `ended` handler (iOS ties the lock screen to one element), the
+ * next clip fetched into memory ahead of time, lookahead prepare, chapter auto-advance, sleep timer,
  * Media Session and /player URL sync. Progress (plan Task Q): saves every
  * 10 s while playing and on pause/segment change/chapter change/hide,
  * resumes with a 3 s rewind, and prompts when another device is >60 s ahead. */
 import { createContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { fetchBookDetail, fetchSegments, prepareAudio, type PreparedSegment, type Segment } from "../api/audio";
+import { fetchAudioClip, fetchBookDetail, fetchSegments, prepareAudio, type PreparedSegment, type Segment } from "../api/audio";
 import { baseLanguage } from "../api/voices";
 import {
   continueQueryKey,
@@ -56,12 +57,9 @@ const AHEAD_PROMPT_S = 60;
 /** 10 ms of silence (8-bit PCM mono). iOS only lets an <audio> element play
  * from a user gesture until that element has played once, and play() reaches
  * the network before it reaches the element, so the first tap fires this clip
- * through both elements to unlock them. */
+ * through the element to unlock it. */
 export const SILENT_SRC =
   "data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
-/** How close to the end of a clip the next one is started muted, so a locked
- * screen keeps the audio session alive across the boundary. Heuristic: tune on device. */
-const PREROLL_S = 1.2;
 
 /** m:ss, or h:mm:ss past an hour; shared by the player screens. */
 export function formatTime(seconds: number): string {
@@ -105,9 +103,8 @@ export interface PlayerContextValue {
   chapterTotal: number;
   /** True while any of the chapter's durations is still a character estimate. */
   chapterTotalApprox: boolean;
-  elements: readonly [HTMLAudioElement, HTMLAudioElement];
-  /** Index (into `elements`) of the element currently playing. */
-  active: 0 | 1;
+  /** The single audio element every clip plays through. */
+  element: HTMLAudioElement;
   load: (bookId: string, chapterId?: string) => Promise<void>;
   /** Re-synthesize the current position after a narrator/voice change. */
   reloadVoice: (bookId?: string) => void;
@@ -147,10 +144,9 @@ interface Machine {
   rate: number;
   sleep: SleepChoice;
   offset: number; // seconds to seek to when the current segment starts
-  active: 0 | 1;
-  /** The segment we last pre-rolled the idle element for: a locked screen keeps
-   * this element playing across the boundary. Cleared by any pause or seek. */
-  prerolled: string | null;
+  /** The clip URL (as prepare returned it) the element holds; its `src` may be
+   * an in-memory copy of it. Null while the element holds something else. */
+  loaded: string | null;
   /** The active element is buffering (`waiting`): the lock-screen clock must stop. */
   stalled: boolean;
   resumeLoading: boolean; // resume not applied yet: saves stay quiet
@@ -174,17 +170,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, prebuffering: false, error: null,
-    time: 0, rate: 1, sleep: null, offset: 0, active: 0, prerolled: null, stalled: false,
+    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
-  const els = useMemo(() => [new Audio(), new Audio()] as const, []);
+  const el = useMemo(() => new Audio(), []);
+  /** Clip URL → object URL of a copy fetched ahead, so the `ended` handler
+   * switches clips without a network round-trip. Holds the next clip only. */
+  const clips = useRef(new Map<string, string>());
+  const fetchingClip = useRef<string | null>(null);
   const sleepTimer = useRef<number | null>(null);
   const saveTimer = useRef<number | null>(null);
   /** The last page before /player, so "Stop and close" can return to it. */
   const lastPath = useRef<string | null>(null);
 
-  const activeEl = () => (s.active === 0 ? els[0] : els[1]);
-  const idleEl = () => (s.active === 0 ? els[1] : els[0]);
   const currentItem = () => s.status[s.segments[s.index]?.id ?? ""];
   const durationOf = (segment: Segment | undefined) => (segment ? s.status[segment.id]?.duration_s ?? 0 : 0);
   /** Estimated seconds per character, from the book's measured average (server)
@@ -272,12 +270,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.error = message;
   }
 
-  /** Start/continue the current segment in the active element. Returns while audio
-   * is already playing: the only handoff is handleEnded, which stops, swaps and
-   * pumps — so exactly one element ever plays at a time. */
+  /** Start/continue the current segment. Returns while audio is already
+   * playing: the only clip change mid-playback is handleEnded, which pumps
+   * synchronously so iOS lets the element carry on from the lock screen. */
   function pump() {
     // A stale flag (the element was paused behind our back) must not block a resume.
-    if (s.playing && activeEl().paused && !activeEl().ended && activeEl().src) s.playing = false;
+    if (s.playing && el.paused && !el.ended && s.loaded) s.playing = false;
     if (!s.intent || s.playing) return;
     const item = currentItem();
     if (item?.status === "failed") {
@@ -299,19 +297,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.preparing = true;
       return;
     }
-    const target = activeEl();
-    if (!target.src.includes(item.url)) target.src = item.url;
+    const url = item.url;
+    if (s.loaded !== url) {
+      el.src = clips.current.get(url) ?? url;
+      s.loaded = url;
+    }
     if (s.offset > 0) {
-      target.currentTime = s.offset;
+      el.currentTime = s.offset;
       s.offset = 0;
     }
-    target.playbackRate = s.rate;
-    target.volume = 1; // a pre-roll that was never handed off must not stay silent
-    void target
+    el.playbackRate = s.rate; // a new src resets the rate to the default
+    void el
       .play()
       .then(() => {
-        if (!s.intent || activeEl() !== target) {
-          target.pause(); // paused or handed off while the promise was pending
+        if (s.loaded !== url) return; // a later pump already moved on to another clip
+        if (!s.intent) {
+          el.pause(); // paused while the promise was pending
           return;
         }
         s.playing = true;
@@ -320,10 +321,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         s.error = null;
         publishSession();
         prefetchChapter();
-        preloadNext();
+        fetchNextClip();
         bump();
       })
       .catch(() => {
+        if (s.loaded !== url) return; // superseded by a newer src (AbortError), not a failure
         s.intent = false;
         s.playing = false;
         publishSession();
@@ -331,47 +333,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
   }
 
-  /** Stop every element and forget the playing flag: the only way back to
-   * audio is pump() starting the active element. */
+  /** Stop the element and forget the playing flag: the only way back to audio
+   * is pump(). */
   function silence() {
     s.playing = false;
     s.stalled = false;
-    s.prerolled = null; // a stale muted element must never be handed off as playback
-    for (const element of els) element.pause();
+    el.pause();
   }
 
-  /** Point the idle element at the next segment so `ended` can hand off without a reload. */
-  function preloadNext() {
-    const item = s.status[s.segments[s.index + 1]?.id ?? ""];
-    if (item?.status === "ready" && item.url) {
-      const idle = idleEl();
-      if (!idle.src.includes(item.url)) {
-        idle.src = item.url;
-        idle.currentTime = 0;
-      }
-      idle.playbackRate = s.rate;
+  /** Fetch the next ready clip into memory so the boundary needs no network:
+   * iOS lets the `ended` handler start the next clip on the same element, but
+   * a slow load there is an audible gap. Only the next clip is kept. */
+  function fetchNextClip() {
+    const next = s.status[s.segments[s.index + 1]?.id ?? ""];
+    const url = next?.status === "ready" ? next.url : null;
+    for (const [key, objectUrl] of clips.current) {
+      if (key === url || key === s.loaded) continue;
+      clips.current.delete(key);
+      URL.revokeObjectURL(objectUrl);
     }
-  }
-
-  /** iOS throttles JS timers once the screen locks and an `ended` handler cannot
-   * start a new element, so the next clip is already running muted before the
-   * boundary and the handoff only unmutes it. Keeps the audio session alive. */
-  function preroll() {
-    const next = s.segments[s.index + 1];
-    if (!next || s.prerolled === s.segments[s.index]?.id) return;
-    const item = s.status[next.id];
-    if (item?.status !== "ready" || !item.url) return;
-    const idle = idleEl();
-    if (!idle.src.includes(item.url)) {
-      idle.src = item.url;
-      idle.currentTime = 0;
-    }
-    idle.playbackRate = s.rate;
-    idle.volume = 0;
-    s.prerolled = s.segments[s.index]?.id ?? null;
-    void idle.play().catch(() => {
-      s.prerolled = null; // silent; the next timeupdate or handleEnded's top-up tries again
-    });
+    if (!url || clips.current.has(url) || fetchingClip.current === url) return;
+    if (typeof URL.createObjectURL !== "function") return;
+    fetchingClip.current = url;
+    void fetchAudioClip(url)
+      .then((blob) => {
+        if (fetchingClip.current === url) clips.current.set(url, URL.createObjectURL(blob));
+      })
+      .catch(() => {
+        /* silent: the element streams the clip from the network instead */
+      })
+      .finally(() => {
+        if (fetchingClip.current === url) fetchingClip.current = null;
+      });
   }
 
   /** prepare for the current segment + lookahead, merge statuses; the trailing
@@ -387,7 +380,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, effectiveVoice(s.book));
       s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
-      preloadNext();
+      if (s.playing) fetchNextClip();
     } catch (error) {
       fail(error instanceof Error ? error.message : "Could not reach the server.");
     } finally {
@@ -455,11 +448,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     await topUp();
   }
 
+  /** Must start the next clip synchronously: with the screen locked, iOS only
+   * lets audio continue if the element is told to play from this handler. */
   function handleEnded() {
     s.time = 0;
     s.playing = false;
-    s.active = s.active === 0 ? 1 : 0; // hand off to the preloaded element before pumping
-    activeEl().volume = 1; // make a pre-rolled (muted) element audible
     if (s.index + 1 < s.segments.length) {
       s.index += 1;
       s.offset = 0;
@@ -526,7 +519,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // never played here starts at the Settings default, both snapped to
       // the config grid.
       s.rate = snapSpeed(readBookSpeed(bookId) ?? settingsRef.current.speed, speedOptionsRef.current);
-      for (const element of els) element.playbackRate = s.rate;
+      el.playbackRate = s.rate;
+      el.defaultPlaybackRate = s.rate;
       // Excluded chapters are returned for the book-settings UI but must never
       // be opened by the player (their segments endpoint 404s by design).
       // All chapter indices below come from this included list — indexing the
@@ -573,27 +567,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  /** Fire a silent clip through both elements so iOS unlocks them for the
-   * gestures that follow. Must run synchronously inside the tap, before any
-   * await; whichever element real audio is assigned to first wins. */
+  /** Fire a silent clip through the element so iOS unlocks it for everything
+   * that follows (including `ended` handlers on a locked screen). Must run
+   * synchronously inside the tap, before any await; real audio assigned
+   * afterwards wins. */
   const unlocked = useRef(false);
   function unlockAudio() {
     if (unlocked.current) return;
     unlocked.current = true;
-    for (const element of els) {
-      const previous = element.getAttribute("src") ?? "";
-      element.src = SILENT_SRC;
-      void element.play().then(
-        () => {
-          if (element.getAttribute("src") !== SILENT_SRC) return; // real audio took over
-          element.pause();
-          element.src = previous;
-        },
-        () => {
-          if (element.getAttribute("src") === SILENT_SRC) element.src = previous;
-        },
-      );
-    }
+    const previous = el.getAttribute("src") ?? "";
+    const previousLoaded = s.loaded;
+    el.src = SILENT_SRC;
+    s.loaded = null; // the next pump must load its clip, not play the silence
+    const restore = () => {
+      if (el.getAttribute("src") !== SILENT_SRC) return; // real audio took over
+      el.src = previous;
+      s.loaded = previousLoaded;
+    };
+    void el.play().then(() => {
+      if (el.getAttribute("src") === SILENT_SRC) el.pause();
+      restore();
+    }, restore);
   }
 
   async function play() {
@@ -641,6 +635,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.preparing = false;
     s.prebuffering = false;
     saveNow(); // never lose the position we stop at
+    for (const objectUrl of clips.current.values()) URL.revokeObjectURL(objectUrl);
+    clips.current.clear();
     s.book = null;
     s.chapters = [];
     s.chapterIdx = 0;
@@ -671,7 +667,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (cached) s.book = cached;
     // Read the live element while playing so the reload resumes exactly where
     // the listener was, not at the last (throttled) timeupdate.
-    const offset = s.playing ? activeEl().currentTime : s.time;
+    const offset = s.playing ? el.currentTime : s.time;
     s.offset = offset;
     s.time = offset;
     silence();
@@ -740,7 +736,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   function setRate(rate: number) {
     s.rate = snapSpeed(rate, speedOptionsRef.current); // clamp + snap to the config grid
-    for (const element of els) element.playbackRate = s.rate;
+    el.playbackRate = s.rate;
+    el.defaultPlaybackRate = s.rate;
     if (s.book) writeBookSpeed(s.book.id, s.rate); // remembered per book
     bump();
   }
@@ -786,7 +783,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           })
         : null;
     }
-    const state: MediaSessionPlaybackState = s.playing && !s.stalled ? "playing" : "paused";
+    // From the listener's intent, not s.playing: that flag is briefly false at
+    // every clip boundary, and publishing "paused" there flashed the lock
+    // screen's play button. Waiting on generation or buffering stops the clock.
+    const flowing = s.intent && !s.preparing && !s.stalled && !s.error;
+    const state: MediaSessionPlaybackState = flowing ? "playing" : "paused";
     if (ms.playbackState !== state) ms.playbackState = state;
     // Without this iOS shows the element's own ~40 s clip as the whole track.
     const duration = chapterTotal();
@@ -804,8 +805,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   // Latest closures for the stable effects below (state lives in `s`, not closures).
-  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, preroll, saveNow, publishSession });
-  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, preroll, saveNow, publishSession };
+  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession });
+  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession };
 
   // Sync the saved default speed into the player. A book with its own stored
   // speed keeps it: the default only drives books played here for the first
@@ -815,50 +816,45 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const rate = snapSpeed(settings.speed, speedOptionsRef.current);
     if (s.rate === rate) return;
     s.rate = rate;
-    for (const element of els) element.playbackRate = rate;
+    el.playbackRate = rate;
+    el.defaultPlaybackRate = rate;
     bump();
-  }, [settings.speed, els, s]);
+  }, [settings.speed, el, s]);
 
   useEffect(() => {
-    const onEnded = (event: Event) => {
-      if (event.target === activeEl()) fns.current.handleEnded();
+    const onEnded = () => {
+      if (s.loaded) fns.current.handleEnded(); // not the unlock clip
     };
-    const onTime = (event: Event) => {
-      const source = event.target as HTMLMediaElement;
-      if (source === activeEl()) {
-        s.time = source.currentTime;
-        const left = source.duration - source.currentTime;
-        if (source.duration > 0 && left <= PREROLL_S) fns.current.preroll();
-        fns.current.publishSession();
-        bump();
-      }
+    const onTime = () => {
+      if (!s.loaded) return;
+      s.time = el.currentTime;
+      fns.current.publishSession();
+      bump();
     };
     // iOS pauses the element itself on interruptions (calls, Siri, unplugged
     // headphones, background suspension). Our own pauses clear s.playing first,
     // and the pause that precedes `ended` has `ended` set, so anything else is
     // external: adopt it, or the app and lock screen both believe it still plays.
-    const onPause = (event: Event) => {
-      const source = event.target as HTMLMediaElement;
-      if (source !== activeEl() || !s.playing || source.ended) return;
-      s.time = source.currentTime;
+    const onPause = () => {
+      if (!s.playing || el.ended) return;
+      s.time = el.currentTime;
       s.intent = false;
       s.preparing = false;
       s.prebuffering = false;
       s.playing = false;
       s.stalled = false;
-      s.prerolled = null;
-      idleEl().pause(); // a running pre-roll must not carry on alone
       fns.current.saveNow();
       fns.current.publishSession();
       bump();
     };
-    const onWaiting = (event: Event) => {
-      if (event.target !== activeEl() || !s.playing) return;
+    // Mid-clip buffering only: the load at a clip boundary is expected and short.
+    const onWaiting = () => {
+      if (!s.playing || el.currentTime === 0) return;
       s.stalled = true;
       fns.current.publishSession();
     };
-    const onPlaying = (event: Event) => {
-      if (event.target !== activeEl() || !s.stalled) return;
+    const onPlaying = () => {
+      if (!s.stalled) return;
       s.stalled = false;
       fns.current.publishSession();
     };
@@ -869,12 +865,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ["waiting", onWaiting],
       ["playing", onPlaying],
     ];
-    for (const element of els) for (const [name, fn] of listeners) element.addEventListener(name, fn);
+    for (const [name, fn] of listeners) el.addEventListener(name, fn);
     return () => {
-      for (const element of els) for (const [name, fn] of listeners) element.removeEventListener(name, fn);
+      for (const [name, fn] of listeners) el.removeEventListener(name, fn);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- els and the s ref are stable; handlers read live state through them
-  }, [els]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- el and the s ref are stable; handlers read live state through them
+  }, [el]);
 
   // Poll prepare while waiting on generation, and keep a slow beat while
   // playing so a status the in-flight guard dropped cannot leave the next
@@ -1044,8 +1040,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     chapterElapsed: elapsed(),
     chapterTotal: chapterTotal(),
     chapterTotalApprox: s.segments.some((seg) => durationOf(seg) <= 0),
-    elements: els,
-    active: s.active,
+    element: el,
     load,
     reloadVoice,
     play,

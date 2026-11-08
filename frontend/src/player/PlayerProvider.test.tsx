@@ -45,8 +45,8 @@ describe("PlayerProvider", () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     expect(prepareCalls.some((call) => call.segment_id === `${CH1}-seg0` && call.count === TTS_LOOKAHEAD)).toBe(true);
-    expect(getPlayer().elements[0].src).toContain(`${CH1}-seg0`);
-    expect(played).toContain(getPlayer().elements[0]);
+    expect(getPlayer().element.src).toContain(`${CH1}-seg0`);
+    expect(played).toContain(getPlayer().element);
   });
 
   it("queues the rest of the chapter once playback starts, once per chapter", async () => {
@@ -62,7 +62,7 @@ describe("PlayerProvider", () => {
     expect(chapterCalls()[0]).toEqual({ segment_id: `${CH1}-seg0`, count: 12, voice: "danny-en" });
 
     act(() => {
-      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().index).toBe(1));
     expect(chapterCalls()).toHaveLength(1); // the next segment does not re-queue the chapter
@@ -92,25 +92,65 @@ describe("PlayerProvider", () => {
     expect(chapterCalls()[1]?.segment_id).toBe(`${CH1}-seg0`);
   });
 
-  it("hands off to the second element on ended without reloading the source", async () => {
+  it("starts the next clip on the same element inside the ended handler", async () => {
+    // With the screen locked iOS only keeps audio going when the element that
+    // just ended is told to play again from its own `ended` handler.
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
-    const [a, b] = getPlayer().elements;
-    expect(b.src).toContain(`${CH1}-seg1`); // preloaded by lookahead
+    const el = getPlayer().element;
     const callsBefore = prepareCalls.length;
+    played.length = 0;
     act(() => {
-      a.dispatchEvent(new Event("ended"));
+      el.dispatchEvent(new Event("ended"));
+      // Synchronously, before any microtask or network round-trip (the source
+      // is the next clip, or its in-memory copy once that has been fetched):
+      expect(el.src).toMatch(new RegExp(`${CH1}-seg1$|^blob:`));
+      expect(el.src).not.toContain(`${CH1}-seg0`);
+      expect(played).toEqual([el]);
     });
     await waitFor(() => expect(getPlayer().index).toBe(1));
-    expect(played).toContain(b);
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
     expect(prepareCalls.length).toBe(callsBefore); // next segment was already known ready
   });
 
-  it("does not start the idle element when an SSE audio frame tops up while playing", async () => {
+  it("switches to the in-memory copy of the next clip at the boundary", async () => {
+    const created: string[] = [];
+    const revoked: string[] = [];
+    vi.stubGlobal("URL", Object.assign(class extends URL {}, {
+      createObjectURL: () => {
+        created.push(`blob:clip${created.length}`);
+        return created.at(-1)!;
+      },
+      revokeObjectURL: (url: string) => void revoked.push(url),
+    }));
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
-    const [, b] = getPlayer().elements;
-    expect(played.filter((el) => el === b)).toHaveLength(0); // preloading must never call play
+    await waitFor(() => expect(created).toEqual(["blob:clip0"])); // segment 1, fetched while 0 plays
+    const el = getPlayer().element;
+    act(() => {
+      el.dispatchEvent(new Event("ended"));
+    });
+    expect(el.getAttribute("src")).toBe("blob:clip0");
+    await waitFor(() => expect(getPlayer().index).toBe(1));
+    act(() => getPlayer().stop());
+    expect(revoked).toContain("blob:clip0");
+  });
+
+  it("a seek that replaces the source while play() is pending is not a failure", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const abort = Promise.reject(new DOMException("interrupted by a new load request", "AbortError"));
+    abort.catch(() => undefined);
+    vi.mocked(HTMLMediaElement.prototype.play).mockReturnValueOnce(abort);
+    act(() => getPlayer().seekSegment(0, 2)); // play() for segment 0 will be aborted…
+    act(() => getPlayer().seekSegment(1, 0)); // …because this loads segment 1
+    await waitFor(() => expect(getPlayer().index).toBe(1));
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+  });
+
+  it("does not start anything when an SSE audio frame tops up while playing", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
     const playsBefore = played.length;
     await act(async () => {
       MockEventSource.instances[0]!.emit("audio", { book_id: BOOK_ID, segment_id: `${CH1}-seg1` });
@@ -121,20 +161,18 @@ describe("PlayerProvider", () => {
     expect(getPlayer().index).toBe(0);
   });
 
-  it("pauses both elements and a later play starts exactly one", async () => {
+  it("pauses the element and a later play resumes it once", async () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
-    const [a, b] = getPlayer().elements;
     act(() => getPlayer().pause());
     expect(getPlayer().playing).toBe(false);
-    expect(paused).toContain(a);
-    expect(paused).toContain(b);
+    expect(paused).toContain(getPlayer().element);
     played.length = 0;
     await act(async () => {
       getPlayer().toggle();
     });
     await waitFor(() => expect(getPlayer().playing).toBe(true));
-    expect(new Set(played).size).toBe(1); // no overlap: one element resumes
+    expect(played).toEqual([getPlayer().element]);
   });
 
   it("resuming while the segment is still generating asks again instead of hanging", async () => {
@@ -159,17 +197,17 @@ describe("PlayerProvider", () => {
     );
   });
 
-  it("ended moves to the next segment and only then starts the other element", async () => {
+  it("ended moves to the next segment and starts it exactly once", async () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
-    const [a, b] = getPlayer().elements;
-    expect(played).toEqual([a]); // nothing else started while playing
+    const el = getPlayer().element;
+    expect(played).toEqual([el]); // nothing else started while playing
     act(() => {
-      a.dispatchEvent(new Event("ended"));
+      el.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().index).toBe(1));
     await waitFor(() => expect(getPlayer().playing).toBe(true));
-    expect(played).toEqual([a, b]); // the handoff starts the other element, once
+    expect(played).toEqual([el, el]);
   });
 
   it("auto-advances to the next chapter when the chapter ends", async () => {
@@ -177,19 +215,19 @@ describe("PlayerProvider", () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     act(() => {
-      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
     expect(getPlayer().index).toBe(0);
-    expect(getPlayer().elements[1].src).toContain(`${CH2}-seg0`);
-    expect(played).toContain(getPlayer().elements[1]);
+    expect(getPlayer().element.src).toContain(`${CH2}-seg0`);
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
   });
 
-  it("applies playback speed to both elements, clamps to 0.9–1.15 and rounds to 0.05", () => {
+  it("applies playback speed, clamps to 0.9–1.15 and rounds to 0.05", () => {
     const getPlayer = renderPlayer();
-    const [a, b] = getPlayer().elements;
+    const a = getPlayer().element;
     getPlayer().setRate(1.1);
-    expect([a.playbackRate, b.playbackRate]).toEqual([1.1, 1.1]);
+    expect([a.playbackRate, a.defaultPlaybackRate]).toEqual([1.1, 1.1]); // a new src keeps the speed
     getPlayer().setRate(1.13);
     expect(a.playbackRate).toBe(1.15); // rounds to the step, no float noise
     getPlayer().setRate(2);
@@ -223,11 +261,11 @@ describe("PlayerProvider", () => {
       getPlayer().setSleep("chapter");
     });
     act(() => {
-      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().index).toBe(1));
     act(() => {
-      getPlayer().elements[1].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().playing).toBe(false));
     expect(getPlayer().chapter?.id).toBe(CH1);
@@ -277,7 +315,7 @@ describe("PlayerProvider", () => {
     installPlayerFetch({ settings: { speed: 1.1 } });
     const getPlayer = renderPlayer();
     await waitFor(() => expect(getPlayer().rate).toBe(1.1));
-    expect(getPlayer().elements[0].playbackRate).toBe(1.1);
+    expect(getPlayer().element.playbackRate).toBe(1.1);
   });
 
   it("remembers the speed per book and starts new books at the default", async () => {
@@ -368,7 +406,7 @@ describe("PlayerProvider", () => {
     await loadAndPlay(getPlayer);
     await waitFor(() => expect(getPlayer().settings.auto_next).toBe(false));
     act(() => {
-      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().playing).toBe(false));
     expect(getPlayer().chapter?.id).toBe(CH1);
@@ -397,7 +435,7 @@ describe("PlayerProvider", () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     const before = prepareCalls.length;
-    const a = getPlayer().elements[0];
+    const a = getPlayer().element;
     act(() => {
       a.currentTime = 12;
       a.dispatchEvent(new Event("timeupdate"));
@@ -466,7 +504,7 @@ describe("PlayerProvider", () => {
     expect(prepareCalls.length).toBe(before);
   });
 
-  it("stop pauses both elements, saves, clears the book, and clears the URL query", async () => {
+  it("stop pauses the element, saves, clears the book, and clears the URL query", async () => {
     const { saveCalls } = installPlayerFetch();
     const getPlayer = renderPlayer(<SearchProbe />, [`/player?book=${BOOK_ID}`]);
     await loadAndPlay(getPlayer);
@@ -475,8 +513,7 @@ describe("PlayerProvider", () => {
     expect(getPlayer().chapter).toBeNull();
     expect(getPlayer().playing).toBe(false);
     expect(getPlayer().segments).toHaveLength(0);
-    expect(paused).toContain(getPlayer().elements[0]);
-    expect(paused).toContain(getPlayer().elements[1]);
+    expect(paused).toContain(getPlayer().element);
     await waitFor(() => expect(saveCalls.length).toBeGreaterThan(0));
     await waitFor(() => expect(screen.getByTestId("search").textContent).toBe(""));
   });
@@ -631,7 +668,7 @@ describe("PlayerProvider progress", () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     act(() => {
-      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().index).toBe(1));
     expect(saveCalls.some((call) => call.segment_id === `${CH1}-seg1`)).toBe(true);
@@ -644,7 +681,7 @@ describe("PlayerProvider progress", () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     act(() => {
-      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
     expect(fixture.saveCalls.some((call) => call.chapter_id === CH1)).toBe(true);
@@ -696,11 +733,11 @@ describe("PlayerProvider progress", () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
     act(() => {
-      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
     act(() => {
-      getPlayer().elements[1].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().finished).toBe(true));
     expect(getPlayer().playing).toBe(false);
@@ -764,7 +801,7 @@ describe("PlayerProvider progress", () => {
     await loadAndPlay(getPlayer);
     expect(getPlayer().progressPercent).toBe(0);
     act(() => {
-      getPlayer().elements[0].dispatchEvent(new Event("ended"));
+      getPlayer().element.dispatchEvent(new Event("ended"));
     });
     await waitFor(() => expect(getPlayer().index).toBe(1));
     // Segment one starts at its char_start of the 1200-char book.
@@ -773,7 +810,7 @@ describe("PlayerProvider progress", () => {
 });
 
 describe("PlayerProvider on iOS", () => {
-  it("unlocks both elements on the first play gesture, before the network", async () => {
+  it("unlocks the element on the first play gesture, before the network", async () => {
     // iOS blocks play() on an element that has never played from a gesture, and
     // play() only reaches the audio after a prepare round-trip.
     prepareCalls = installPlayerFetch({ statuses: { [`${CH1}-seg0`]: "generating" } }).prepareCalls;
@@ -782,16 +819,26 @@ describe("PlayerProvider on iOS", () => {
       await getPlayer().load(BOOK_ID);
     });
     act(() => void getPlayer().play());
-    expect(getPlayer().elements.map((el) => el.getAttribute("src"))).toEqual([SILENT_SRC, SILENT_SRC]);
+    expect(getPlayer().element.getAttribute("src")).toBe(SILENT_SRC);
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    // The silent clip is gone from both: one restored to empty, the other taken
-    // over by the preloaded next segment (an unlock never clobbers real audio).
-    expect(getPlayer().elements.some((el) => el.getAttribute("src") === SILENT_SRC)).toBe(false);
-    expect(getPlayer().elements[0].getAttribute("src")).toBe("");
-    expect(getPlayer().playing).toBe(false); // the unlock is silent, not playback
+    // The silent clip is gone again (restored to empty) and is not playback.
+    expect(getPlayer().element.getAttribute("src")).toBe("");
+    expect(getPlayer().playing).toBe(false);
+  });
+
+  it("the unlock clip never stands in for real audio", async () => {
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    await act(async () => {
+      await getPlayer().play(); // unlock + real audio in the same tap
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().element.src).toContain(`${CH1}-seg0`);
   });
 
   it("publishes the chapter duration and position to the lock screen", async () => {
@@ -853,7 +900,7 @@ describe("PlayerProvider on iOS", () => {
       await loadAndPlay(getPlayer);
       const writes = session.metadataWrites;
       expect(writes).toBeGreaterThan(0);
-      const [a] = getPlayer().elements;
+      const a = getPlayer().element;
       for (const t of [1, 2, 3, 4]) {
         a.currentTime = t;
         act(() => {
@@ -876,7 +923,7 @@ describe("PlayerProvider on iOS", () => {
       const getPlayer = renderPlayer();
       await loadAndPlay(getPlayer);
       expect(session.playbackState).toBe("playing");
-      const [a] = getPlayer().elements;
+      const a = getPlayer().element;
       a.currentTime = 6;
       const saves = installed.saveCalls.length;
       act(() => {
@@ -905,7 +952,8 @@ describe("PlayerProvider on iOS", () => {
     try {
       const getPlayer = renderPlayer();
       await loadAndPlay(getPlayer);
-      const [a] = getPlayer().elements;
+      const a = getPlayer().element;
+      a.currentTime = 5; // mid-clip: the load at a clip boundary is not a stall
       act(() => {
         a.dispatchEvent(new Event("waiting"));
       });
@@ -920,10 +968,36 @@ describe("PlayerProvider on iOS", () => {
     }
   });
 
+  it("keeps the lock screen on playing across a clip boundary", async () => {
+    const session = installMediaSession();
+    try {
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      const states: string[] = [];
+      let value = session.playbackState;
+      Object.defineProperty(session, "playbackState", {
+        get: () => value,
+        set: (next: MediaSessionPlaybackState) => {
+          value = next;
+          states.push(next);
+        },
+      });
+      act(() => {
+        getPlayer().element.dispatchEvent(new Event("ended"));
+      });
+      await waitFor(() => expect(getPlayer().index).toBe(1));
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      expect(states).not.toContain("paused");
+      expect(session.playbackState).toBe("playing");
+    } finally {
+      Reflect.deleteProperty(navigator, "mediaSession");
+    }
+  });
+
   it("ignores the pause event that precedes ended at a clip boundary", async () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
-    const [a] = getPlayer().elements;
+    const a = getPlayer().element;
     vi.spyOn(a, "ended", "get").mockReturnValue(true);
     act(() => {
       a.dispatchEvent(new Event("pause"));
@@ -931,43 +1005,6 @@ describe("PlayerProvider on iOS", () => {
     });
     await waitFor(() => expect(getPlayer().index).toBe(1));
     expect(getPlayer().playing).toBe(true);
-  });
-
-  it("pre-rolls the next segment muted and unmutes it at the handoff", async () => {
-    vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(40);
-    const getPlayer = renderPlayer();
-    await loadAndPlay(getPlayer);
-    const [a, b] = getPlayer().elements;
-    a.currentTime = 39; // inside the pre-roll window of a 40 s clip
-    act(() => {
-      a.dispatchEvent(new Event("timeupdate"));
-    });
-    expect(getPlayer().playing).toBe(true); // a muted pre-roll is not a state change
-    expect(getPlayer().index).toBe(0);
-    expect(b.volume).toBe(0);
-    expect(b.src).toContain(`${CH1}-seg1`);
-    expect(a.volume).toBe(1);
-
-    act(() => {
-      a.dispatchEvent(new Event("ended"));
-    });
-    await waitFor(() => expect(getPlayer().index).toBe(1));
-    expect(getPlayer().playing).toBe(true);
-    expect(getPlayer().elements[1].volume).toBe(1); // the handoff makes the running element audible
-  });
-
-  it("clears a muted pre-roll when the listener seeks", async () => {
-    vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(40);
-    const getPlayer = renderPlayer();
-    await loadAndPlay(getPlayer);
-    const [a] = getPlayer().elements;
-    a.currentTime = 39;
-    act(() => {
-      a.dispatchEvent(new Event("timeupdate"));
-    });
-    expect(getPlayer().elements[1].volume).toBe(0);
-    act(() => getPlayer().seekSegment(0, 5));
-    await waitFor(() => expect(getPlayer().elements[0].volume).toBe(1));
   });
 });
 

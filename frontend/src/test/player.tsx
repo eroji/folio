@@ -137,6 +137,9 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
         }
         return jsonResponse({ progress: fixture.progress ?? null });
       }
+      if (url.startsWith("/api/v1/audio/")) {
+        return new Response("clip", { headers: { "Content-Type": "audio/mpeg" } });
+      }
       if (url.includes("/audio/prepare")) {
         const body = JSON.parse(String(init?.body)) as { segment_id: string; count: number; voice?: string };
         prepareCalls.push(body);

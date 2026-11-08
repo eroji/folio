@@ -51,7 +51,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await response.json()) as T;
 }
 
+/** GET a same-origin URL as a Blob (e.g. an audio clip fetched ahead of
+ * playback). `url` is a full path as the server returned it. */
+async function blob(url: string): Promise<Blob> {
+  const response = await fetch(url, { credentials: "same-origin" });
+  if (!response.ok) throw new ApiError("request_failed", "Something went wrong.", response.status);
+  return response.blob();
+}
+
 export const api = {
+  blob,
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),

@@ -120,7 +120,7 @@ describe("ReadAlong", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(300); // past the throttle
     });
-    const el = getPlayer().elements[0];
+    const el = getPlayer().element;
     act(() => {
       el.currentTime = 6;
       el.dispatchEvent(new Event("timeupdate"));
@@ -139,7 +139,7 @@ describe("ReadAlong", () => {
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer, true);
     stubPanelGeometry(panel());
-    const el = getPlayer().elements[0];
+    const el = getPlayer().element;
     // Still inside the first sentence: the loop runs, but no scroll
     // animation starts and no re-render moves the highlight.
     const before = starts.length;
@@ -167,7 +167,7 @@ describe("ReadAlong", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(300);
     });
-    const el = getPlayer().elements[0];
+    const el = getPlayer().element;
     act(() => {
       el.currentTime = 6;
       el.dispatchEvent(new Event("timeupdate"));
@@ -206,7 +206,7 @@ describe("ReadAlong", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
-    const el = getPlayer().elements[0];
+    const el = getPlayer().element;
     act(() => {
       el.currentTime = 6;
       el.dispatchEvent(new Event("timeupdate"));
