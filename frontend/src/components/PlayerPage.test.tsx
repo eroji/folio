@@ -200,11 +200,17 @@ describe("PlayerPage (phone)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Read along" }));
     const playback = await screen.findByRole("region", { name: "Playback" });
     expect(within(playback).getByRole("button", { name: "Play" })).toBeTruthy();
-    const toggle = within(playback).getByRole("button", { name: "Auto-scroll" });
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(within(playback).getByRole("button", { name: "Back 15 seconds" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Back to player" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Text size" }).textContent).toBe("Aa");
+    // Closing the sheet sits on the player row; the read-along toggles sit together
+    // in the header: auto-scroll right beside the text size.
+    expect(within(playback).getByRole("button", { name: "Back to player" })).toBeTruthy();
+    expect(within(playback).queryByRole("button", { name: "Auto-scroll" })).toBeNull();
+    const textSize = screen.getByRole("button", { name: "Text size" });
+    expect(textSize.textContent).toBe("Aa");
+    const toggle = screen.getByRole("button", { name: "Auto-scroll" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.nextElementSibling?.contains(textSize)).toBe(true);
+    expect(screen.getAllByRole("button", { name: "Back to player" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /^Increase font size/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Decrease font size/ })).toBeNull();
 
@@ -227,6 +233,11 @@ describe("PlayerPage (phone)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Up next" }));
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getByRole("button", { name: /Chapter Two/ })).toBeTruthy();
+    // No player row on this tab: the sheet still closes from its header.
+    expect(screen.queryByRole("region", { name: "Playback" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Auto-scroll" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Back to player" }));
+    expect(screen.queryByRole("tabpanel")).toBeNull();
   });
 
   /** Opens ⋮ → Stop and close at `entries` and waits for the book to unload. */

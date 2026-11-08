@@ -276,9 +276,8 @@ function PhoneSheet({
       <div className="flex shrink-0 flex-col gap-1.5 px-4">
         <span aria-hidden className="mx-auto mt-1.5 h-1 w-10 rounded-full bg-border" />
         <div className="flex items-center gap-3 pt-1.5">
-          <button type="button" aria-label="Back to player" title="Back to player" onClick={onClose} className={iconButton}>
-            <Icon name="ChevronDown" size={22} />
-          </button>
+          {/* Read along closes from its player row; the other tabs have none. */}
+          {tab !== "read" && <CloseSheetButton onClose={onClose} />}
           <Link to={`/books/${book.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 no-underline">
             <BookCover book={book} showPlaceholderText={false} className="aspect-[2/3] w-7 shrink-0 rounded-xs" />
             <span className="flex min-w-0 flex-col text-left">
@@ -286,6 +285,8 @@ function PhoneSheet({
               <span className="truncate text-sm text-fg-2">{book.title}</span>
             </span>
           </Link>
+          {/* The read-along view's own settings sit together. */}
+          {tab === "read" && <AutoScrollToggle value={controls.autoScroll} onChange={controls.setAutoScroll} />}
           <TextSizePicker step={controls.sizeStep} onStep={controls.setSizeStep} />
         </div>
         <PlayerTabs tab={tab} onSelect={onSelect} className="mt-1" />
@@ -316,11 +317,20 @@ function PhoneSheet({
             <SkipButton direction="back" />
             <PlayButton size={60} />
             <SkipButton direction="forward" />
-            <AutoScrollToggle value={controls.autoScroll} onChange={controls.setAutoScroll} />
+            <CloseSheetButton onClose={onClose} />
           </div>
         </section>
       )}
     </div>
+  );
+}
+
+/** Closes the phone panel sheet back to the full player. */
+function CloseSheetButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button type="button" aria-label="Back to player" title="Back to player" onClick={onClose} className={iconButton}>
+      <Icon name="ChevronDown" size={22} />
+    </button>
   );
 }
 
