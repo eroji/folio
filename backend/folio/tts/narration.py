@@ -15,6 +15,8 @@ from folio.voice_catalog import load_voice_instructions
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from folio.config import Settings
+
 # Voice style used whenever a voice has no admin override, so a voice added to
 # the engine inherits the house narration without anyone setting it up.
 DEFAULT_INSTRUCTION = (
@@ -25,6 +27,12 @@ DEFAULT_INSTRUCTION = (
 )
 
 _SENTENCE_END = (".", "!", "?")
+
+
+def engine_instructions(db: Session, settings: Settings, voice: str, genre: str | None) -> str:
+    """What to send as ``instructions`` (and key the cache with): the narration
+    prompt, or nothing when ``TTS_INSTRUCTIONS`` is off for this engine."""
+    return narration_prompt(db, voice, genre) if settings.tts_instructions else ""
 
 
 def narration_prompt(db: Session, voice: str, genre: str | None) -> str:

@@ -530,3 +530,37 @@ def test_run_tts_job_synthesizes_with_the_voice_narration_prompt(
 
     assert row.status == "ready"
     assert captured == ["Warm, expressive. You're narrating a Mystery novel."]
+
+
+def test_tts_instructions_off_sends_no_prompt_and_keys_without_it(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """VoxCPM2 drops the reference transcript whenever a style prompt is sent and
+    clones far less consistently, so the prompt must be switchable per engine."""
+    settings = settings.model_copy(update={"tts_instructions": False})
+    captured: list[str | None] = []
+    book = _book(db, chapters=1, per_chapter=1)
+    book.genre = "Mystery"
+    db.commit()
+    segment = _segments(db, book)[0]
+    save_voice_instructions(db, {"ashley-en": "Warm, expressive"})
+    prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    row = claim_next_tts(db)
+    assert row is not None
+    monkeypatch.setattr(
+        queue_module, "TtsClient", lambda _s: _FakeClient(_s, synth=_Synth(captured))
+    )
+
+    run_tts_job(db, settings, row)
+
+    assert row.status == "ready"
+    assert len(captured) == 1 and not captured[0]  # the HTTP client omits an empty prompt
+    assert row.cache_key == cache_key(
+        settings.tts_model,
+        "ashley-en",
+        settings.tts_format,
+        normalize_speech_text(segment.text),
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
+    )
+    window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    assert window[0][1].status == "ready"  # prepare keys it the same way

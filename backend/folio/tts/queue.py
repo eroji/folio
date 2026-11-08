@@ -36,7 +36,7 @@ from folio.tts import (
     normalize_speech_text,
     select_voice,
 )
-from folio.tts.narration import narration_prompt
+from folio.tts.narration import engine_instructions
 from folio.tts.pronunciation import apply_rules
 from folio.voice_catalog import effective_defaults
 
@@ -136,7 +136,7 @@ def prepare(
     if count is None:
         count = settings.tts_lookahead
     rules = _rules(session, book.id)
-    instructions = narration_prompt(session, voice, book.genre)
+    instructions = engine_instructions(session, settings, voice, book.genre)
     segments = _ordered_segments(session, book)
     start = next((i for i, s in enumerate(segments) if s.id == segment_id), None)
     if start is None:
@@ -236,7 +236,9 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
             raise TtsError("The segment no longer exists.", code="segment_gone")
         rules = _rules(session, chapter.book_id) if chapter else []
         book = session.get(Book, chapter.book_id) if chapter else None
-        instructions = narration_prompt(session, row.voice, book.genre if book else None)
+        instructions = engine_instructions(
+            session, settings, row.voice, book.genre if book else None
+        )
         with TtsClient(settings) as client:
             audio, _ = get_or_synthesize(
                 session,

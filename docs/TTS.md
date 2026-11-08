@@ -30,3 +30,17 @@ Probed the homelab service so M4 is built against reality, not the spec's assump
 ## Note on voice names
 
 `ashley-kr` is the engine's Korean voice despite the non-standard `kr` suffix; the spec's mapping (`kr` → `ko`) is required, not cosmetic.
+
+## VoxCPM2 (`voxcpm2-openai`, measured 2026-11-08)
+
+`http://vllm.dotslash.io:8881/v1`, model `voxcpm2`, voices are the Studio library keys (e.g. `tess`). The server is deterministic: the same request returns byte-identical audio.
+
+When a request carries `instructions`, voxcpm2-openai prefixes them as `(style)text` and **drops the voice's reference transcript** (VoxCPM2 "controllable cloning"). Without instructions it clones with the transcript. One 746-char segment, voice `tess`, across seeds:
+
+| Spread across seeds | with Folio's prompt (7 clips) | without (6 clips) |
+| --- | --- | --- |
+| median pitch | 210–242 Hz (≈2.4 semitones) | 216–225 Hz (≈0.7 semitones) |
+| loudness | −15.3 to −18.8 dBFS | −17.7 to −18.3 dBFS |
+| duration | 31–40 s | 32.5–36.8 s |
+
+Different segments behave like different seeds, so with a prompt the narrator's pitch, level and pace jump at segment boundaries. Head-vs-tail drift inside a clip was small either way, so segment length is not the cause. **Set `TTS_INSTRUCTIONS=false` for VoxCPM2.** Changing it changes every cache key, so clips re-synthesize on demand.

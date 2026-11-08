@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     tts_voices: str = ""
     tts_voices_ttl: int = 600
     tts_voice_lang_pattern: str = "-(en|ja|kr|ko|zh)$"
+    # Send the narration prompt (`instructions`) with every synthesis. Turn off for
+    # VoxCPM2: a prompt makes it drop the voice's reference transcript and clone
+    # far less consistently (pitch, loudness and pace vary between segments).
+    tts_instructions: bool = True
     tts_max_chars: int = 800
     tts_lookahead: int = 6
     tts_concurrency: int = 2
