@@ -994,6 +994,57 @@ describe("PlayerProvider on iOS", () => {
     }
   });
 
+  it("shows paused on the lock screen the moment a boundary waits on generation", async () => {
+    installPlayerFetch({ statuses: { [`${CH1}-seg1`]: "generating" } });
+    const session = installMediaSession();
+    try {
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      expect(session.playbackState).toBe("playing");
+      act(() => {
+        getPlayer().element.dispatchEvent(new Event("ended"));
+        // Synchronously: a locked screen may not render again for a long time.
+        expect(session.playbackState).toBe("paused");
+      });
+      await waitFor(() => expect(getPlayer().preparing).toBe(true));
+    } finally {
+      Reflect.deleteProperty(navigator, "mediaSession");
+    }
+  });
+
+  it("after a generation stall, waits for a buffer before resuming", async () => {
+    // Resuming on the first ready segment stalled again a few seconds later.
+    const fixture: { statuses: Record<string, AudioStatus>; segmentsByChapter: Record<string, ReturnType<typeof makeSegments>> } = {
+      statuses: { [`${CH1}-seg1`]: "generating", [`${CH1}-seg2`]: "queued", [`${CH1}-seg3`]: "queued" },
+      segmentsByChapter: { [CH1]: makeSegments(CH1, 6), [CH2]: makeSegments(CH2, 2) },
+    };
+    installPlayerFetch(fixture);
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const el = getPlayer().element;
+    act(() => {
+      el.dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().preparing).toBe(true));
+    const frame = async () => {
+      await act(async () => {
+        MockEventSource.instances[0]!.emit("audio", { book_id: BOOK_ID, segment_id: `${CH1}-seg1` });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+
+    delete fixture.statuses[`${CH1}-seg1`]; // the stalled segment is ready…
+    await frame();
+    expect(getPlayer().playing).toBe(false); // …but nothing behind it yet
+    expect(getPlayer().preparing).toBe(true);
+
+    delete fixture.statuses[`${CH1}-seg2`];
+    delete fixture.statuses[`${CH1}-seg3`];
+    await frame();
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().index).toBe(1);
+  });
+
   it("ignores the pause event that precedes ended at a clip boundary", async () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);

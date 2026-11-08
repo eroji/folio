@@ -45,8 +45,9 @@ const POLL_MS = 1000;
  * a stale "queued" for the next segment stalls playback at the boundary. */
 const PLAYING_POLL_MS = 5000;
 /** Segments after the current one that must be ready before a voice-change
- * reload starts: starting on the first one alone made playback stall a few
- * seconds later while the queued lookahead caught up. */
+ * reload, or a resume after playback ran into a segment still generating,
+ * starts: starting on the first one alone made playback stall a few seconds
+ * later while the queued lookahead caught up. */
 const BUFFER_AHEAD = 2;
 /** Spec "Progress model": save every 10 s while playing. */
 const SAVE_MS = 10_000;
@@ -138,7 +139,7 @@ interface Machine {
   intent: boolean; // the user wants audio playing
   playing: boolean;
   preparing: boolean;
-  prebuffering: boolean; // a voice reload is filling its lookahead before starting
+  prebuffering: boolean; // a voice reload or a generation stall is filling its lookahead before (re)starting
   error: string | null;
   time: number;
   rate: number;
@@ -289,12 +290,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (s.prebuffering) {
       if (!buffered()) {
         s.preparing = true;
+        publishSession();
         return;
       }
       s.prebuffering = false;
     }
     if (item?.status !== "ready" || !item.url) {
       s.preparing = true;
+      publishSession();
       return;
     }
     const url = item.url;
@@ -431,6 +434,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.error = null;
     s.prebuffering = false;
     s.preparing = autoplay;
+    publishSession();
     bump();
     try {
       s.segments = await queryClient.fetchQuery({
@@ -458,7 +462,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.offset = 0;
       saveNow(); // segment change
       if (currentItem()?.status === "ready") pump();
-      else void topUp();
+      else {
+        // Ran into generation: stop the lock-screen clock now, and resume only
+        // once a few segments are ready rather than stall again right after.
+        s.preparing = true;
+        s.prebuffering = true;
+        void topUp();
+      }
     } else {
       if (s.sleep === "chapter") s.intent = false;
       void advanceChapter();
