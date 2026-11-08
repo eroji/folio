@@ -34,7 +34,7 @@ function spokenChars(p: PlayerContextValue): number {
   const current = p.segments[p.index];
   if (!current) return 0;
   const duration = p.status[current.id]?.duration_s ?? 0;
-  const t = p.playing ? p.element.currentTime : p.time;
+  const t = p.playing ? p.liveTime() : p.time;
   const share = duration > 0 ? Math.min(1, t / duration) : 0;
   return current.char_start + share * Math.max(0, current.char_end - current.char_start);
 }

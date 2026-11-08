@@ -1068,6 +1068,131 @@ describe("PlayerProvider on iOS", () => {
   });
 });
 
+describe("PlayerProvider HLS stream (Safari / iOS)", () => {
+  const playlist = (from: string) => `/api/v1/books/${BOOK_ID}/stream.m3u8?voice=ashley-en&from=${from}`;
+  const timelineLoaded = () =>
+    waitFor(() =>
+      expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/stream.json?"))).toBe(true),
+    ).then(() => act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }));
+  const at = (el: HTMLMediaElement, seconds: number) =>
+    act(() => {
+      el.currentTime = seconds;
+      el.dispatchEvent(new Event("timeupdate"));
+    });
+
+  beforeEach(() => {
+    vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockImplementation((type: string) =>
+      type.includes("mpegurl") ? "maybe" : "",
+    );
+  });
+
+  it("plays the book as one HLS stream from the current segment", async () => {
+    installPlayerFetch({ stream: true });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    expect(getPlayer().element.getAttribute("src")).toBe(playlist(`${CH1}-seg0`));
+    expect(played).toEqual([getPlayer().element]);
+  });
+
+  it("keeps the clip player where the browser cannot play HLS", async () => {
+    vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("");
+    installPlayerFetch({ stream: true });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    expect(getPlayer().element.src).toContain(`/api/v1/audio/${CH1}-seg0`);
+  });
+
+  it("follows the stream across segments and into the next chapter, saving each", async () => {
+    // No page code runs between clips: the position comes from currentTime.
+    const { saveCalls } = installPlayerFetch({ stream: true });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await timelineLoaded();
+    const el = getPlayer().element;
+    at(el, 13); // CH1 seg1 (10–20 s)
+    expect(getPlayer().index).toBe(1);
+    expect(getPlayer().time).toBeCloseTo(3);
+    expect(getPlayer().liveTime()).toBeCloseTo(3); // read-along reads segment time, not stream time
+    at(el, 25); // CH2 seg0 (20–30 s)
+    expect(getPlayer().chapter?.id).toBe(CH2);
+    await waitFor(() => expect(getPlayer().segments[0]?.id).toBe(`${CH2}-seg0`));
+    at(el, 26);
+    expect(getPlayer().index).toBe(0);
+    expect(getPlayer().time).toBeCloseTo(6);
+    await waitFor(() => expect(saveCalls.some((c) => c.segment_id === `${CH2}-seg0`)).toBe(true));
+    expect(getPlayer().playing).toBe(true);
+    expect(played).toHaveLength(1); // one continuous track
+  });
+
+  it("seeks inside the listed stream without reloading it", async () => {
+    installPlayerFetch({ stream: true });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await timelineLoaded();
+    const el = getPlayer().element;
+    act(() => getPlayer().seekSegment(1, 3));
+    expect(el.currentTime).toBeCloseTo(13);
+    expect(el.getAttribute("src")).toBe(playlist(`${CH1}-seg0`));
+    expect(getPlayer().playing).toBe(true);
+  });
+
+  it("a seek past the listed run starts a new stream at the target", async () => {
+    installPlayerFetch({ stream: true, streamListed: 1 });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await timelineLoaded();
+    act(() => getPlayer().seekSegment(1, 2));
+    await waitFor(() => expect(getPlayer().element.getAttribute("src")).toBe(playlist(`${CH1}-seg1`)));
+    expect(getPlayer().element.currentTime).toBeCloseTo(2); // the new stream starts at seg1
+  });
+
+  it("pauses at the chapter end when auto-play-next is off", async () => {
+    installPlayerFetch({ stream: true, settings: { auto_next: false } });
+    const getPlayer = renderPlayer();
+    await waitFor(() => expect(getPlayer().settings.auto_next).toBe(false));
+    await loadAndPlay(getPlayer);
+    await timelineLoaded();
+    at(getPlayer().element, 19.8); // CH1 ends at 20 s
+    expect(getPlayer().playing).toBe(false);
+    expect(getPlayer().chapter?.id).toBe(CH1);
+  });
+
+  it("the end of the stream is the end of the book", async () => {
+    const { finishedCalls } = installPlayerFetch({ stream: true });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await timelineLoaded();
+    act(() => {
+      getPlayer().element.dispatchEvent(new Event("ended"));
+    });
+    expect(getPlayer().playing).toBe(false);
+    await waitFor(() => expect(finishedCalls).toEqual([{ finished: true }]));
+  });
+
+  it("leaves the lock-screen position to the stream itself", async () => {
+    // A published position keeps the lock-screen clock running on silence when
+    // a locked phone freezes the page; the stream's own position stops with it.
+    const setPositionState = vi.fn();
+    Object.defineProperty(navigator, "mediaSession", {
+      configurable: true,
+      value: { playbackState: "none", metadata: null, setActionHandler: vi.fn(), setPositionState },
+    });
+    try {
+      installPlayerFetch({ stream: true });
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      await timelineLoaded();
+      setPositionState.mockClear();
+      at(getPlayer().element, 13);
+      expect(setPositionState.mock.calls.every((call) => call.length === 0)).toBe(true);
+    } finally {
+      Reflect.deleteProperty(navigator, "mediaSession");
+    }
+  });
+});
+
 describe("formatSpeed", () => {
   it("shows one decimal minimum and two only when needed", () => {
     expect(formatSpeed(0.9)).toBe("0.9");

@@ -7,7 +7,17 @@
 import { createContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { fetchAudioClip, fetchBookDetail, fetchSegments, prepareAudio, type PreparedSegment, type Segment } from "../api/audio";
+import {
+  fetchAudioClip,
+  fetchBookDetail,
+  fetchSegments,
+  fetchStreamTimeline,
+  prepareAudio,
+  streamPlaylistUrl,
+  type PreparedSegment,
+  type Segment,
+  type StreamEntry,
+} from "../api/audio";
 import { baseLanguage } from "../api/voices";
 import {
   continueQueryKey,
@@ -62,6 +72,11 @@ const AHEAD_PROMPT_S = 60;
 export const SILENT_SRC =
   "data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
 
+/** Refresh a growing stream's timeline at most this often while playing near its end. */
+const TIMELINE_REFRESH_MS = 5000;
+/** How close to a chapter's end the stream pauses when the chapter should stop. */
+const CHAPTER_STOP_S = 0.35;
+
 /** m:ss, or h:mm:ss past an hour; shared by the player screens. */
 export function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
@@ -106,6 +121,9 @@ export interface PlayerContextValue {
   chapterTotalApprox: boolean;
   /** The single audio element every clip plays through. */
   element: HTMLAudioElement;
+  /** Seconds played within the current segment, read live from the element
+   * (the provider's `time` only moves on the throttled timeupdate). */
+  liveTime: () => number;
   load: (bookId: string, chapterId?: string) => Promise<void>;
   /** Re-synthesize the current position after a narrator/voice change. */
   reloadVoice: (bookId?: string) => void;
@@ -150,11 +168,33 @@ interface Machine {
   loaded: string | null;
   /** The active element is buffering (`waiting`): the lock-screen clock must stop. */
   stalled: boolean;
+  /** Voice the server offers the book as one HLS stream in (null: clip by clip). */
+  streamVoice: string | null;
+  /** The HLS stream the element plays, when the browser can (Safari / iOS). */
+  stream: StreamState | null;
+  /** Chapter whose end already paused the stream (stop-at-chapter-end), so the
+   * resume that follows does not pause again on the same boundary. */
+  chapterStop: string | null;
   resumeLoading: boolean; // resume not applied yet: saves stay quiet
   finished: boolean;
   finishedMarked: boolean; // the finished PUT fires once per session
   resumePrompt: ResumePromptProps | null;
   lastDevice: { label: string; at: string } | null;
+}
+
+/** One HLS book stream: Safari plays the clips from `origin` on as a single
+ * track, so no page JavaScript has to run at clip or chapter boundaries
+ * while a locked iPhone has frozen the page. `entries` maps stream time to
+ * segments; it grows with the playlist until `complete`. */
+interface StreamState {
+  origin: string;
+  voice: string;
+  url: string;
+  entries: StreamEntry[];
+  complete: boolean;
+  /** A seek to re-apply once the stream's metadata loads (Safari may drop an early one). */
+  pendingSeek: number | null;
+  fetchedAt: number;
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
@@ -171,7 +211,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, prebuffering: false, error: null,
-    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false,
+    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
   const el = useMemo(() => new Audio(), []);
@@ -185,6 +225,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const lastPath = useRef<string | null>(null);
 
   const currentItem = () => s.status[s.segments[s.index]?.id ?? ""];
+  /** Safari (and iOS) play HLS natively; elsewhere the clip player stays. */
+  const hlsPlayable = () => el.canPlayType("application/vnd.apple.mpegurl") !== "";
+  /** The element is playing (or holds) the book stream. */
+  const streaming = () => s.stream !== null && s.loaded === s.stream.url;
+  const entryIndexOf = (segmentId: string | undefined) =>
+    s.stream && segmentId ? s.stream.entries.findIndex((e) => e.segment_id === segmentId) : -1;
+  /** Index of the stream entry playing at stream time `t`, or -1 past the listed run. */
+  const entryAt = (t: number) => {
+    const entries = s.stream?.entries ?? [];
+    let lo = 0;
+    let hi = entries.length - 1;
+    let found = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (entries[mid]!.start <= t) {
+        found = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    const e = found >= 0 ? entries[found]! : null;
+    return e && t < e.start + e.duration ? found : -1;
+  };
+  const liveTime = () => {
+    if (!streaming()) return el.currentTime;
+    const at = entryIndexOf(s.segments[s.index]?.id);
+    return at >= 0 ? Math.max(0, el.currentTime - s.stream!.entries[at]!.start) : s.time;
+  };
   const durationOf = (segment: Segment | undefined) => (segment ? s.status[segment.id]?.duration_s ?? 0 : 0);
   /** Estimated seconds per character, from the book's measured average (server)
    * or 15 chars per second when the book has no measurement yet. */
@@ -300,14 +367,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       publishSession();
       return;
     }
-    const url = item.url;
-    if (s.loaded !== url) {
-      el.src = clips.current.get(url) ?? url;
-      s.loaded = url;
-    }
-    if (s.offset > 0) {
-      el.currentTime = s.offset;
-      s.offset = 0;
+    let url = item.url;
+    if (s.streamVoice && s.book && hlsPlayable()) {
+      url = loadStream(s.book.id, s.streamVoice);
+    } else {
+      if (s.loaded !== url) {
+        el.src = clips.current.get(url) ?? url;
+        s.loaded = url;
+      }
+      if (s.offset > 0) {
+        el.currentTime = s.offset;
+        s.offset = 0;
+      }
     }
     el.playbackRate = s.rate; // a new src resets the rate to the default
     void el
@@ -336,6 +407,135 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
   }
 
+  /** Point the element at the book stream positioned at the current segment +
+   * `s.time`: reuse the stream when it lists the segment, else start a new one
+   * there (a stream begins at its origin). Returns the stream URL. */
+  function loadStream(bookId: string, voice: string): string {
+    const segment = s.segments[s.index]!;
+    let at = s.stream && s.stream.voice === voice ? entryIndexOf(segment.id) : -1;
+    if (at < 0 && !(s.stream?.origin === segment.id && s.stream.voice === voice)) {
+      const url = streamPlaylistUrl(bookId, voice, segment.id);
+      s.stream = { origin: segment.id, voice, url, entries: [], complete: false, pendingSeek: null, fetchedAt: 0 };
+      void refreshTimeline(true);
+    }
+    const stream = s.stream!;
+    if (s.loaded !== stream.url) {
+      el.src = stream.url;
+      s.loaded = stream.url;
+    }
+    at = entryIndexOf(segment.id);
+    seekStream((at >= 0 ? stream.entries[at]!.start : 0) + s.time);
+    s.offset = 0;
+    return stream.url;
+  }
+
+  /** Move the stream to `target` seconds; a no-op when it is already there
+   * (a resume must not re-buffer). Re-applied once metadata has loaded. */
+  function seekStream(target: number) {
+    if (!s.stream) return;
+    if (Math.abs(el.currentTime - target) < 0.5) return;
+    el.currentTime = target;
+    if (el.readyState < 1) s.stream.pendingSeek = target;
+  }
+
+  /** Fetch the stream's timeline (throttled unless `force`); the playlist only
+   * grows, so a newer answer always replaces the old one. */
+  async function refreshTimeline(force: boolean) {
+    const stream = s.stream;
+    const bookId = s.book?.id;
+    if (!stream || !bookId || stream.complete) return;
+    const now = Date.now();
+    if (!force && now - stream.fetchedAt < TIMELINE_REFRESH_MS) return;
+    stream.fetchedAt = now;
+    try {
+      const timeline = await fetchStreamTimeline(bookId, stream.voice, stream.origin);
+      if (s.stream !== stream) return; // superseded by a seek or voice change
+      stream.entries = timeline.entries;
+      stream.complete = timeline.complete;
+      bump();
+    } catch {
+      stream.fetchedAt = 0; // silent; the next timeupdate tries again
+    }
+  }
+
+  /** timeupdate while streaming: map stream time to chapter/segment/offset,
+   * stop at a chapter end when the listener asked to, and keep the timeline
+   * ahead of playback. Runs while audio plays, even with the screen locked. */
+  function onStreamTime() {
+    const stream = s.stream!;
+    const t = el.currentTime;
+    const at = entryAt(t);
+    if (!stream.complete && (at < 0 || at >= stream.entries.length - 2)) void refreshTimeline(false);
+    if (at < 0) return;
+    const entry = stream.entries[at]!;
+    const next = stream.entries[at + 1];
+    const chapterEnds = next ? next.chapter_id !== entry.chapter_id : stream.complete;
+    const stopHere = s.sleep === "chapter" || !settingsRef.current.auto_next;
+    if (
+      chapterEnds &&
+      stopHere &&
+      s.chapterStop !== entry.chapter_id &&
+      t >= entry.start + entry.duration - CHAPTER_STOP_S
+    ) {
+      s.chapterStop = entry.chapter_id;
+      adoptStreamEntry(entry, t - entry.start);
+      pause();
+      return;
+    }
+    adoptStreamEntry(entry, t - entry.start);
+  }
+
+  /** The stream entry last adopted, and whether its save is still owed (a new
+   * chapter's segments may arrive a moment after the stream enters it). */
+  const streamAt = useRef<{ segment: string | null; unsaved: boolean }>({ segment: null, unsaved: false });
+  function adoptStreamEntry(entry: StreamEntry, offset: number) {
+    if (entry.chapter_id !== s.chapters[s.chapterIdx]?.id) streamIntoChapter(entry.chapter_id);
+    if (streamAt.current.segment !== entry.segment_id) {
+      streamAt.current = { segment: entry.segment_id, unsaved: true };
+    }
+    const idx = s.segments.findIndex((seg) => seg.id === entry.segment_id);
+    if (idx >= 0) s.index = idx;
+    s.time = offset;
+    if (idx >= 0 && streamAt.current.unsaved) {
+      streamAt.current.unsaved = false;
+      saveNow(); // segment change
+    }
+    // Have the next chapter's segments cached before the stream crosses into it.
+    const upcoming = s.chapters[s.chapterIdx + 1];
+    if (s.book && upcoming && s.index >= s.segments.length - 2) {
+      const bookId = s.book.id;
+      void queryClient.prefetchQuery({
+        queryKey: ["segments", bookId, upcoming.id],
+        queryFn: () => fetchSegments(bookId, upcoming.id),
+      });
+    }
+  }
+
+  /** The stream crossed into another chapter on its own: follow it. */
+  function streamIntoChapter(chapterId: string) {
+    const book = s.book;
+    const ci = s.chapters.findIndex((c) => c.id === chapterId);
+    if (!book || ci < 0) return;
+    saveNow(); // the old chapter's last position
+    s.chapterIdx = ci;
+    s.chapterStop = null;
+    s.index = 0;
+    const key = ["segments", book.id, chapterId];
+    const cached = queryClient.getQueryData<Segment[]>(key);
+    s.segments = cached ?? [];
+    if (!cached) {
+      void queryClient
+        .fetchQuery({ queryKey: key, queryFn: () => fetchSegments(book.id, chapterId) })
+        .then((segments) => {
+          if (s.chapters[s.chapterIdx]?.id !== chapterId) return;
+          s.segments = segments;
+          bump(); // the next timeupdate places the index
+        })
+        .catch(() => undefined);
+    }
+    void topUp(); // statuses (durations) for the new chapter
+  }
+
   /** Stop the element and forget the playing flag: the only way back to audio
    * is pump(). */
   function silence() {
@@ -348,6 +548,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * iOS lets the `ended` handler start the next clip on the same element, but
    * a slow load there is an audible gap. Only the next clip is kept. */
   function fetchNextClip() {
+    if (streaming()) return; // the stream carries the boundary itself
     const next = s.status[s.segments[s.index + 1]?.id ?? ""];
     const url = next?.status === "ready" ? next.url : null;
     for (const [key, objectUrl] of clips.current) {
@@ -383,6 +584,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, effectiveVoice(s.book));
       s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
+      s.streamVoice = res.stream && res.voice ? res.voice : null;
       if (s.playing) fetchNextClip();
     } catch (error) {
       fail(error instanceof Error ? error.message : "Could not reach the server.");
@@ -455,6 +657,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Must start the next clip synchronously: with the screen locked, iOS only
    * lets audio continue if the element is told to play from this handler. */
   function handleEnded() {
+    if (streaming()) {
+      // A growing playlist never ends; the stream ends with the book.
+      if (!s.stream!.complete) {
+        void refreshTimeline(true);
+        return;
+      }
+      s.playing = false;
+      s.intent = false;
+      markBookFinished();
+      publishSession();
+      bump();
+      return;
+    }
     s.time = 0;
     s.playing = false;
     if (s.index + 1 < s.segments.length) {
@@ -517,6 +732,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (switching) {
         // Never carry the previous book's position into the new one.
         silence();
+        s.stream = null;
+        s.streamVoice = null;
         s.chapterIdx = 0;
         s.segments = [];
         s.index = 0;
@@ -647,6 +864,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     saveNow(); // never lose the position we stop at
     for (const objectUrl of clips.current.values()) URL.revokeObjectURL(objectUrl);
     clips.current.clear();
+    s.stream = null;
+    s.streamVoice = null;
     s.book = null;
     s.chapters = [];
     s.chapterIdx = 0;
@@ -677,10 +896,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (cached) s.book = cached;
     // Read the live element while playing so the reload resumes exactly where
     // the listener was, not at the last (throttled) timeupdate.
-    const offset = s.playing ? el.currentTime : s.time;
+    const offset = s.playing ? liveTime() : s.time;
     s.offset = offset;
     s.time = offset;
     silence();
+    s.stream = null; // the new voice is a different stream
     s.status = {};
     prefetchedChapter.current = null; // the new voice has to be synthesized for the whole chapter
     // A playing listener buffers the lookahead before resuming; a paused one
@@ -694,6 +914,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Seek to a segment + offset within it; prepares first when unknown. */
   function seekSegment(index: number, offsetSeconds: number) {
     if (index < 0 || index >= s.segments.length) return;
+    if (streaming()) {
+      const at = entryIndexOf(s.segments[index]!.id);
+      if (at >= 0) {
+        // Inside the listed run: move the stream, no reload.
+        s.index = index;
+        s.time = Math.max(0, offsetSeconds);
+        s.offset = 0;
+        s.chapterStop = null;
+        seekStream(s.stream!.entries[at]!.start + s.time);
+        saveNow();
+        publishSession();
+        bump();
+        return;
+      }
+      s.stream = null; // outside it: the next pump starts a stream there
+    }
     s.index = index;
     s.offset = Math.max(0, offsetSeconds);
     s.time = s.offset;
@@ -799,6 +1035,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const flowing = s.intent && !s.preparing && !s.stalled && !s.error;
     const state: MediaSessionPlaybackState = flowing ? "playing" : "paused";
     if (ms.playbackState !== state) ms.playbackState = state;
+    if (streaming()) {
+      // The stream is one real track: iOS shows its own position and state,
+      // which (unlike a published position) stop when the audio stops.
+      if (sessionKeys.current.position !== "stream" && ms.setPositionState) {
+        sessionKeys.current.position = "stream";
+        try {
+          ms.setPositionState();
+        } catch {
+          /* nothing published to clear */
+        }
+      }
+      return;
+    }
     // Without this iOS shows the element's own ~40 s clip as the whole track.
     const duration = chapterTotal();
     const position = Math.min(elapsed(), duration);
@@ -815,8 +1064,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   // Latest closures for the stable effects below (state lives in `s`, not closures).
-  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession });
-  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession };
+  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession, onStreamTime });
+  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession, onStreamTime };
 
   // Sync the saved default speed into the player. A book with its own stored
   // speed keeps it: the default only drives books played here for the first
@@ -837,9 +1086,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
     const onTime = () => {
       if (!s.loaded) return;
-      s.time = el.currentTime;
+      if (s.stream && s.loaded === s.stream.url) fns.current.onStreamTime();
+      else s.time = el.currentTime;
       fns.current.publishSession();
       bump();
+    };
+    const onMetadata = () => {
+      const stream = s.stream;
+      if (!stream || s.loaded !== stream.url || stream.pendingSeek === null) return;
+      el.currentTime = stream.pendingSeek;
+      stream.pendingSeek = null;
     };
     // iOS pauses the element itself on interruptions (calls, Siri, unplugged
     // headphones, background suspension). Our own pauses clear s.playing first,
@@ -874,6 +1130,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ["pause", onPause],
       ["waiting", onWaiting],
       ["playing", onPlaying],
+      ["loadedmetadata", onMetadata],
     ];
     for (const [name, fn] of listeners) el.addEventListener(name, fn);
     return () => {
@@ -1055,6 +1312,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     chapterTotal: chapterTotal(),
     chapterTotalApprox: s.segments.some((seg) => durationOf(seg) <= 0),
     element: el,
+    liveTime,
     load,
     reloadVoice,
     play,

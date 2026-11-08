@@ -62,6 +62,10 @@ export interface PlayerFixture {
   /** segment_id → status override; everything else is "ready". */
   statuses?: Record<string, AudioStatus>;
   duration_s?: number;
+  /** The prepare response offers the book as an HLS stream (server TTS_FORMAT=aac). */
+  stream?: boolean;
+  /** The stream timeline lists only this many entries (default: all, complete). */
+  streamListed?: number;
   /** Override the listening settings the player reads (defaults apply). */
   settings?: Partial<ListeningSettings>;
   /** The GET /me/speed-options grid (the pinned default applies). */
@@ -152,6 +156,27 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
             cache_key: segment.id,
             url: `/api/v1/audio/${segment.id}`,
             duration_s: fixture.duration_s ?? 10,
+          })),
+          voice: body.voice ?? "ashley-en",
+          stream: fixture.stream ?? false,
+        });
+      }
+      if (url.includes("/stream.json?")) {
+        // Like the backend: the book's segments in reading order from `from`.
+        const params = new URLSearchParams(url.split("?")[1]);
+        const ordered = chapters.flatMap((c) => (byChapter[c.id] ?? []).map((seg) => ({ seg, chapter: c.id })));
+        const start = Math.max(0, ordered.findIndex(({ seg }) => seg.id === params.get("from")));
+        const tail = ordered.slice(start);
+        const listed = tail.slice(0, fixture.streamListed ?? tail.length);
+        const d = fixture.duration_s ?? 10;
+        return jsonResponse({
+          voice: params.get("voice"),
+          complete: listed.length === tail.length,
+          entries: listed.map(({ seg, chapter }, i) => ({
+            segment_id: seg.id,
+            chapter_id: chapter,
+            start: i * d,
+            duration: d,
           })),
         });
       }

@@ -26,6 +26,38 @@ export interface LeadIn {
 export interface PrepareResponse {
   items: PreparedSegment[];
   lead_in?: LeadIn;
+  /** The voice the server resolved (and keys the clips by). */
+  voice?: string;
+  /** The book can be played as one HLS stream in `voice` (server TTS_FORMAT=aac). */
+  stream?: boolean;
+}
+
+/** One listed clip of a book stream, in seconds from the stream's origin. */
+export interface StreamEntry {
+  segment_id: string;
+  chapter_id: string;
+  start: number;
+  duration: number;
+}
+
+/** GET /books/{id}/stream.json: the HLS stream's timeline from `origin`. */
+export interface StreamTimeline {
+  voice: string;
+  complete: boolean;
+  entries: StreamEntry[];
+}
+
+function streamQuery(voice: string, origin: string): string {
+  return `voice=${encodeURIComponent(voice)}&from=${encodeURIComponent(origin)}`;
+}
+
+/** The book from `origin` on as one HLS playlist (Safari plays it natively). */
+export function streamPlaylistUrl(bookId: string, voice: string, origin: string): string {
+  return `/api/v1/books/${bookId}/stream.m3u8?${streamQuery(voice, origin)}`;
+}
+
+export function fetchStreamTimeline(bookId: string, voice: string, origin: string): Promise<StreamTimeline> {
+  return api.get<StreamTimeline>(`/books/${bookId}/stream.json?${streamQuery(voice, origin)}`);
 }
 
 /** Row of GET /books/{id}/chapters/{chapter_id}/segments. */
