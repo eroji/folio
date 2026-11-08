@@ -3,7 +3,7 @@
  * other /api/ call are network-only: audio must never live in the cache
  * (docs/folio-application-spec.md, PWA). Bump VERSION when the shell changes;
  * activate deletes everything from older versions. */
-const VERSION = "folio-v2";
+const VERSION = "folio-v3";
 const SHELL_CACHE = VERSION + "-shell";
 const CONTENT_CACHE = VERSION + "-content";
 const SHELL = [
