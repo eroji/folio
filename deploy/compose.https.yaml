@@ -4,6 +4,12 @@
 # never in git; they are mounted read-only.
 
 services:
+  # The api trusts the internal DotSlash CA for LDAPS (LDAP_CA_FILE in .env); the
+  # certificate is mounted from the server's tls directory, never committed.
+  api:
+    volumes:
+      - ./tls/ldap-ca.pem:/etc/ssl/folio/ldap-ca.pem:ro
+
   nginx:
     image: nginx:stable-alpine
     restart: unless-stopped

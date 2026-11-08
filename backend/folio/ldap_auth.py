@@ -24,8 +24,11 @@ logger = logging.getLogger(__name__)
 # Active Directory matching rule for transitive (nested) group membership.
 IN_CHAIN_OID = "1.2.840.113556.1.4.1941"
 
-LDAP_CONNECT_TIMEOUT_S = 10.0
-LDAP_RECEIVE_TIMEOUT_S = 10.0
+# Must stay ints: ldap3 2.9 on Python 3.12 passes these straight to
+# socket.settimeout, and a float makes Connection.bind() raise
+# struct.error ("required argument is not an integer") -> HTTP 500 on login.
+LDAP_CONNECT_TIMEOUT_S = 10
+LDAP_RECEIVE_TIMEOUT_S = 10
 
 
 class InvalidCredentials(Exception):

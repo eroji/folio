@@ -44,10 +44,22 @@ Then as `deploy`:
   passwords, `FOLIO_PORT=127.0.0.1:8000`, and `chmod 600 .env`. `FOLIO_IMAGE` is written by
   the pipeline.
 - `/opt/folio/tls/fullchain.pem` + `/opt/folio/tls/privkey.pem` — copy the wildcard
-  `*.dotslash.io` certificate from notely (`/opt/notely/tls`) and keep it in sync. **Renew
-  before 2026-11-23.** Not in git, mounted read-only.
+  `*.dotslash.io` certificate from notely (`/opt/notely/config/nginx/tls`) and keep it in sync.
+  **Renew before 2026-11-23.** Not in git, mounted read-only.
+- `/opt/folio/tls/ldap-ca.pem` — the internal `DotSlash-CA` that signs the domain controller's
+  LDAPS certificate (`/etc/pki/ca-trust/source/anchors/dotslash-ca.crt` on the host). Mounted
+  read-only into the api as `/etc/ssl/folio/ldap-ca.pem` and pointed at by `LDAP_CA_FILE`;
+  without it the bind fails with a certificate error because the image has no internal CA.
 - The deploy key's public half in `~/.ssh/authorized_keys`. The `deploy` user has no sudo
   and only needs to be in the `docker` group.
+
+### `.env` pitfalls
+
+- **Single-quote any value containing `$`.** Compose interpolates `env_file` values, so an
+  unquoted bind password like `ab$cd` reaches the container empty or truncated. `'ab$cd'` is
+  taken literally.
+- Changing `.env` needs a **recreate**, not a restart (`restart` keeps the old environment):
+  `docker compose -f compose.yaml -f compose.https.yaml up -d --force-recreate api worker`.
 
 ## Release
 

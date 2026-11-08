@@ -252,6 +252,31 @@ def test_ldaps_by_default_with_certificate_validation() -> None:
     assert a.server.tls.validate == ssl.CERT_REQUIRED
 
 
+def test_bind_timeouts_are_integers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ldap3 2.9 on Python 3.12 raises struct.error in bind() on a float timeout."""
+
+    captured_server: dict[str, object] = {}
+    captured_conn: dict[str, object] = {}
+
+    class CaptureServer:
+        def __init__(self, *args: object, **kw: object) -> None:
+            captured_server.update(kw)
+
+    class CaptureConnection:
+        def __init__(self, *args: object, **kw: object) -> None:
+            captured_conn.update(kw)
+
+    monkeypatch.setattr("folio.ldap_auth.Server", CaptureServer)
+    monkeypatch.setattr("folio.ldap_auth.Connection", CaptureConnection)
+
+    s = Settings(_env_file=None, ldap_url="ldaps://dc1.example:636")  # type: ignore[call-arg]
+    Ldap3Authenticator(s)._connection("cn=svc,dc=example", "pw")
+
+    assert isinstance(captured_conn["receive_timeout"], int)
+    assert captured_conn["receive_timeout"] == 10
+    assert isinstance(captured_server["connect_timeout"], int)
+
+
 def test_plain_ldap_refused_unless_allow_insecure() -> None:
     s = get_settings().model_copy(update={"ldap_url": "ldap://ldap.test:389"})
     with pytest.raises(RuntimeError, match="LDAP_ALLOW_INSECURE"):
