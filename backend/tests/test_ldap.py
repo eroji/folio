@@ -23,9 +23,11 @@ NESTED_GROUP_DN = "CN=Folio-User,DC=test"
 
 
 class FakeEntry:
-    def __init__(self, dn: str, attrs: dict[str, list[bytes]]) -> None:
+    """ldap3 2.9 shape: values are already decoded str, keyed by server casing."""
+
+    def __init__(self, dn: str, attrs: dict[str, list[str]]) -> None:
         self.entry_dn = dn
-        self.raw_attributes = attrs
+        self.entry_attributes_as_dict = attrs
 
     def __getitem__(self, name: str) -> object:
         return None
@@ -79,7 +81,7 @@ def authenticator() -> Ldap3Authenticator:
 
 def _user_found(ldap: type[FakeConnection]) -> None:
     ldap.search_result_for["sAMAccountName=alice"] = [
-        FakeEntry(USER_DN, {"cn": [b"Alice A"], "mail": [b"alice@test.invalid"]})
+        FakeEntry(USER_DN, {"cn": ["Alice A"], "mail": ["alice@test.invalid"]})
     ]
 
 
@@ -87,7 +89,7 @@ def test_service_bind_then_user_bind_then_nested_group_search(
     authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
 ) -> None:
     _user_found(ldap)
-    ldap.search_result_for[IN_CHAIN_OID] = [FakeEntry(NESTED_GROUP_DN, {"cn": [b"Folio-User"]})]
+    ldap.search_result_for[IN_CHAIN_OID] = [FakeEntry(NESTED_GROUP_DN, {"cn": ["Folio-User"]})]
 
     user = authenticator.authenticate("alice", "pw")
 
@@ -141,11 +143,24 @@ def test_nested_group_dn_resolves_role_case_insensitively(
     authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
 ) -> None:
     ldap.search_result_for["sAMAccountName=alice"] = [
-        FakeEntry(USER_DN, {"cn": [b"Alice"], "mail": []})
+        FakeEntry(USER_DN, {"cn": ["Alice"], "mail": []})
     ]
     # DN returned by the server in different case than the configured group DN.
     ldap.search_result_for[IN_CHAIN_OID] = [FakeEntry("cn=FOLIO-user,dc=TEST", {})]
     user = authenticator.authenticate("alice", "pw")
+    assert role_from_groups(user.groups, get_settings()) == "user"
+
+
+def test_direct_member_of_values_grant_the_role(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
+) -> None:
+    """The live bug: one entry found, group in memberOf, still denied."""
+    ldap.search_result_for["sAMAccountName=alice"] = [
+        FakeEntry(USER_DN, {"cn": ["Alice"], "memberOF": [NESTED_GROUP_DN]})
+    ]
+    ldap.search_result_for[IN_CHAIN_OID] = []
+    user = authenticator.authenticate("alice", "pw")
+    assert NESTED_GROUP_DN in user.groups
     assert role_from_groups(user.groups, get_settings()) == "user"
 
 
@@ -180,7 +195,7 @@ def test_canonical_username_comes_from_the_directory(
     authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
 ) -> None:
     ldap.search_result_for["sAMAccountName=ALICE"] = [
-        FakeEntry(USER_DN, {"cn": [b"Alice"], "sAMAccountName": [b"Alice"]})
+        FakeEntry(USER_DN, {"cn": ["Alice"], "sAMAccountName": ["Alice"]})
     ]
     ldap.search_result_for[IN_CHAIN_OID] = [FakeEntry(NESTED_GROUP_DN, {})]
     # Typed in caps; the local users row must key off the directory spelling.

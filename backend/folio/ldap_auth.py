@@ -123,9 +123,7 @@ class Ldap3Authenticator:
                     raise InvalidCredentials
                 entry = service.entries[0]
                 user_dn: str = entry.entry_dn
-                groups = [
-                    v.decode("utf-8", "replace") for v in entry.raw_attributes.get("memberOf", [])
-                ]
+                groups = _values(entry, "memberOf")
 
                 as_user = self._connection(user_dn, password)
                 if not as_user.bind():
@@ -194,7 +192,18 @@ def filter_for(username: str, settings: Settings) -> str:
     )
 
 
+def _values(entry: object, name: str) -> list[str]:
+    """The entry's values for ``name`` (ldap3 2.9: entry_attributes_as_dict).
+
+    Keys come back in the server's own casing, so compare case-insensitively.
+    """
+    attrs = getattr(entry, "entry_attributes_as_dict", None) or {}
+    for key, values in attrs.items():
+        if str(key).lower() == name.lower():
+            return [str(v) for v in (values or [])]
+    return []
+
+
 def _attr(entry: object, name: str) -> str:
-    raw: dict[str, list[bytes]] = getattr(entry, "raw_attributes", {})
-    values = raw.get(name) or []
-    return values[0].decode("utf-8", "replace") if values else ""
+    values = _values(entry, name)
+    return values[0] if values else ""
