@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Book, Chapter, Progress } from "../api/types";
 import type { AudioStatus, Segment } from "../api/audio";
 import { DEFAULT_SETTINGS, DEFAULT_SPEED_OPTIONS, type ListeningSettings, type SpeedOptions } from "../api/settings";
-import { PlayerProvider, type PlayerContextValue } from "../player/PlayerProvider";
+import { PlayerProvider, SILENT_SRC, type PlayerContextValue } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 
 export const BOOK_ID = "11111111-1111-1111-1111-111111111111";
@@ -193,7 +193,9 @@ export function stubMedia(): { played: HTMLMediaElement[]; paused: HTMLMediaElem
   const played: HTMLMediaElement[] = [];
   const paused: HTMLMediaElement[] = [];
   vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
-    played.push(this);
+    // The silent clip iOS needs to unlock an element on the first gesture is a
+    // gesture artifact, not playback, so tests that count starts never see it.
+    if (this.getAttribute("src") !== SILENT_SRC) played.push(this);
     return Promise.resolve();
   });
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) {

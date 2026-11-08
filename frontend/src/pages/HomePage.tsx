@@ -302,7 +302,7 @@ export function HomePage() {
         aria-label="Filter"
         className={clsx(
           "flex gap-2.5",
-          phone ? "no-scrollbar flex-nowrap overflow-x-auto" : "flex-wrap",
+          phone ? "no-scrollbar flex-nowrap overflow-x-auto pt-2" : "flex-wrap",
         )}
       >
         {STATUS_CHIPS.map(({ value, label }) => (

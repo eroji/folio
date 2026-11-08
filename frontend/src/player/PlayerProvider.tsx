@@ -53,6 +53,15 @@ const SAVE_MS = 10_000;
 const REWIND_S = 3;
 /** Prompt only when the other device is more than this far ahead. */
 const AHEAD_PROMPT_S = 60;
+/** 10 ms of silence (8-bit PCM mono). iOS only lets an <audio> element play
+ * from a user gesture until that element has played once, and play() reaches
+ * the network before it reaches the element, so the first tap fires this clip
+ * through both elements to unlock them. */
+export const SILENT_SRC =
+  "data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+/** How close to the end of a clip the next one is started muted, so a locked
+ * screen keeps the audio session alive across the boundary. Heuristic: tune on device. */
+const PREROLL_S = 1.2;
 
 /** m:ss, or h:mm:ss past an hour; shared by the player screens. */
 export function formatTime(seconds: number): string {
@@ -139,6 +148,9 @@ interface Machine {
   sleep: SleepChoice;
   offset: number; // seconds to seek to when the current segment starts
   active: 0 | 1;
+  /** The segment we last pre-rolled the idle element for: a locked screen keeps
+   * this element playing across the boundary. Cleared by any pause or seek. */
+  prerolled: string | null;
   resumeLoading: boolean; // resume not applied yet: saves stay quiet
   finished: boolean;
   finishedMarked: boolean; // the finished PUT fires once per session
@@ -160,7 +172,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, prebuffering: false, error: null,
-    time: 0, rate: 1, sleep: null, offset: 0, active: 0,
+    time: 0, rate: 1, sleep: null, offset: 0, active: 0, prerolled: null,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
   const els = useMemo(() => [new Audio(), new Audio()] as const, []);
@@ -290,6 +302,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.offset = 0;
     }
     target.playbackRate = s.rate;
+    target.volume = 1; // a pre-roll that was never handed off must not stay silent
     void target
       .play()
       .then(() => {
@@ -315,6 +328,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * audio is pump() starting the active element. */
   function silence() {
     s.playing = false;
+    s.prerolled = null; // a stale muted element must never be handed off as playback
     for (const element of els) element.pause();
   }
 
@@ -329,6 +343,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       idle.playbackRate = s.rate;
     }
+  }
+
+  /** iOS throttles JS timers once the screen locks and an `ended` handler cannot
+   * start a new element, so the next clip is already running muted before the
+   * boundary and the handoff only unmutes it. Keeps the audio session alive. */
+  function preroll() {
+    const next = s.segments[s.index + 1];
+    if (!next || s.prerolled === s.segments[s.index]?.id) return;
+    const item = s.status[next.id];
+    if (item?.status !== "ready" || !item.url) return;
+    const idle = idleEl();
+    if (!idle.src.includes(item.url)) {
+      idle.src = item.url;
+      idle.currentTime = 0;
+    }
+    idle.playbackRate = s.rate;
+    idle.volume = 0;
+    s.prerolled = s.segments[s.index]?.id ?? null;
+    void idle.play().catch(() => {
+      s.prerolled = null; // silent; the next timeupdate or handleEnded's top-up tries again
+    });
   }
 
   /** prepare for the current segment + lookahead, merge statuses; the trailing
@@ -416,6 +451,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.time = 0;
     s.playing = false;
     s.active = s.active === 0 ? 1 : 0; // hand off to the preloaded element before pumping
+    activeEl().volume = 1; // make a pre-rolled (muted) element audible
     if (s.index + 1 < s.segments.length) {
       s.index += 1;
       s.offset = 0;
@@ -527,7 +563,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  /** Fire a silent clip through both elements so iOS unlocks them for the
+   * gestures that follow. Must run synchronously inside the tap, before any
+   * await; whichever element real audio is assigned to first wins. */
+  const unlocked = useRef(false);
+  function unlockAudio() {
+    if (unlocked.current) return;
+    unlocked.current = true;
+    for (const element of els) {
+      const previous = element.getAttribute("src") ?? "";
+      element.src = SILENT_SRC;
+      void element.play().then(
+        () => {
+          if (element.getAttribute("src") !== SILENT_SRC) return; // real audio took over
+          element.pause();
+          element.src = previous;
+        },
+        () => {
+          if (element.getAttribute("src") === SILENT_SRC) element.src = previous;
+        },
+      );
+    }
+  }
+
   async function play() {
+    unlockAudio(); // before any await: iOS only allows play() from the gesture
     s.intent = true;
     s.resumePrompt = null; // playing from here is a choice of its own
     s.lastDevice = null; // from now on this device owns the position
@@ -693,8 +753,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   // Latest closures for the stable effects below (state lives in `s`, not closures).
-  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow });
-  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow };
+  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, preroll, saveNow });
+  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, preroll, saveNow };
 
   // Sync the saved default speed into the player. A book with its own stored
   // speed keeps it: the default only drives books played here for the first
@@ -716,6 +776,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const source = event.target as HTMLMediaElement;
       if (source === activeEl()) {
         s.time = source.currentTime;
+        const left = source.duration - source.currentTime;
+        if (source.duration > 0 && left <= PREROLL_S) fns.current.preroll();
         bump();
       }
     };
@@ -862,6 +924,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const book = s.book;
   const chapterTitle = s.chapters[s.chapterIdx]?.title;
   const playing = s.playing;
+  const rate = s.rate;
+  const positionTick = Math.floor(elapsed()); // changes on every playback second
+  const positionState = useRef("");
   useEffect(() => {
     const ms = navigator.mediaSession;
     if (!ms) return;
@@ -874,7 +939,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         artwork: book.cover_url ? [{ src: book.cover_url }] : [],
       });
     }
-  }, [book, chapterTitle, playing]);
+    // Without this iOS shows the element's own ~40 s clip as the whole track.
+    const duration = chapterTotal();
+    const position = Math.min(elapsed(), duration);
+    // The tick dependency already limits this to once a second; the ref drops
+    // repeats of the same position so a seek still publishes immediately.
+    const key = `${duration}|${position}|${rate}`;
+    if (duration > 0 && ms.setPositionState && positionState.current !== key) {
+      positionState.current = key;
+      try {
+        ms.setPositionState({ duration, position, playbackRate: rate });
+      } catch {
+        /* iOS rejects an out-of-range position */
+      }
+    }
+  }, [book, chapterTitle, playing, positionTick, rate]); // eslint-disable-line react-hooks/exhaustive-deps -- elapsed()/chapterTotal() read the live s ref; positionTick re-runs this on every playback second
 
   const syncBookId = book?.id;
   const syncChapterId = s.chapters[s.chapterIdx]?.id;

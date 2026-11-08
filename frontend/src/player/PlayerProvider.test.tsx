@@ -2,7 +2,7 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayerContextValue } from "./PlayerProvider";
-import { TTS_LOOKAHEAD, formatSpeed } from "./PlayerProvider";
+import { SILENT_SRC, TTS_LOOKAHEAD, formatSpeed } from "./PlayerProvider";
 import { installMockEventSource, MockEventSource } from "../test/eventsource";
 import { BOOK_ID, BOOK2_ID, CH1, CH2, CH3, installPlayerFetch, makeProgress, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import { deviceLabel } from "../api/progress";
@@ -769,6 +769,89 @@ describe("PlayerProvider progress", () => {
     await waitFor(() => expect(getPlayer().index).toBe(1));
     // Segment one starts at its char_start of the 1200-char book.
     expect(getPlayer().progressPercent).toBeCloseTo(makeSegments(CH1, 2)[1]!.char_start / 12, 5);
+  });
+});
+
+describe("PlayerProvider on iOS", () => {
+  it("unlocks both elements on the first play gesture, before the network", async () => {
+    // iOS blocks play() on an element that has never played from a gesture, and
+    // play() only reaches the audio after a prepare round-trip.
+    prepareCalls = installPlayerFetch({ statuses: { [`${CH1}-seg0`]: "generating" } }).prepareCalls;
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    act(() => void getPlayer().play());
+    expect(getPlayer().elements.map((el) => el.getAttribute("src"))).toEqual([SILENT_SRC, SILENT_SRC]);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The silent clip is gone from both: one restored to empty, the other taken
+    // over by the preloaded next segment (an unlock never clobbers real audio).
+    expect(getPlayer().elements.some((el) => el.getAttribute("src") === SILENT_SRC)).toBe(false);
+    expect(getPlayer().elements[0].getAttribute("src")).toBe("");
+    expect(getPlayer().playing).toBe(false); // the unlock is silent, not playback
+  });
+
+  it("publishes the chapter duration and position to the lock screen", async () => {
+    const setPositionState = vi.fn();
+    Object.defineProperty(navigator, "mediaSession", {
+      configurable: true,
+      value: { playbackState: "none", metadata: null, setActionHandler: vi.fn(), setPositionState },
+    });
+    try {
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      await waitFor(() => expect(setPositionState).toHaveBeenCalled());
+      act(() => getPlayer().seekSegment(1, 3)); // segment 1 starts 10 s into the chapter
+      await waitFor(() =>
+        expect(setPositionState.mock.calls.at(-1)![0]).toMatchObject({ position: expect.closeTo(13, 0) }),
+      );
+      const state = setPositionState.mock.calls.at(-1)![0] as MediaPositionState;
+      expect(state.duration).toBe(20); // the chapter's two segments, not the 10 s clip iOS would use
+      expect(state.duration).toBeGreaterThan(10);
+      expect(state.playbackRate).toBe(1);
+    } finally {
+      Reflect.deleteProperty(navigator, "mediaSession");
+    }
+  });
+
+  it("pre-rolls the next segment muted and unmutes it at the handoff", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(40);
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const [a, b] = getPlayer().elements;
+    a.currentTime = 39; // inside the pre-roll window of a 40 s clip
+    act(() => {
+      a.dispatchEvent(new Event("timeupdate"));
+    });
+    expect(getPlayer().playing).toBe(true); // a muted pre-roll is not a state change
+    expect(getPlayer().index).toBe(0);
+    expect(b.volume).toBe(0);
+    expect(b.src).toContain(`${CH1}-seg1`);
+    expect(a.volume).toBe(1);
+
+    act(() => {
+      a.dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().index).toBe(1));
+    expect(getPlayer().playing).toBe(true);
+    expect(getPlayer().elements[1].volume).toBe(1); // the handoff makes the running element audible
+  });
+
+  it("clears a muted pre-roll when the listener seeks", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(40);
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const [a] = getPlayer().elements;
+    a.currentTime = 39;
+    act(() => {
+      a.dispatchEvent(new Event("timeupdate"));
+    });
+    expect(getPlayer().elements[1].volume).toBe(0);
+    act(() => getPlayer().seekSegment(0, 5));
+    await waitFor(() => expect(getPlayer().elements[0].volume).toBe(1));
   });
 });
 

@@ -234,7 +234,7 @@ function BottomNav() {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-20 flex h-16 border-t border-border bg-surface pb-safe md:hidden"
+      className="fixed inset-x-0 bottom-0 z-20 flex h-[calc(4rem+env(safe-area-inset-bottom))] border-t border-border bg-surface pb-safe md:hidden"
     >
       {NAV.map(({ to, icon, label }) => (
         <NavLink
