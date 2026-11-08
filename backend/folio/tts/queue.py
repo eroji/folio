@@ -42,7 +42,7 @@ from folio.voice_catalog import effective_defaults
 
 logger = logging.getLogger(__name__)
 
-# Segments needed now go first; lookahead is lower priority (spec: Priority).
+# Segments needed now go first; lookahead is lower priority, nearest first (spec: Priority).
 PRIORITY_NOW = 10
 PRIORITY_LOOKAHEAD = 100
 
@@ -166,7 +166,11 @@ def prepare(
                 SegmentAudio.segment_id == segment.id, SegmentAudio.voice == voice
             )
         )
-        priority = PRIORITY_NOW if offset == 0 else PRIORITY_LOOKAHEAD
+        # Lookahead ranks by distance: every row of one prepare shares created_at
+        # (Postgres now() is the transaction start), so a flat priority left the
+        # order to the random UUID and a prefetched chapter was synthesized out
+        # of order. A nearer request only ever raises a row (min below).
+        priority = PRIORITY_NOW if offset == 0 else PRIORITY_LOOKAHEAD + offset
         created = row is None
         before = row.status if row is not None else None
         if row is None:

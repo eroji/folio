@@ -157,7 +157,7 @@ def test_prepare_queues_lookahead_window_across_chapter_boundary(
 
     assert [str(s.id) for s, _ in window] == [str(s.id) for s in segments[1:4]]
     assert window[0][0].chapter_id != window[1][0].chapter_id  # crossed into chapter 1
-    assert [r.priority for _, r in window] == [10, 100, 100]
+    assert [r.priority for _, r in window] == [10, 101, 102]
     assert all(r.status == "queued" and r.voice == "ashley-en" for _, r in window)
 
 
@@ -178,7 +178,7 @@ def test_prepare_is_idempotent(db: Session, settings: Settings) -> None:
     assert [row.id for _, row in second] == ids  # no duplicate rows
     assert db.scalar(select(func.count()).select_from(SegmentAudio)) == 3
     assert [row.status for _, row in second] == ["queued"] * 3
-    assert [row.priority for _, row in second] == [10, 100, 100]
+    assert [row.priority for _, row in second] == [10, 101, 102]
     endpoint = (settings.tts_base_url or "").rstrip("/")
     expected = {
         cache_key("tts", "ashley-en", "opus", normalize_speech_text(s.text), endpoint=endpoint)
@@ -263,7 +263,7 @@ def test_prepare_raises_priority_of_an_already_queued_segment(
     prepare(db, settings, book, segments[1].id, count=0, voice="ashley-en")  # seek onto seg 1
 
     rows = _rows(db)
-    assert [row.priority for row in rows] == [10, 10]  # seg 1 was raised from 100
+    assert [row.priority for row in rows] == [10, 10]  # seg 1 was raised from 101
 
 
 def test_claim_next_tts_orders_by_priority_and_releases_none_when_empty(
@@ -278,6 +278,40 @@ def test_claim_next_tts_orders_by_priority_and_releases_none_when_empty(
     second = claim_next_tts(db)
     assert second is not None and second.segment_id == later.id
     assert claim_next_tts(db) is None
+
+
+def test_claim_next_tts_generates_a_prepared_window_in_reading_order(
+    db: Session, settings: Settings
+) -> None:
+    """One prepare writes every row in one transaction, so created_at ties and
+    the random UUID used to decide: a prefetched chapter was synthesized in
+    random order, and playback stalled at almost every boundary."""
+    book = _book(db, chapters=3, per_chapter=4)
+    segments = _segments(db, book)
+    prepare(db, settings, book, segments[0].id, count=len(segments) - 1, voice="ashley-en")
+
+    claimed = []
+    while (row := claim_next_tts(db)) is not None:
+        claimed.append(row.segment_id)
+    assert claimed == [s.id for s in segments]
+
+
+def test_a_later_prepare_pulls_its_window_ahead_of_the_far_lookahead(
+    db: Session, settings: Settings
+) -> None:
+    book = _book(db, chapters=3, per_chapter=4)
+    segments = _segments(db, book)
+    prepare(db, settings, book, segments[0].id, count=len(segments) - 1, voice="ashley-en")
+    for _ in range(6):
+        claim_next_tts(db)  # segments 0-5 were generated while the listener played
+    # The listener skipped ahead past the queue to segment 9.
+    prepare(db, settings, book, segments[9].id, count=2, voice="ashley-en")
+
+    claimed = []
+    while (row := claim_next_tts(db)) is not None:
+        claimed.append(row.segment_id)
+    # 9 is needed now, then its own lookahead, then the rest of the earlier window.
+    assert claimed == [s.id for s in (segments[9], segments[10], segments[11], *segments[6:9])]
 
 
 def test_concurrent_claims_never_return_the_same_row(db: Session, settings: Settings) -> None:

@@ -128,7 +128,10 @@ async def test_prepare_accepts_a_whole_chapter_beyond_the_old_cap(
     assert len(rows) == len(segments) - 7  # the rest of the chapter is queued
     priority = {row.segment_id: row.priority for row in rows}
     assert priority[segments[7].id] == PRIORITY_NOW  # the current segment goes first
-    assert [priority[s.id] for s in segments[8:]] == [PRIORITY_LOOKAHEAD] * (len(segments) - 8)
+    # Nearest first, so the chapter is synthesized in reading order.
+    assert [priority[s.id] for s in segments[8:]] == [
+        PRIORITY_LOOKAHEAD + i for i in range(1, len(segments) - 7)
+    ]
 
     too_big = await auth_client.post(
         f"/api/v1/books/{book.id}/audio/prepare",
