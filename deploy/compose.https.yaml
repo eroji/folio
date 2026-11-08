@@ -1,0 +1,18 @@
+# HTTPS override for the production stack: docker compose -f compose.yaml -f compose.https.yaml up -d
+# TLS terminates in nginx; the api stays on loopback (FOLIO_PORT=127.0.0.1:8000 in .env).
+# Certificates live in /opt/folio/tls on the server (fullchain.pem + privkey.pem) and are
+# never in git; they are mounted read-only.
+
+services:
+  nginx:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx/folio.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./tls:/etc/nginx/tls:ro
