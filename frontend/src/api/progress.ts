@@ -7,7 +7,7 @@
  * retries. */
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { API_BASE, api, csrfToken } from "./client";
+import { API_BASE, api, csrfToken, notifyUnauthenticated } from "./client";
 import type { Book, Progress } from "./types";
 
 export type { Progress };
@@ -56,6 +56,7 @@ export async function saveProgress(bookId: string, body: ProgressSaveBody): Prom
       headers: { "Content-Type": "application/json", ...(token ? { "X-CSRF-Token": token } : {}) },
       body: JSON.stringify(body),
     });
+    if (response.status === 401) notifyUnauthenticated();
     if (!response.ok) return null;
     return (await response.json()) as SaveResult;
   } catch {

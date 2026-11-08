@@ -14,7 +14,7 @@ from folio.deps import can_edit_book, get_authenticator
 from folio.ldap_auth import InvalidCredentials, LdapUser, NotAllowed
 from folio.models import Job
 from folio.models import Session as SessionRow
-from folio.security import csrf_for, login_rate_limiter
+from folio.security import SESSION_MAX_AGE, csrf_for, login_rate_limiter
 
 
 class FakeAuthenticator:
@@ -84,14 +84,15 @@ async def test_login_success_sets_cookies_and_creates_session_row(
     assert "HttpOnly" in session_cookie and "Secure" in session_cookie
     assert "samesite=lax" in session_cookie.lower()
     assert "HttpOnly" not in csrf_cookie  # the SPA must read it
-    # Both persist for the session's 30 days: a browser-session CSRF cookie was
+    # Both persist for the session lifetime: a browser-session CSRF cookie was
     # dropped when iOS relaunched the PWA, and every POST/PUT then got a 403.
-    assert "Max-Age=2592000" in session_cookie
-    assert "Max-Age=2592000" in csrf_cookie
+    lifetime = f"Max-Age={int(SESSION_MAX_AGE.total_seconds())}"
+    assert lifetime in session_cookie
+    assert lifetime in csrf_cookie
 
     row = _session_row(db, token)
     assert row is not None and str(row.user_id) == body["user"]["id"]
-    assert row.expires_at > datetime.now(UTC) + timedelta(days=29)
+    assert row.expires_at > datetime.now(UTC) + SESSION_MAX_AGE - timedelta(days=1)
 
     me = await client.get("/api/v1/auth/me")
     assert me.status_code == 200 and me.json()["user"]["username"] == "alice"
@@ -248,19 +249,19 @@ async def test_sliding_expiry_refreshes_at_most_hourly(
         assert fresh is not None
         return fresh.expires_at
 
-    # Last refreshed 2 days ago -> must be pushed out to ~30 days.
+    # Last refreshed 2 days ago -> must be pushed out to the full lifetime.
     stale_user = make_user(db, username="stale")
     stale = make_session_row(db, stale_user)
-    stale.expires_at = datetime.now(UTC) + timedelta(days=30, minutes=-1) - timedelta(days=2)
+    stale.expires_at = datetime.now(UTC) + SESSION_MAX_AGE - timedelta(days=2)
     db.commit()
     client.cookies.set("folio_session", stale.id, domain="testserver.local")
     assert (await client.get("/api/v1/auth/me")).status_code == 200
-    assert expiry(stale.id) > datetime.now(UTC) + timedelta(days=29)
+    assert expiry(stale.id) > datetime.now(UTC) + SESSION_MAX_AGE - timedelta(days=1)
 
     # Refreshed 30 minutes ago -> must stay put (at most once per hour).
     fresh_user = make_user(db, username="fresh")
     fresh = make_session_row(db, fresh_user)
-    target = datetime.now(UTC) + timedelta(days=30) - timedelta(minutes=30)
+    target = datetime.now(UTC) + SESSION_MAX_AGE - timedelta(minutes=30)
     fresh.expires_at = target
     db.commit()
     client.cookies.set("folio_session", fresh.id, domain="testserver.local")

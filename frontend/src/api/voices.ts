@@ -1,7 +1,7 @@
 /** Typed calls + queries for the M4 voice endpoints (plan Task D contract).
  * Types live here rather than in api/types.ts because only this surface uses voices. */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { ApiError, api, csrfToken } from "./client";
+import { ApiError, api, csrfToken, notifyUnauthenticated } from "./client";
 
 export interface Voice {
   id: string;
@@ -115,6 +115,7 @@ export async function previewVoice(voice: string, instructions?: string): Promis
     headers,
     body: JSON.stringify(instructions === undefined ? { voice } : { voice, instructions }),
   });
+  if (response.status === 401) notifyUnauthenticated();
   if (!response.ok) {
     let code = "request_failed";
     let message = "Something went wrong.";

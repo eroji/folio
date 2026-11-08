@@ -101,7 +101,7 @@ Target server runs Docker Compose. Deploy = put a real `.env` on the host, then 
 
 - Paths from IDs, not user input. Sanitize any HTML rendered from book metadata (`bleach` server-side).
 - Passwords, bind attempts, and full LDAP responses never enter logs.
-- Sessions are DB rows; cookie is `HttpOnly`, `Secure`, `SameSite=Lax`, 30-day sliding expiry.
+- Sessions are DB rows; cookie is `HttpOnly`, `Secure`, `SameSite=Lax`; they last until logout (sliding 400 days, cookies re-issued on use) and end when the hourly directory re-check finds the account disabled, locked, removed or out of the Folio groups.
 - Uploads are size-limited by `MAX_UPLOAD_MB`, streamed to disk, and type-checked by magic bytes.
 - Containers run as non-root; no secret is committed.
 

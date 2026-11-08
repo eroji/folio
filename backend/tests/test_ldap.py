@@ -10,6 +10,8 @@ from ldap3 import Server
 from folio.config import Settings, get_settings
 from folio.ldap_auth import (
     IN_CHAIN_OID,
+    AccountGone,
+    DirectoryUnavailable,
     InvalidCredentials,
     Ldap3Authenticator,
     NotAllowed,
@@ -298,3 +300,71 @@ def test_plain_ldap_refused_unless_allow_insecure() -> None:
         Ldap3Authenticator(s)
     ok = Ldap3Authenticator(s.model_copy(update={"ldap_allow_insecure": True}))
     assert ok.server.ssl is False
+
+
+# --- Account re-check (long-lived sessions) ---------------------------------
+
+
+def _account(ldap: type[FakeConnection], **attrs: list[str]) -> None:
+    ldap.search_result_for["objectClass=*"] = [FakeEntry(USER_DN, attrs)]
+
+
+def test_check_returns_the_groups_of_an_active_account(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
+) -> None:
+    _account(ldap, userAccountControl=["512"], memberOf=["CN=Direct,DC=test"])
+    ldap.search_result_for[IN_CHAIN_OID] = [FakeEntry(NESTED_GROUP_DN, {})]
+
+    groups = authenticator.check(USER_DN)
+
+    assert set(groups) == {"CN=Direct,DC=test", NESTED_GROUP_DN}
+    # Only the service account binds: no user password exists at this point.
+    assert {c.user for c in ldap.connections} == {get_settings().ldap_bind_dn}
+    assert (USER_DN, "(objectClass=*)") in ldap.searches
+
+
+@pytest.mark.parametrize(
+    "attrs",
+    [
+        {"userAccountControl": ["514"]},  # ACCOUNTDISABLE (0x2)
+        {"userAccountControl": ["512"], "msDS-User-Account-Control-Computed": ["16"]},  # LOCKOUT
+    ],
+    ids=["disabled", "locked"],
+)
+def test_check_rejects_disabled_and_locked_accounts(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection], attrs: dict[str, list[str]]
+) -> None:
+    _account(ldap, **attrs)
+    with pytest.raises(AccountGone):
+        authenticator.check(USER_DN)
+
+
+def test_check_rejects_a_deleted_account(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
+) -> None:
+    with pytest.raises(AccountGone):
+        authenticator.check(USER_DN)
+
+
+def test_check_accepts_a_directory_without_ad_attributes(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection]
+) -> None:
+    _account(ldap, memberOf=["cn=folio-user,dc=test"])  # e.g. OpenLDAP
+    assert authenticator.check(USER_DN) == ["cn=folio-user,dc=test"]
+
+
+def test_check_reports_an_unreachable_directory_not_a_gone_account(
+    authenticator: Ldap3Authenticator, ldap: type[FakeConnection], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(self: FakeConnection) -> bool:
+        raise OSError("name resolution failed")
+
+    monkeypatch.setattr(ldap, "bind", boom)
+    with pytest.raises(DirectoryUnavailable):
+        authenticator.check(USER_DN)
+
+    monkeypatch.undo()
+    ldap.bind_fail_for[get_settings().ldap_bind_dn] = "bad service password"
+    monkeypatch.setattr("folio.ldap_auth.Connection", ldap)
+    with pytest.raises(DirectoryUnavailable):
+        authenticator.check(USER_DN)

@@ -19,7 +19,11 @@ from folio.models import User
 
 SESSION_COOKIE = "folio_session"
 CSRF_COOKIE = "folio_csrf"
-SESSION_MAX_AGE = timedelta(days=30)
+# Sessions last until logout: every use slides both the row and the cookies,
+# so only a session unused this long ends (400 days is the longest cookie
+# lifetime browsers honour). Account validity is enforced separately by the
+# periodic directory re-check in deps.get_current_user.
+SESSION_MAX_AGE = timedelta(days=400)
 CSRF_HEADER = "X-CSRF-Token"
 
 
@@ -35,7 +39,7 @@ def csrf_for(session_id: str, secret: str) -> str:
 
 
 def create_session(db: DbSession, user: User, user_agent: str | None) -> tuple[str, str]:
-    """Insert a 30-day session row; caller commits. Returns (token, csrf)."""
+    """Insert a session row (SESSION_MAX_AGE, sliding); caller commits. Returns (token, csrf)."""
     token = new_session_id()
     csrf = csrf_for(token, get_settings().folio_secret_key)
     db.add(

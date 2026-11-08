@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deviceLabel, readPosition, rememberPosition, saveProgress, secondsAhead } from "./progress";
+import { onUnauthenticated } from "./client";
 import { makeProgress } from "../test/player";
 import type { Book } from "./types";
 
@@ -46,5 +47,17 @@ describe("progress helpers", () => {
     await expect(saveProgress("b1", { chapter_id: "c", segment_id: "s", offset_s: 1, device_label: "d" })).resolves.toBeNull();
     expect(calls[0]).toMatchObject({ method: "PUT", keepalive: true });
     expect((calls[0]?.headers as Record<string, string>)["X-CSRF-Token"]).toBe("tok3n");
+  });
+
+  it("a 401 on a background save reports the lost session", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+    const lost = vi.fn();
+    const stop = onUnauthenticated(lost);
+    try {
+      expect(await saveProgress("b1", { chapter_id: "c", segment_id: "s", offset_s: 1, device_label: "d" })).toBeNull();
+      expect(lost).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
   });
 });

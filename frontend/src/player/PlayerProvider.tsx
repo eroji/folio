@@ -882,6 +882,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- el and the s ref are stable; handlers read live state through them
   }, [el]);
 
+  // The element is detached from the DOM, so unmounting (e.g. a lost session
+  // sending the app to /login) would leave it playing: stop it.
+  useEffect(() => () => el.pause(), [el]);
+
   // Poll prepare while waiting on generation, and keep a slow beat while
   // playing so a status the in-flight guard dropped cannot leave the next
   // segment stale ("queued") at a boundary. SSE `audio` frames accelerate it.

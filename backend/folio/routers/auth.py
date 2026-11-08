@@ -23,7 +23,6 @@ from folio.security import (
     create_session,
     login_rate_limiter,
     require_csrf,
-    set_csrf_cookie,
     set_session_cookies,
 )
 
@@ -89,6 +88,7 @@ def login(
     user.email = ldap_user.email or None
     user.role = role  # roles come from the directory at every login (spec)
     user.last_login_at = datetime.now(UTC)
+    user.verified_at = user.last_login_at  # the bind just proved the account active
     token, csrf = create_session(db, user, request.headers.get("user-agent"))
     db.commit()
     login_rate_limiter.record_success(body.username)
@@ -115,7 +115,7 @@ def me(
     request: Request, response: Response, user: Annotated[User, Depends(get_current_user)]
 ) -> dict[str, Any]:
     row: Any = request.state.session_row
-    # The app calls /me on every launch: re-issue the CSRF cookie so a device
-    # that lost it (or got it before it persisted) can write again.
-    set_csrf_cookie(response, row.csrf_token)
+    # The app calls /me on every launch: re-issue both cookies so a device that
+    # lost one (or got them before they persisted) keeps its session.
+    set_session_cookies(response, row.id, row.csrf_token)
     return {"user": UserPublic.model_validate(user), "csrf_token": row.csrf_token}

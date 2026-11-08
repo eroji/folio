@@ -107,7 +107,7 @@ Login MUST go through LDAP (Active Directory) only; Folio stores no passwords. R
 
 ### Sessions and security
 
-- Server-side sessions in the database; cookie is `HttpOnly`, `Secure`, `SameSite=Lax`, 30-day sliding expiry.
+- Server-side sessions in the database; cookie is `HttpOnly`, `Secure`, `SameSite=Lax`. Sessions last until logout: every use slides the row and both cookies (400 days unused is the only expiry), and the account is re-checked against the directory hourly — a disabled, locked-out, removed or de-grouped account loses every session at once. Any 401 sends the app to the login screen.
 - CSRF protection on all state-changing requests (double-submit token header).
 - Login rate limit: 10 attempts per username per 15 minutes, then a 15-minute lockout (in Folio, not AD).
 - LDAPS (port 636) by default with certificate verification; a configurable CA bundle path for an internal CA. Plain LDAP only if `LDAP_ALLOW_INSECURE=true`.

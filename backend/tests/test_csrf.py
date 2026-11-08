@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from folio.config import get_settings
 from folio.models import Session as SessionRow
-from folio.security import csrf_for
+from folio.security import SESSION_MAX_AGE, csrf_for
 
 
 def test_csrf_for_matches_the_harness_derivation() -> None:
@@ -63,4 +63,5 @@ async def test_me_restores_a_lost_csrf_cookie(client: httpx.AsyncClient, db: Ses
         h for h in response.headers.get_list("set-cookie") if h.startswith("folio_csrf=")
     )
     assert csrf_cookie.startswith(f"folio_csrf={row.csrf_token};")
-    assert "Max-Age=2592000" in csrf_cookie and "HttpOnly" not in csrf_cookie
+    assert f"Max-Age={int(SESSION_MAX_AGE.total_seconds())}" in csrf_cookie
+    assert "HttpOnly" not in csrf_cookie

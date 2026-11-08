@@ -13,7 +13,7 @@ import logging
 import ssl
 from typing import NamedTuple, Protocol
 
-from ldap3 import SUBTREE, Connection, Server, Tls  # type: ignore[import-untyped]
+from ldap3 import BASE, SUBTREE, Connection, Server, Tls  # type: ignore[import-untyped]
 from ldap3.core.exceptions import LDAPException  # type: ignore[import-untyped]
 from ldap3.utils.conv import escape_filter_chars  # type: ignore[import-untyped]
 
@@ -39,6 +39,19 @@ class NotAllowed(Exception):
     """Authenticated, but in neither allowed directory group."""
 
 
+class AccountGone(Exception):
+    """The account no longer exists, is disabled, or is locked out."""
+
+
+class DirectoryUnavailable(Exception):
+    """The directory could not answer; says nothing about the account."""
+
+
+# userAccountControl / msDS-User-Account-Control-Computed bits (Active Directory).
+UF_ACCOUNTDISABLE = 0x2
+UF_LOCKOUT = 0x10
+
+
 class LdapUser(NamedTuple):
     dn: str
     username: str
@@ -49,6 +62,10 @@ class LdapUser(NamedTuple):
 
 class LdapAuthenticator(Protocol):
     def authenticate(self, username: str, password: str) -> LdapUser: ...
+
+
+class AccountDirectory(Protocol):
+    def check(self, dn: str) -> list[str]: ...
 
 
 def role_from_groups(groups: list[str], settings: Settings) -> str | None:
@@ -159,6 +176,65 @@ class Ldap3Authenticator:
             email=_attr(entry, "mail"),
             groups=groups,
         )
+
+    def check(self, dn: str) -> list[str]:
+        """Re-check a signed-in account with the service bind (no user password).
+
+        Returns the account's group DNs (direct and nested). Raises AccountGone
+        when the entry is missing, disabled or locked out (the computed lockout
+        bit honours the lockout duration, unlike lockoutTime), and
+        DirectoryUnavailable when the directory cannot answer. Directories
+        without the AD attributes (e.g. OpenLDAP) are judged by existence and
+        group membership alone.
+        """
+        s = self._settings
+        try:
+            service = self._connection(s.ldap_bind_dn, s.ldap_bind_password)
+            try:
+                if not service.bind():
+                    logger.warning("ldap account check failed reason=service_bind")
+                    raise DirectoryUnavailable
+                # BASE scope: AD computes msDS-User-Account-Control-Computed only there.
+                service.search(
+                    dn,
+                    "(objectClass=*)",
+                    search_scope=BASE,
+                    attributes=[
+                        "userAccountControl",
+                        "msDS-User-Account-Control-Computed",
+                        "memberOf",
+                    ],
+                )
+                if len(service.entries) != 1:
+                    raise AccountGone
+                entry = service.entries[0]
+                flags = _int(_attr(entry, "userAccountControl"))
+                computed = _int(_attr(entry, "msDS-User-Account-Control-Computed"))
+                if flags & UF_ACCOUNTDISABLE or computed & UF_LOCKOUT:
+                    raise AccountGone
+                groups = _values(entry, "memberOf")
+                chain_filter = (
+                    f"(&(objectClass=group)(member:{IN_CHAIN_OID}:={escape_filter_chars(dn)}))"
+                )
+                service.search(
+                    s.ldap_base_dn, chain_filter, search_scope=SUBTREE, attributes=["dn"]
+                )
+                groups += [g.entry_dn for g in service.entries if g.entry_dn not in groups]
+            finally:
+                with contextlib.suppress(Exception):
+                    service.unbind()
+        except (LDAPException, OSError) as exc:
+            logger.warning("ldap account check failed reason=ldap_error")
+            logger.debug("ldap error class: %s", type(exc).__name__)
+            raise DirectoryUnavailable from exc
+        return groups
+
+
+def _int(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError:
+        return 0
 
 
 def bare_username(typed: str) -> str:

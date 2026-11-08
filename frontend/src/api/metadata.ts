@@ -1,6 +1,6 @@
 /** Typed calls + TanStack hooks for the M3 metadata/covers endpoints (plan T-D contract). */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { ApiError, api, csrfToken } from "./client";
+import { ApiError, api, csrfToken, notifyUnauthenticated } from "./client";
 import type { Book, BookDetailResponse, Candidate } from "./types";
 
 /** Body of PATCH /books/{id}; the server appends every provided field to locked_fields. */
@@ -100,6 +100,7 @@ function uploadCover(id: string, file: Blob, filename: string): Promise<CoverRes
     const form = new FormData();
     form.append("file", file, filename);
     xhr.addEventListener("load", () => {
+      if (xhr.status === 401) notifyUnauthenticated();
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           resolve(JSON.parse(xhr.responseText) as CoverResponse);

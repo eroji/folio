@@ -27,6 +27,8 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the directory last confirmed the account is active and allowed.
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Session(Base):

@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlayerContextValue } from "./PlayerProvider";
@@ -502,6 +502,15 @@ describe("PlayerProvider", () => {
     act(() => getPlayer().reloadVoice(BOOK2_ID));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(prepareCalls.length).toBe(before);
+  });
+
+  it("unmounting the player (e.g. a lost session leaving for /login) stops the audio", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    const el = getPlayer().element;
+    paused.length = 0;
+    cleanup();
+    expect(paused).toContain(el);
   });
 
   it("stop pauses the element, saves, clears the book, and clears the URL query", async () => {

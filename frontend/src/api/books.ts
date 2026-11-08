@@ -1,7 +1,7 @@
 /** Typed calls + queries for the books endpoints (plan T8 contract). */
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, api, csrfToken } from "./client";
+import { ApiError, api, csrfToken, notifyUnauthenticated } from "./client";
 import type {
   Book,
   BookDetailResponse,
@@ -194,6 +194,7 @@ export function useUpload() {
           }
         });
         xhr.addEventListener("load", () => {
+          if (xhr.status === 401) notifyUnauthenticated();
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               resolve((JSON.parse(xhr.responseText) as UploadResult[])[0]!);

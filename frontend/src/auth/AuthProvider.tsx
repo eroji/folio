@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { api } from "../api/client";
+import { api, onUnauthenticated } from "../api/client";
 import type { AuthPayload, User } from "../api/types";
 
 interface AuthValue {
@@ -29,6 +29,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((data) => setUser(data.user))
       .catch(() => setUser(null))
       .finally(() => setIsLoading(false));
+  }, []);
+
+  // Any 401 means the session is gone (signed out elsewhere, account disabled
+  // or locked): drop the user so RequireAuth sends them to /login at once.
+  useEffect(() => onUnauthenticated(() => setUser(null)), []);
+
+  // Coming back to the app re-checks the session (and lets /me re-issue the
+  // cookies). Only a 401 signs out; an offline check keeps the user in.
+  useEffect(() => {
+    const recheck = () => {
+      if (document.visibilityState !== "visible") return;
+      api
+        .get<AuthPayload>("/auth/me")
+        // Keep the same object when nothing changed so the app does not re-render.
+        .then((data) =>
+          setUser((prev) =>
+            prev && prev.id === data.user.id && prev.role === data.user.role ? prev : data.user,
+          ),
+        )
+        .catch(() => undefined);
+    };
+    document.addEventListener("visibilitychange", recheck);
+    return () => document.removeEventListener("visibilitychange", recheck);
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
