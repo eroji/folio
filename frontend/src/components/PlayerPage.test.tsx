@@ -156,12 +156,23 @@ describe("PlayerPage (phone)", () => {
     expect(screen.getByTestId("player-elapsed")).toBeTruthy();
   });
 
-  it("marks the chapter total with ~ while the chapter has estimated durations", async () => {
+  it("marks the remaining time with ~ while the chapter has estimated durations", async () => {
     stubMatchMedia(false);
     installPlayerFetch({ duration_s: 0 }); // no clip has a measured duration yet
     await renderAtPlayer();
-    expect(screen.getByTestId("player-total").textContent).toMatch(/^~/);
+    expect(screen.getByTestId("player-remaining").textContent).toMatch(/^~−/);
     expect(screen.getByTestId("player-elapsed")).toBeTruthy();
+  });
+
+  it("shows time remaining in the chapter, like the lock screen", async () => {
+    // Two measured 10 s segments: a 20 s chapter. The lock screen shows
+    // duration − position, so the phone player shows the same number.
+    stubMatchMedia(false);
+    const getPlayer = await renderAtPlayer();
+    expect(screen.getByTestId("player-remaining").textContent).toBe("−0:20");
+    act(() => getPlayer().seekSegment(1, 3)); // 13 s into the chapter
+    await waitFor(() => expect(screen.getByTestId("player-remaining").textContent).toBe("−0:07"));
+    expect(screen.getByTestId("player-elapsed").textContent).toBe("0:13");
   });
 
   it("the 236 px cover links to the book page", async () => {

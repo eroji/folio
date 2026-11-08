@@ -376,6 +376,7 @@ export function ChapterScrubber({ className }: { className?: string }) {
   const player = usePlayer();
   const total = player.chapterTotal;
   const elapsed = Math.min(player.chapterElapsed, total);
+  const remaining = formatTime(Math.ceil(Math.max(0, total - elapsed)));
   return (
     <div className={clsx("flex items-center gap-2.5 text-xs tabular text-fg-2", className)}>
       <span data-testid="player-elapsed">{formatTime(elapsed)}</span>
@@ -389,9 +390,15 @@ export function ChapterScrubber({ className }: { className?: string }) {
         onChange={(event) => player.seekChapter(Number(event.target.value))}
         className="min-w-0 flex-1 accent-accent"
       />
-      <span className="whitespace-nowrap" data-testid="player-total">
-        {player.chapterTotalApprox ? "~" : ""}
-        {formatTime(total)}
+      {/* Time remaining, like the lock screen (duration − position); "~" while
+          part of the chapter is still a character estimate. Rounded up so it
+          counts down to 0:00 at the end, as the lock screen does. */}
+      <span
+        className="whitespace-nowrap"
+        data-testid="player-remaining"
+        aria-label={`${player.chapterTotalApprox ? "About " : ""}${remaining} remaining in chapter`}
+      >
+        {player.chapterTotalApprox ? "~" : ""}−{remaining}
       </span>
     </div>
   );
