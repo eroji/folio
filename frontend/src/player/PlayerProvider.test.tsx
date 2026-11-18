@@ -522,6 +522,23 @@ describe("PlayerProvider", () => {
     expect(getPlayer().element.currentTime).toBe(4);
   });
 
+  it("a voice change keeps the chapter clock: segments already heard keep their length", async () => {
+    // 10 s clips; the character estimate for a segment is far from that.
+    const fixture = { duration_s: 10, segmentsByChapter: { [CH1]: makeSegments(CH1, 3), [CH2]: makeSegments(CH2, 1) } };
+    installPlayerFetch(fixture);
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    act(() => getPlayer().seekSegment(2, 4)); // two heard segments + 4 s
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().chapterElapsed).toBe(24);
+    await act(async () => {
+      getPlayer().reloadVoice(BOOK_ID);
+    });
+    expect(getPlayer().chapterElapsed).toBe(24); // while the new voice prepares
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().chapterElapsed).toBe(24); // and once it plays (same sentence, no marks: same second)
+  });
+
   it("reloadVoice ignores a different book", async () => {
     const getPlayer = renderPlayer();
     await loadAndPlay(getPlayer);
