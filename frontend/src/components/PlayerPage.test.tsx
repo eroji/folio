@@ -150,7 +150,9 @@ describe("PlayerPage (phone)", () => {
     const getPlayer = await renderAtPlayer();
     expect(screen.getByRole("button", { name: "Close player" })).toBeTruthy();
     expect(screen.getByText("Now playing")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "More options" })).toBeTruthy();
+    // Stop and close is one X, not an item in a ⋮ menu.
+    expect(screen.getByRole("button", { name: "Stop and close player" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "More options" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
     await waitFor(() => expect(getPlayer().playing).toBe(true));
     expect(screen.getByTestId("player-elapsed")).toBeTruthy();
@@ -267,9 +269,9 @@ describe("PlayerPage (phone)", () => {
     const playback = await screen.findByRole("region", { name: "Playback" });
     expect(within(playback).getByRole("button", { name: "Play" })).toBeTruthy();
     expect(within(playback).getByRole("button", { name: "Back 15 seconds" })).toBeTruthy();
-    // Closing the sheet sits on the player row; the read-along toggles sit together
-    // in the header: auto-scroll right beside the text size.
-    expect(within(playback).getByRole("button", { name: "Back to player" })).toBeTruthy();
+    // The sheet closes from its drag handle (no chevron on the player row); the
+    // read-along toggles sit together in the header: auto-scroll beside the text size.
+    expect(within(playback).queryByRole("button", { name: "Back to player" })).toBeNull();
     expect(within(playback).queryByRole("button", { name: "Auto-scroll" })).toBeNull();
     const textSize = screen.getByRole("button", { name: "Text size" });
     expect(textSize.textContent).toBe("Aa");
@@ -299,14 +301,45 @@ describe("PlayerPage (phone)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Up next" }));
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getByRole("button", { name: /Chapter Two/ })).toBeTruthy();
-    // No player row on this tab: the sheet still closes from its header.
+    // No player row on this tab: the sheet still closes from its drag handle.
     expect(screen.queryByRole("region", { name: "Playback" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Auto-scroll" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Back to player" }));
     expect(screen.queryByRole("tabpanel")).toBeNull();
   });
 
-  /** Opens ⋮ → Stop and close at `entries` and waits for the book to unload. */
+  it("swiping the sheet's header down closes it; a short drag springs back", async () => {
+    stubMatchMedia(false);
+    await renderAtPlayer();
+    fireEvent.click(screen.getByRole("tab", { name: "Read along" }));
+    const handle = await screen.findByRole("button", { name: "Back to player" });
+    const area = handle.parentElement!;
+    const drag = (to: number) => {
+      fireEvent.pointerDown(area, { pointerId: 1, isPrimary: true, clientY: 100 });
+      fireEvent.pointerMove(area, { pointerId: 1, isPrimary: true, clientY: 100 + to / 2 });
+      fireEvent.pointerMove(area, { pointerId: 1, isPrimary: true, clientY: 100 + to });
+      fireEvent.pointerUp(area, { pointerId: 1, isPrimary: true, clientY: 100 + to });
+    };
+    drag(30);
+    expect(screen.getByRole("region", { name: "Playback" })).toBeTruthy();
+    // The click that ends a drag is not a tap on the handle.
+    fireEvent.click(handle);
+    expect(screen.getByRole("region", { name: "Playback" })).toBeTruthy();
+
+    drag(160);
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Playback" })).toBeNull());
+  });
+
+  it("Escape closes the sheet", async () => {
+    stubMatchMedia(false);
+    await renderAtPlayer();
+    fireEvent.click(screen.getByRole("tab", { name: "Up next" }));
+    expect(screen.getByRole("tabpanel")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("tabpanel")).toBeNull();
+  });
+
+  /** Taps the X (Stop and close) at `entries` and waits for the book to unload. */
   async function stopAndClose(entries: string[]): Promise<void> {
     stubMatchMedia(false);
     const getPlayer = renderPlayer(
@@ -317,17 +350,16 @@ describe("PlayerPage (phone)", () => {
       entries,
     );
     await waitFor(() => expect(getPlayer().book).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "More options" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Stop and close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop and close player" }));
     await waitFor(() => expect(getPlayer().book).toBeNull());
   }
 
-  it("⋮ Stop and close returns to the page the player was opened from", async () => {
+  it("Stop and close returns to the page the player was opened from", async () => {
     await stopAndClose([`/books/${BOOK_ID}`, `/player?book=${BOOK_ID}&chapter=${CH1}`]);
     await waitFor(() => expect(screen.getByTestId("path").textContent).toBe(`/books/${BOOK_ID}`));
   });
 
-  it("⋮ Stop and close on a direct load falls back to the book", async () => {
+  it("Stop and close on a direct load falls back to the book", async () => {
     await stopAndClose([`/player?book=${BOOK_ID}&chapter=${CH1}`]);
     await waitFor(() => expect(screen.getByTestId("path").textContent).toBe(`/books/${BOOK_ID}`));
   });

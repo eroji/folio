@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, type InitialEntry, Route, Routes, useLocation } from "react-router-dom";
+import { FROM_PLAYER } from "../player/fromPlayer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../auth/AuthProvider";
@@ -281,11 +282,12 @@ function WhereAmI() {
   return <p>at {location.pathname}{location.search}</p>;
 }
 
-function renderDetail(path = `/books/${ID}`) {
+function renderDetail(path: string | InitialEntry[] = `/books/${ID}`) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const entries = typeof path === "string" ? [path] : path;
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
         <PlayerProvider>
           <AuthProvider>
             <Routes>
@@ -1015,6 +1017,24 @@ describe("BookDetailPage", () => {
     expect(grid?.className).toContain("lg:grid-cols-[340px_minmax(0,1fr)]");
     expect(grid?.className).toContain("gap-12");
     expect(grid?.className).toContain("pt-6");
+  });
+
+  it("Back returns to the page the book was opened from", async () => {
+    renderDetail(["/library", `/books/${ID}`]);
+    fireEvent.click(await screen.findByRole("button", { name: "Back" }));
+    expect(await screen.findByText("at /library")).toBeTruthy();
+  });
+
+  it("Back goes Home, not to the player, when the book was opened from the player", async () => {
+    renderDetail(["/", "/player", { pathname: `/books/${ID}`, state: FROM_PLAYER }]);
+    fireEvent.click(await screen.findByRole("button", { name: "Back" }));
+    expect(await screen.findByText("at /")).toBeTruthy();
+  });
+
+  it("Back goes Home when the book was opened directly", async () => {
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Back" }));
+    expect(await screen.findByText("at /")).toBeTruthy();
   });
 
   it("renders the phone layout: back + ⋮ header, centered cover, meta with percent", async () => {
