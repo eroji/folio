@@ -49,6 +49,32 @@ describe("ReadAlong", () => {
     return document.querySelector<HTMLElement>('article[aria-label="Read along"]')!;
   }
 
+  it("follows the clip's sentence marks instead of an even spread", async () => {
+    const [seg0, seg1] = makeSegments(CH1, 2);
+    const text = seg1!.text;
+    const at = (s: string) => text.indexOf(s) / text.length;
+    // Sentence two of segment 1 only starts 8 s into its 10 s clip.
+    installPlayerFetch({
+      marks: { [seg1!.id]: [[0, 0], [at("Two"), 8], [at("Three"), 9]] },
+      segmentsByChapter: { [CH1]: [seg0!, seg1!] },
+    });
+    const getPlayer = renderPlayer(<ReadAlong />);
+    await play(getPlayer);
+    await waitFor(() => expect(getPlayer().status[seg1!.id]?.marks).toBeTruthy());
+    act(() => {
+      getPlayer().seekChapter(15); // 5 s into segment 1: an even spread says sentence two
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[aria-current="true"]')?.textContent).toContain(`One ${CH1}-seg1 here`),
+    );
+    act(() => {
+      getPlayer().seekChapter(18.5); // 8.5 s: after the mark
+    });
+    await waitFor(() =>
+      expect(document.querySelector('[aria-current="true"]')?.textContent).toContain(`Two ${CH1}-seg1 here`),
+    );
+  });
+
   it("marks the current sentence bright and 4px larger, past dimmer, upcoming mid", async () => {
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer);

@@ -40,7 +40,8 @@ def _id3(size: int = 10) -> bytes:
 def test_aac_parts_concatenate_frames_and_drop_id3() -> None:
     a = _id3() + _adts_frame() * 3
     b = _id3() + _adts_frame() * 5 + b"junk"
-    joined = join_clips([a, b], "aac")
+    joined, starts = join_clips([a, b], "aac")
+    assert starts == pytest.approx([0.0, 3 * 1024 / 24000])
     assert not joined.startswith(b"ID3")
     assert b"ID3" not in joined and not joined.endswith(b"junk")
     assert adts_duration(joined) == pytest.approx(8 * 1024 / 24000)
@@ -61,7 +62,8 @@ def _mp3_frame(tag: bytes = b"") -> bytes:
 def test_mp3_parts_drop_id3_tags_and_vbr_header_frames() -> None:
     a = _id3() + _mp3_frame(b"Info") + _mp3_frame() * 4 + b"TAG" + b"\x00" * 125
     b = _id3() + _mp3_frame(b"Xing") + _mp3_frame() * 6
-    joined = join_clips([a, b], "mp3")
+    joined, starts = join_clips([a, b], "mp3")
+    assert starts == pytest.approx([0.0, 4 * 1152 / 44100])
     assert len(joined) == 10 * _MP3_FRAME_LEN  # 4 + 6 audio frames, nothing else
     assert b"Xing" not in joined and b"Info" not in joined and b"TAG" not in joined
     length = mutagen.File(io.BytesIO(joined)).info.length  # type: ignore[union-attr]
@@ -101,7 +103,10 @@ def test_ogg_crc_matches_a_real_encoder() -> None:
 
 
 def test_opus_parts_become_one_logical_stream() -> None:
-    joined = join_clips([SILENT_OPUS, SILENT_OPUS, SILENT_OPUS], "opus")
+    joined, starts = join_clips([SILENT_OPUS, SILENT_OPUS, SILENT_OPUS], "opus")
+    # Each clip starts where the previous one's decoded audio ends (~1 s each).
+    assert starts[0] == 0.0
+    assert 1.0 <= starts[1] < 1.03 and 2.0 <= starts[2] < 2.06
     pages = _pages(joined)
     assert all(page["crc_ok"] for page in pages)
     assert {page["serial"] for page in pages} == {pages[0]["serial"]}
@@ -119,8 +124,9 @@ def test_opus_parts_become_one_logical_stream() -> None:
 
 
 def test_a_single_part_is_returned_untouched() -> None:
-    assert join_clips([SILENT_OPUS], "opus") is SILENT_OPUS
-    assert join_clips([b"anything"], "wav") == b"anything"
+    data, starts = join_clips([SILENT_OPUS], "opus")
+    assert data is SILENT_OPUS and starts == [0.0]
+    assert join_clips([b"anything"], "wav") == (b"anything", [0.0])
 
 
 def test_unreadable_or_unknown_audio_fails_the_segment() -> None:

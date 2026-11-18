@@ -74,6 +74,8 @@ export interface PlayerFixture {
   progress?: Progress | null;
   /** Overrides merged into the default book payload (e.g. narrator_voice). */
   book?: Partial<Book>;
+  /** segment_id → the clip's sentence marks ([text fraction, seconds] pairs). */
+  marks?: Record<string, [number, number][]>;
 }
 
 export interface InstalledFetch {
@@ -175,6 +177,7 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
             cache_key: segment.id,
             url: `/api/v1/audio/${segment.id}`,
             duration_s: fixture.duration_s ?? 10,
+            marks: fixture.marks?.[segment.id] ?? null,
           })),
           voice: body.voice ?? "ashley-en",
           stream: fixture.stream ?? false,

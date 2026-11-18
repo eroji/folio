@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from folio.ingest.segment import (
     SegmentedChapter,
     segment_chapter,
+    speech_pieces,
     split_for_speech,
     split_sentences,
 )
@@ -102,33 +103,49 @@ def test_default_max_chars_is_800() -> None:
     assert all(len(s.text) <= 800 for s in chapter.segments)
 
 
-# --- split_for_speech: one segment -> TTS request pieces ---------------------
+# --- speech_pieces: one segment -> TTS requests, one sentence each --------
 
 _SENTENCE = "The harbour light swept twice across the water before the fog closed again. "
 
 
-def test_split_for_speech_packs_whole_sentences_up_to_the_limit() -> None:
+def test_each_sentence_is_its_own_request() -> None:
     text = (_SENTENCE * 8).strip()  # 8 x 76 chars
-    pieces = split_for_speech(text, "en", 300)
-    assert len(pieces) == 3  # 3 + 3 + 2 sentences
-    assert all(len(piece) <= 300 for piece in pieces)
-    assert all(piece.endswith("again.") for piece in pieces)  # never mid-sentence
+    pieces = split_for_speech(text, "en", 400)
+    assert len(pieces) == 8
+    assert all(piece.endswith("again.") for piece in pieces)
     assert " ".join(pieces) == text
 
 
-def test_split_for_speech_keeps_a_short_segment_whole() -> None:
-    text = "One sentence. And another."
-    assert split_for_speech(text, "en", 300) == [text]
+def test_short_sentences_ride_with_the_next_one() -> None:
+    text = "Yes. No. " + _SENTENCE + "He nodded. " + _SENTENCE.strip()
+    pieces = split_for_speech(text, "en", 400)
+    # "Yes. No." alone would be a clipped generation: it joins the sentence after it.
+    assert pieces == [
+        "Yes. No. " + _SENTENCE.strip(),
+        "He nodded. " + _SENTENCE.strip(),
+    ]
 
 
-def test_split_for_speech_cuts_an_overlong_sentence_at_clauses() -> None:
+def test_a_short_last_sentence_joins_the_one_before() -> None:
+    text = _SENTENCE + "She left."
+    assert split_for_speech(text, "en", 400) == [text]
+
+
+def test_an_overlong_sentence_is_cut_at_clauses() -> None:
     clause = "the lamp burned on the sill for whoever came after them"
     text = ", ".join([clause] * 8) + "."
     pieces = split_for_speech(text, "en", 150)
     assert len(pieces) > 1 and all(len(piece) <= 150 for piece in pieces)
-    assert pieces[0].endswith(",")  # cut after clause punctuation
+    assert pieces[0].endswith(",")
 
 
-def test_split_for_speech_zero_limit_means_one_request() -> None:
+def test_zero_means_one_request_per_segment() -> None:
     text = (_SENTENCE * 8).strip()
     assert split_for_speech(text, "en", 0) == [text]
+
+
+def test_pieces_carry_their_offset_in_the_text() -> None:
+    text = "  " + (_SENTENCE * 3).strip()
+    for piece in speech_pieces(text, "en", 400):
+        assert text[piece.char_start : piece.char_start + len(piece.text)] == piece.text
+        assert piece.text == piece.text.strip()

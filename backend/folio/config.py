@@ -55,11 +55,11 @@ class Settings(BaseSettings):
     # far less consistently (pitch, loudness and pace vary between segments).
     tts_instructions: bool = True
     tts_max_chars: int = 800
-    # Characters per TTS request. A segment longer than this is sent as several
-    # requests (whole sentences) and the clips are joined: cloned voices lose
-    # likeness and pick up artifacts late in one long generation. 0 = one
-    # request per segment.
-    tts_request_chars: int = Field(default=300, ge=0)
+    # Every sentence is its own TTS request (cloned voices lose likeness and
+    # pick up artifacts late in one long generation); the clips are joined.
+    # This is the longest single request: a longer sentence is cut at clauses.
+    # 0 = one request per segment.
+    tts_request_chars: int = Field(default=400, ge=0)
     tts_lookahead: int = 6
     tts_concurrency: int = 2
     tts_chars_per_second: float = 15.0

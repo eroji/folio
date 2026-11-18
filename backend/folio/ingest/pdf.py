@@ -61,11 +61,9 @@ def _chapters(doc: pymupdf.Document, page_lines: list[list[str]]) -> list[Extrac
             for index, (title, page) in enumerate(outline)
         ]
     return [
-        ExtractedChapter(
-            title=f"Chapter {number}",
-            text=text_of(start, min(start + CHUNK_PAGES, doc.page_count)),
-        )
-        for number, start in enumerate(range(0, doc.page_count, CHUNK_PAGES), start=1)
+        # Untitled: folio.chapters numbers them among the chapters set to narrate.
+        ExtractedChapter(title="", text=text_of(start, min(start + CHUNK_PAGES, doc.page_count)))
+        for start in range(0, doc.page_count, CHUNK_PAGES)
     ]
 
 

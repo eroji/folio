@@ -79,6 +79,8 @@ def prepare_audio(
                 "cache_key": row.cache_key,
                 "url": f"/api/v1/audio/{row.cache_key}" if audio else None,
                 "duration_s": audio.duration_s if audio else None,
+                # Where each sentence starts in the clip, for read-along.
+                "marks": audio.marks if audio else None,
             }
         )
     return {

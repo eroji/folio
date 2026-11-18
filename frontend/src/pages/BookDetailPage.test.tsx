@@ -697,6 +697,22 @@ describe("BookDetailPage", () => {
     expect(screen.getByRole("tabpanel").textContent).not.toContain("Two");
   });
 
+  it("lists Manage rows by the server's title, not the source file position", async () => {
+    // The server numbers untitled chapters among the narrated ones; a source
+    // prefix ("3 · Chapter 1") would contradict that.
+    book = makeBook({ can_edit: true });
+    chapters = [
+      { id: "c1", idx: 0, title: "Copyright", char_count: 100, excluded: true },
+      { id: "c2", idx: 1, title: "Untitled section", char_count: 100, excluded: true },
+      { id: "c3", idx: 2, title: "Chapter 1", char_count: 300 },
+    ];
+    renderDetail();
+    fireEvent.click(await screen.findByRole("tab", { name: "Manage" }));
+    expect(await screen.findByText("Chapter 1")).toBeTruthy();
+    expect(screen.getByText("Copyright")).toBeTruthy();
+    expect(screen.queryByText(/\d · /)).toBeNull();
+  });
+
   it("shows an empty state when every chapter is excluded", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();

@@ -18,7 +18,7 @@ from __future__ import annotations
 import struct
 
 from folio.tts import TtsError
-from folio.tts.adts import id3_size
+from folio.tts.adts import adts_duration, id3_size
 
 # --- AAC (ADTS) --------------------------------------------------------------
 
@@ -63,6 +63,13 @@ def _mp3_frame_length(header: bytes) -> int:
     return (144 if version == 3 else 72) * kbps * 1000 // rate + padding
 
 
+def _mp3_seconds(header: bytes) -> float:
+    """Seconds of audio in one Layer III frame."""
+    version = (header[1] >> 3) & 0x03
+    rate = _MP3_RATES[version][(header[2] >> 2) & 0x03]
+    return (1152 if version == 3 else 576) / rate
+
+
 def _mp3_frames(data: bytes) -> bytes:
     """Audio frames only: no ID3v2/ID3v1 tags, no Xing/Info/VBRI header frame
     (its frame count would describe one clip, not the joined file)."""
@@ -80,6 +87,17 @@ def _mp3_frames(data: bytes) -> bytes:
     if not frames:
         raise TtsError("The TTS engine returned unreadable MP3 audio.", code="tts_bad_audio")
     return b"".join(frames)
+
+
+def _mp3_frame_count(frames: bytes) -> int:
+    count = pos = 0
+    while pos + 4 <= len(frames):
+        length = _mp3_frame_length(frames[pos : pos + 4])
+        if not length:
+            break
+        count += 1
+        pos += length
+    return count
 
 
 # --- Ogg Opus ----------------------------------------------------------------
@@ -209,8 +227,9 @@ class _OggWriter:
         self._continued = continued_next
 
 
-def _join_opus(parts: list[bytes]) -> bytes:
+def _join_opus(parts: list[bytes]) -> tuple[bytes, list[float]]:
     parsed = [_ogg_packets(part) for part in parts]
+    preskip = struct.unpack_from("<H", parsed[0][0][0], 10)[0]
     head, tags = parsed[0][0][0], parsed[0][0][1]
     writer = _OggWriter(serial=struct.unpack_from("<I", parts[0], 14)[0])
     writer.add(head, 0)
@@ -225,22 +244,40 @@ def _join_opus(parts: list[bytes]) -> bytes:
     decoded_last = sum(_opus_samples(packet) for packet in parsed[-1][0][2:])
     trim = max(0, decoded_last - parsed[-1][1])
     total = 0
+    starts: list[float] = []
+    for packets, _ in parsed:
+        # Playback time = decoded samples minus the first clip's pre-skip.
+        starts.append(max(0, total - preskip) / 48000)
+        total += sum(_opus_samples(packet) for packet in packets[2:])
+    total = 0
     for index, packet in enumerate(audio):
         total += _opus_samples(packet)
         last = index == len(audio) - 1
         writer.add(packet, max(0, total - trim) if last else total, may_flush=not last)
     writer.flush(eos=True)  # the last page always carries the final packet
-    return bytes(writer.out)
+    return bytes(writer.out), starts
 
 
-def join_clips(parts: list[bytes], fmt: str) -> bytes:
-    """One playable file from the clips of consecutive requests, in order."""
+def _starts(durations: list[float]) -> list[float]:
+    starts, at = [], 0.0
+    for duration in durations:
+        starts.append(at)
+        at += duration
+    return starts
+
+
+def join_clips(parts: list[bytes], fmt: str) -> tuple[bytes, list[float]]:
+    """One playable file from the clips of consecutive requests, in order, and
+    the second each clip starts at in it (what read-along follows)."""
     if len(parts) == 1:
-        return parts[0]
+        return parts[0], [0.0]
     if fmt == "aac":
-        return b"".join(_adts_frames(part) for part in parts)
+        frames = [_adts_frames(part) for part in parts]
+        return b"".join(frames), _starts([adts_duration(f) for f in frames])
     if fmt == "mp3":
-        return b"".join(_mp3_frames(part) for part in parts)
+        frames = [_mp3_frames(part) for part in parts]
+        seconds = [_mp3_seconds(f[:4]) * _mp3_frame_count(f) for f in frames]
+        return b"".join(frames), _starts(seconds)
     if fmt == "opus":
         return _join_opus(parts)
     raise TtsError(f"Can't join {fmt} clips from the TTS engine.", code="tts_bad_audio")
