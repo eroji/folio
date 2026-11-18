@@ -187,6 +187,10 @@ interface Machine {
   /** After a voice change: the share of the segment's text to restart at once
    * the new voice's clip (and its length) is known. */
   voiceSwap: { segment: string; fraction: number } | null;
+  /** Clip lengths from the voice before a voice change, used until the new
+   * voice's are known: the chapter clock keeps counting what was heard instead
+   * of falling back to character estimates (the played time would jump). */
+  pastDurations: Record<string, number>;
   resumeLoading: boolean; // resume not applied yet: saves stay quiet
   finished: boolean;
   finishedMarked: boolean; // the finished PUT fires once per session
@@ -223,7 +227,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, prebuffering: false, progress: {}, error: null,
-    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null, chapterDone: null, voiceSwap: null,
+    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null, chapterDone: null, voiceSwap: null, pastDurations: {},
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
   const el = useMemo(() => new Audio(), []);
@@ -277,7 +281,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const at = entryIndexOf(s.segments[s.index]?.id);
     return at >= 0 ? Math.max(0, el.currentTime - s.stream!.entries[at]!.start) : s.time;
   };
-  const durationOf = (segment: Segment | undefined) => (segment ? s.status[segment.id]?.duration_s ?? 0 : 0);
+  const durationOf = (segment: Segment | undefined) =>
+    segment ? s.status[segment.id]?.duration_s ?? s.pastDurations[segment.id] ?? 0 : 0;
   /** Estimated seconds per character, from the book's measured average (server)
    * or 15 chars per second when the book has no measurement yet. */
   const secondsPerChar = () => {
@@ -699,6 +704,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.segments = [];
     s.index = 0;
     s.status = {};
+    s.pastDurations = {};
     s.time = 0;
     s.offset = 0;
     s.error = null;
@@ -817,6 +823,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         s.segments = [];
         s.index = 0;
         s.status = {};
+        s.pastDurations = {};
         s.time = 0;
         s.offset = 0;
       }
@@ -960,6 +967,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.segments = [];
     s.index = 0;
     s.status = {};
+    s.pastDurations = {};
     s.time = 0;
     s.error = null;
     s.resumePrompt = null;
@@ -998,6 +1006,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     silence();
     dropStream(); // the new voice is a different stream
     s.loaded = null; // the element holds the old voice: the next start loads the new one
+    for (const [id, item] of Object.entries(s.status)) {
+      if (item.duration_s) s.pastDurations[id] = item.duration_s;
+    }
     s.status = {};
     prefetchedChapter.current = null; // the new voice has to be synthesized for the whole chapter
     // A playing listener buffers the lookahead before resuming; a paused one
