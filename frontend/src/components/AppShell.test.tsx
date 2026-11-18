@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
+import { rememberClosed } from "../player/closed";
 import { AuthProvider } from "../auth/AuthProvider";
 import { DEFAULT_SETTINGS } from "../api/settings";
 import type { ContinueItem } from "../api/progress";
@@ -271,6 +272,23 @@ describe("AppShell", () => {
     await boot();
     const bar = await screen.findByRole("region", { name: "Now playing" });
     expect(within(bar).getByRole("button", { name: "Play" })).toBeTruthy(); // paused, not playing
+  });
+
+  it("keeps a stopped and closed player closed after a reload", async () => {
+    rememberClosed(makeBook().id); // "Stop and close" before the reload
+    renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
+    await boot();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(screen.queryByRole("region", { name: "Now playing" })).toBeNull();
+  });
+
+  it("still loads a different book played since the player was closed", async () => {
+    rememberClosed("another-book");
+    renderShell({ continueItems: [{ book: makeBook(), progress: makeProgress({}) }] });
+    await boot();
+    expect(await screen.findByRole("region", { name: "Now playing" })).toBeTruthy();
   });
 
   it("shows no player surfaces without listening history", async () => {

@@ -8,6 +8,7 @@ import { BOOK_ID, BOOK2_ID, CH1, CH2, CH3, installPlayerFetch, makeProgress, mak
 import { deviceLabel } from "../api/progress";
 import { DEFAULT_SETTINGS, settingsQueryKey, speedOptionsQueryKey } from "../api/settings";
 import type { AudioStatus } from "../api/audio";
+import { closedBook } from "./closed";
 
 let prepareCalls: { segment_id: string; count: number; voice?: string }[] = [];
 let played: HTMLMediaElement[] = [];
@@ -818,6 +819,104 @@ describe("PlayerProvider progress", () => {
   });
 });
 
+describe("PlayerProvider per-chapter places", () => {
+  const twoChapters = (c1: Partial<import("../api/types").Chapter> = {}, c2: Partial<import("../api/types").Chapter> = {}) => ({
+    chapters: [
+      { id: CH1, idx: 0, title: "Chapter One", char_count: 600, ...c1 },
+      { id: CH2, idx: 1, title: "Chapter Two", char_count: 600, ...c2 },
+    ],
+  });
+
+  it("jumping back to a chapter resumes where it was left, not at its start", async () => {
+    installPlayerFetch(
+      twoChapters({}, { progress: { segment_id: `${CH2}-seg1`, offset_s: 9, percent: 50, finished: false } }),
+    );
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(getPlayer().chapter?.id).toBe(CH1);
+    await act(async () => {
+      await getPlayer().goToChapter(CH2);
+    });
+    expect(getPlayer().index).toBe(1);
+    expect(getPlayer().time).toBe(6); // 9 - the 3 s rewind
+  });
+
+  it("remembers the place in a chapter left during this session", async () => {
+    installPlayerFetch(twoChapters());
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    act(() => getPlayer().seekSegment(1, 5)); // listening in chapter one
+    await act(async () => {
+      await getPlayer().stepChapter(1); // a stray Next chapter
+    });
+    expect(getPlayer().chapter?.id).toBe(CH2);
+    await act(async () => {
+      await getPlayer().stepChapter(-1);
+    });
+    expect(getPlayer().chapter?.id).toBe(CH1);
+    expect(getPlayer().index).toBe(1);
+    expect(getPlayer().time).toBe(2);
+  });
+
+  it("a finished chapter starts over", async () => {
+    installPlayerFetch(twoChapters({}, { progress: { segment_id: null, offset_s: 0, percent: 100, finished: true } }));
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    await act(async () => {
+      await getPlayer().goToChapter(CH2);
+    });
+    expect(getPlayer().index).toBe(0);
+    expect(getPlayer().time).toBe(0);
+  });
+
+  it("auto-advancing starts the next chapter at its beginning and marks the old one finished", async () => {
+    const { saveCalls } = installPlayerFetch({
+      ...twoChapters({}, { progress: { segment_id: `${CH2}-seg0`, offset_s: 8, percent: 0, finished: false } }),
+      segmentsByChapter: { [CH1]: makeSegments(CH1, 1), [CH2]: makeSegments(CH2, 2) },
+    });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    act(() => {
+      getPlayer().element.dispatchEvent(new Event("ended"));
+    });
+    await waitFor(() => expect(getPlayer().chapter?.id).toBe(CH2));
+    expect(getPlayer().time).toBe(0);
+    expect(saveCalls).toContainEqual(expect.objectContaining({ chapter_id: CH1, chapter_finished: true }));
+    // Ordinary saves never claim a chapter was finished.
+    expect(saveCalls.filter((c) => c.chapter_id === CH2).every((c) => !("chapter_finished" in c))).toBe(true);
+  });
+
+  it("a jump away mid-chapter does not mark it finished", async () => {
+    const { saveCalls } = installPlayerFetch(twoChapters());
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await act(async () => {
+      await getPlayer().goToChapter(CH2);
+    });
+    expect(saveCalls.some((c) => c.chapter_id === CH1)).toBe(true);
+    expect(saveCalls.some((c) => "chapter_finished" in c)).toBe(false);
+  });
+});
+
+describe("PlayerProvider stop and close", () => {
+  it("remembers the closed book on this device and forgets it once a book is loaded", async () => {
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    act(() => getPlayer().stop());
+    expect(closedBook()).toBe(BOOK_ID);
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(closedBook()).toBeNull();
+  });
+});
+
 describe("PlayerProvider on iOS", () => {
   it("unlocks the element on the first play gesture, before the network", async () => {
     // iOS blocks play() on an element that has never played from a gesture, and
@@ -1153,6 +1252,9 @@ describe("PlayerProvider HLS stream (Safari / iOS)", () => {
     expect(getPlayer().index).toBe(0);
     expect(getPlayer().time).toBeCloseTo(6);
     await waitFor(() => expect(saveCalls.some((c) => c.segment_id === `${CH2}-seg0`)).toBe(true));
+    // Crossing into CH2 means CH1 was heard to its end.
+    expect(saveCalls).toContainEqual(expect.objectContaining({ chapter_id: CH1, chapter_finished: true }));
+    expect(saveCalls.filter((c) => c.chapter_id === CH2).every((c) => !("chapter_finished" in c))).toBe(true);
     expect(getPlayer().playing).toBe(true);
     expect(played).toHaveLength(1); // one continuous track
   });

@@ -269,6 +269,7 @@ The player plays a book as a continuous sequence of segment audio files and save
 
 One `progress` row per user per book: `chapter_id`, `segment_id`, `offset_seconds`, `percent` (by characters), `updated_at`, `device_label`, and `finished_at`.
 
+- Each chapter also keeps its own place and a listened flag (`chapter_progress`): every save updates the saved chapter's row, and a chapter played to its end is marked listened and starts over next time. Choosing a chapter resumes where it was left; auto-advance starts the next chapter at its beginning.
 - Save every 10 seconds while playing, on pause, on chapter change, and on `visibilitychange`/`pagehide` (use `navigator.sendBeacon`).
 - On load, resume from the saved position, rewinding 3 seconds for context.
 - Conflicts across devices: last write wins by `updated_at`. If another device's saved position is more than 60 seconds ahead of where this device is about to resume, show "Continue from \<chapter, time> on \<device>?".
@@ -296,6 +297,7 @@ PostgreSQL holds all state except binary files; the API is JSON over `/api/v1`, 
 | `audio` | cache\_key (PK), path, format, voice, model, duration\_s, bytes, created\_at, last\_played\_at |
 | `segment_audio` | segment\_id, voice, cache\_key, status (`queued` / `generating` / `ready` / `failed`), error |
 | `progress` | user\_id, book\_id, chapter\_id, segment\_id, offset\_s, percent, device\_label, updated\_at, finished\_at |
+| `chapter_progress` | user\_id, chapter\_id, book\_id, segment\_id (null = chapter start), offset\_s, updated\_at, finished\_at |
 | `metadata_candidates` | id, book\_id, source, payload (JSONB), score |
 | `jobs` | id, type, book\_id, priority, status, attempts, error, created\_at, finished\_at |
 

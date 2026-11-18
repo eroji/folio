@@ -18,6 +18,8 @@ export interface ProgressSaveBody {
   segment_id: string;
   offset_s: number;
   device_label: string;
+  /** The chapter played to its end: it counts as listened. */
+  chapter_finished?: boolean;
 }
 
 export interface SaveResult {

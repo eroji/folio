@@ -500,7 +500,11 @@ describe("BookDetailPage", () => {
     expect(list.className).toContain("overflow-y-auto");
   });
 
-  it("marks chapters before the saved position as played and the saved one as current", async () => {
+  it("marks chapters heard to the end as played and the saved one as current", async () => {
+    chapters = [
+      { ...CHAPTERS[0]!, progress: { segment_id: null, offset_s: 0, percent: 100, finished: true } },
+      { ...CHAPTERS[1]!, progress: { segment_id: "s4", offset_s: 3, percent: 50, finished: false } },
+    ];
     progress = makeProgress({ percent: 75, chapter_id: "c2", segment_id: "s4" });
     renderDetail();
     const played = await screen.findByRole("button", { name: /One Way/ });
@@ -512,6 +516,20 @@ describe("BookDetailPage", () => {
     expect(current.getAttribute("aria-current")).toBe("true");
     expect(current.getAttribute("aria-label") ?? current.textContent).toMatch(/Playing,/);
     expect(within(current).queryByText("Played")).toBeNull();
+  });
+
+  it("does not call a skipped chapter played, and shows a partly heard one's place", async () => {
+    // Jumped from One Way (40 % in) to The Other: One Way keeps its own place.
+    chapters = [
+      { ...CHAPTERS[0]!, progress: { segment_id: "s2", offset_s: 4, percent: 40, finished: false } },
+      { ...CHAPTERS[1]!, progress: { segment_id: "s3", offset_s: 0, percent: 0, finished: false } },
+    ];
+    progress = makeProgress({ percent: 50, chapter_id: "c2", segment_id: "s3" });
+    renderDetail();
+    const left = await screen.findByRole("button", { name: /One Way/ });
+    expect(within(left).queryByText("Played")).toBeNull();
+    expect(within(left).getByText(/^40% · .* left$/)).toBeTruthy();
+    expect(left.getAttribute("aria-current")).toBeNull();
   });
 
   it("plays the clicked chapter row even when it is behind the saved position", async () => {
@@ -547,6 +565,10 @@ describe("BookDetailPage", () => {
 
   it("shows the percent and time left on the playing chapter row", async () => {
     stubViewport(true);
+    chapters = [
+      CHAPTERS[0]!,
+      { ...CHAPTERS[1]!, progress: { segment_id: "s4", offset_s: 0, percent: 50, finished: false } },
+    ];
     progress = makeProgress({ percent: 75, chapter_id: "c2", segment_id: "s4" });
     renderDetail();
     const current = await screen.findByRole("button", { name: /The Other/ });

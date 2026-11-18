@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
 import type { Book } from "../api/types";
+import { useBook } from "../api/books";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
@@ -92,26 +93,34 @@ function PlayerTabs({
 function UpNext() {
   const player = usePlayer();
   const book = player.book;
+  // The book query carries this listener's per-chapter places (refetched on save).
+  const { data } = useBook(book?.id ?? "");
   if (!book) return null;
   const currentIdx = player.chapters.findIndex((chapter) => chapter.id === player.chapter?.id);
   const remaining = player.chapters.slice(currentIdx + 1);
   const secondsPerChar =
     book.est_duration_s && book.total_chars ? book.est_duration_s / book.total_chars : 1 / 15;
+  const progressOf = new Map((data?.chapters ?? []).map((chapter) => [chapter.id, chapter.progress]));
   if (remaining.length === 0) {
     return <p className="text-md text-fg-2">Nothing left in this book.</p>;
   }
   return (
     <div className="flex flex-col gap-1">
-      {remaining.map((chapter) => (
-        <ChapterRow
-          key={chapter.id}
-          chapter={chapter}
-          number={chapter.idx + 1}
-          state={null}
-          seconds={chapter.char_count * secondsPerChar}
-          onPlay={() => void player.goToChapter(chapter.id).then(() => player.play())}
-        />
-      ))}
+      {remaining.map((chapter, index) => {
+        const place = progressOf.get(chapter.id);
+        const percent = place?.segment_id ? Math.round(place.percent) : 0;
+        return (
+          <ChapterRow
+            key={chapter.id}
+            chapter={chapter}
+            number={currentIdx + 2 + index}
+            state={place?.finished ? "played" : null}
+            percent={percent > 0 ? percent : null}
+            seconds={chapter.char_count * secondsPerChar}
+            onPlay={() => void player.goToChapter(chapter.id).then(() => player.play())}
+          />
+        );
+      })}
     </div>
   );
 }
