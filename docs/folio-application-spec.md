@@ -79,7 +79,7 @@ The API also calls the TTS API for voice previews and the metadata APIs for inte
 | `TTS_VOICES` | empty | comma-separated fallback list, used only if the engine can't list voices (cached per TTS\_VOICES\_TTL, default 600 s) |
 | `TTS_MAX_CHARS` | `800` | max characters per segment |
 | `TTS_LOOKAHEAD` | `6` | segments generated ahead of playback |
-| `TTS_CONCURRENCY` | `2` | max parallel TTS requests |
+| `TTS_CONCURRENCY` | `4` | max parallel TTS requests (a segment's sentences go out this many at a time) |
 | `TTS_CHARS_PER_SECOND` | `15` | duration estimate before audio exists |
 | `AUDIO_CACHE_MAX_GB` | `50` | cache eviction threshold |
 | `METADATA_ONLINE` | `true` | enable Open Library / Google Books lookups |
@@ -238,7 +238,7 @@ Voice is chosen in this order: the book's narrator override, then the user's voi
 
 - **On demand with lookahead.** When playback starts, queue the current segment plus the next `TTS_LOOKAHEAD` segments (default 6). Keep the queue topped up as playback advances.
 - **Priority.** Segments needed now go first; lookahead is lower priority; an optional "Download whole book" job is lowest.
-- **Concurrency.** At most `TTS_CONCURRENCY` (default 2) requests in flight across all users, so the shared GPU is not swamped.
+- **Concurrency.** At most `TTS_CONCURRENCY` (default 4) requests in flight across all users, so the shared GPU is not swamped; a segment's sentences are synthesized that many at a time.
 - **Cache key** = SHA-256 of `model | voice | format | normalized text`. Files live at `audio/<key[0:2]>/<key>.<ext>` and are reused across books and users.
 - **Retries.** Retry 3 times with exponential backoff (1 s, 4 s, 16 s) on timeouts and 5xx. After that, mark the segment failed; the player shows "Couldn't generate this part" with a retry button and can skip ahead.
 - **Timeouts.** 60-second request timeout per segment.
