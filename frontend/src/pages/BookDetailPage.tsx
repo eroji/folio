@@ -9,6 +9,7 @@
  * player state only. */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Link, useLocation, useMatch, useNavigate, useParams } from "react-router-dom";
+import { cameFromPlayer } from "../player/fromPlayer";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { languageName, useBook, useDeleteBook, useReprocessBook, useSetChapterExcluded } from "../api/books";
@@ -142,6 +143,12 @@ export function BookDetailPage() {
   const editing = useMatch("/books/:id/edit") !== null;
   const { user } = useAuth();
   const navigate = useNavigate();
+  /** Back to the page the book was opened from; Home when that was the player
+   * (Back must not reopen it) or the book was opened directly. */
+  const goBack = () => {
+    if (cameFromPlayer(location.state) || location.key === "default") navigate("/");
+    else navigate(-1);
+  };
   const queryClient = useQueryClient();
   const player = usePlayer();
   // Mobile-first: without matchMedia (old browsers, jsdom) render the phone layout.
@@ -665,7 +672,7 @@ export function BookDetailPage() {
               type="button"
               aria-label="Back"
               title="Back"
-              onClick={() => navigate(-1)}
+              onClick={goBack}
               className="tap grid size-11 place-items-center rounded-full text-fg hover:bg-raised"
             >
               <Icon name="ArrowLeft" size={22} />

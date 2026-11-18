@@ -8,6 +8,7 @@ import { BOOK_ID, BOOK2_ID, CH1, CH2, CH3, installPlayerFetch, makeProgress, mak
 import { deviceLabel } from "../api/progress";
 import { DEFAULT_SETTINGS, settingsQueryKey, speedOptionsQueryKey } from "../api/settings";
 import type { AudioStatus } from "../api/audio";
+import type { BookDetailResponse } from "../api/types";
 import { closedBook } from "./closed";
 
 let prepareCalls: { segment_id: string; count: number; voice?: string }[] = [];
@@ -438,17 +439,17 @@ describe("PlayerProvider", () => {
     const before = prepareCalls.length;
     const a = getPlayer().element;
     act(() => {
-      a.currentTime = 12;
+      a.currentTime = 7;
       a.dispatchEvent(new Event("timeupdate"));
     });
-    expect(getPlayer().time).toBe(12);
+    expect(getPlayer().time).toBe(7);
     await act(async () => {
       getPlayer().reloadVoice(BOOK_ID);
     });
     await waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
     await waitFor(() => expect(getPlayer().playing).toBe(true));
     expect(getPlayer().preparing).toBe(false); // the buffer gate cleared once it started
-    expect(getPlayer().time).toBe(12);
+    expect(getPlayer().time).toBe(7);
     expect(prepareCalls[prepareCalls.length - 1]?.segment_id).toBe(`${CH1}-seg0`);
   });
 
@@ -494,6 +495,31 @@ describe("PlayerProvider", () => {
     expect(getPlayer().playing).toBe(false);
     expect(getPlayer().preparing).toBe(false);
     expect(played).toHaveLength(0);
+  });
+
+  it("a new voice resumes at the start of the same sentence, not the old clip's second", async () => {
+    // Old voice: the second sentence starts 6 s into a 10 s clip. The new
+    // voice is slower to start and faster after: 12 s, second sentence at 4 s.
+    const fixture = {
+      duration_s: 10,
+      marks: { [`${CH1}-seg0`]: [[0, 0], [0.5, 6]] as [number, number][] },
+    };
+    installPlayerFetch(fixture);
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    act(() => {
+      getPlayer().element.currentTime = 8; // mid second sentence
+      getPlayer().element.dispatchEvent(new Event("timeupdate"));
+    });
+    fixture.duration_s = 12;
+    fixture.marks[`${CH1}-seg0`] = [[0, 0], [0.5, 4]];
+    await act(async () => {
+      getPlayer().reloadVoice(BOOK_ID);
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().index).toBe(0);
+    expect(getPlayer().time).toBe(4);
+    expect(getPlayer().element.currentTime).toBe(4);
   });
 
   it("reloadVoice ignores a different book", async () => {
@@ -1257,6 +1283,67 @@ describe("PlayerProvider HLS stream (Safari / iOS)", () => {
     expect(saveCalls.filter((c) => c.chapter_id === CH2).every((c) => !("chapter_finished" in c))).toBe(true);
     expect(getPlayer().playing).toBe(true);
     expect(played).toHaveLength(1); // one continuous track
+  });
+
+  it("a voice change keeps the place: the old stream's last timeupdate is not a segment offset", async () => {
+    installPlayerFetch({ stream: true });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await timelineLoaded();
+    const el = getPlayer().element;
+    at(el, 13); // CH1 seg1, 3 s in (stream time 13)
+    const key = ["book", BOOK_ID];
+    const detail = getPlayer.client.getQueryData<BookDetailResponse>(key)!;
+    getPlayer.client.setQueryData(key, { ...detail, book: { ...detail.book, narrator_voice: "brian-en" } });
+    act(() => getPlayer().reloadVoice(BOOK_ID));
+    // Pausing the element queues one more timeupdate, still on the old stream's clock.
+    act(() => {
+      el.dispatchEvent(new Event("timeupdate"));
+    });
+    await waitFor(() =>
+      expect(el.getAttribute("src")).toBe(`/api/v1/books/${BOOK_ID}/stream.m3u8?voice=brian-en&from=${CH1}-seg1`),
+    );
+    expect(getPlayer().chapter?.id).toBe(CH1);
+    expect(getPlayer().index).toBe(1);
+    expect(el.currentTime).toBeCloseTo(3); // the new stream starts at seg1
+  });
+
+  it("an answer for the old voice that lands after a voice change is not played", async () => {
+    installPlayerFetch({ stream: true });
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    let holding = false;
+    let release: () => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (holding && url.includes("/audio/prepare") && !String(init?.body).includes("brian-en")) {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return base(input, init);
+      }),
+    );
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await timelineLoaded();
+    holding = true;
+    await act(async () => {
+      MockEventSource.instances[0]!.emit("audio", { book_id: BOOK_ID, segment_id: `${CH1}-seg1` }); // a top-up in flight
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const key = ["book", BOOK_ID];
+    const detail = getPlayer.client.getQueryData<BookDetailResponse>(key)!;
+    getPlayer.client.setQueryData(key, { ...detail, book: { ...detail.book, narrator_voice: "brian-en" } });
+    act(() => getPlayer().reloadVoice(BOOK_ID));
+    holding = false;
+    await act(async () => {
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().element.getAttribute("src")).toContain("voice=brian-en");
   });
 
   it("seeks inside the listed stream without reloading it", async () => {

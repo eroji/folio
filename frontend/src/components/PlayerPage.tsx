@@ -10,6 +10,7 @@ import clsx from "clsx";
 import type { Book } from "../api/types";
 import { useBook } from "../api/books";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useSwipeDown } from "../hooks/useSwipeDown";
 import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
 import { ChapterRow } from "./ChapterRow";
@@ -19,6 +20,7 @@ import { ListeningControls } from "./ListeningControls";
 import { AutoScrollToggle, ReadAlong, TextSizePicker, useReadAlongControls } from "./ReadAlong";
 import { ResumePrompt } from "./ResumePrompt";
 import { preparingPercent, preparingText } from "../player/preparing";
+import { FROM_PLAYER } from "../player/fromPlayer";
 
 type PanelTab = "next" | "read" | "about";
 const TABS: { id: PanelTab; label: string }[] = [
@@ -147,6 +149,7 @@ function AboutPanel() {
       )}
       <Link
         to={`/books/${book.id}`}
+          state={FROM_PLAYER}
         className="tap inline-flex h-10 w-fit items-center rounded-full border border-border px-4 text-base font-semibold text-fg no-underline hover:bg-raised"
       >
         Open book
@@ -200,6 +203,7 @@ function DesktopPlayer({ book }: { book: Book }) {
       <div className="flex min-w-0 flex-col items-center gap-6">
         <Link
           to={`/books/${book.id}`}
+          state={FROM_PLAYER}
           aria-label={`Open ${book.title}`}
           className="block w-full max-w-[300px] self-start no-underline"
         >
@@ -242,42 +246,19 @@ function DesktopPlayer({ book }: { book: Book }) {
   );
 }
 
-/** ⋮ on the phone player: the stop control the desktop bar owns. */
-function PhoneMoreMenu() {
+/** X on the phone player: stop and close (the desktop bar's control). */
+function StopButton() {
   const player = usePlayer();
-  const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
-      <button
-        type="button"
-        aria-label="More options"
-        title="More options"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className={iconButton}
-      >
-        <Icon name="EllipsisVertical" size={22} />
-      </button>
-      {open && (
-        <>
-          <button type="button" tabIndex={-1} aria-hidden className="fixed inset-0 z-10 cursor-default" onClick={() => setOpen(false)} />
-          <div role="menu" aria-label="More options" className="absolute top-full right-0 z-20 mt-1 w-56 rounded-xl border border-border bg-raised p-1 shadow-(--shadow-menu)">
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                player.stop();
-              }}
-              className="tap flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-base hover:bg-border"
-            >
-              <Icon name="X" size={18} /> Stop and close
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+    <button
+      type="button"
+      aria-label="Stop and close player"
+      title="Stop and close player"
+      onClick={player.stop}
+      className={iconButton}
+    >
+      <Icon name="X" size={22} />
+    </button>
   );
 }
 
@@ -296,14 +277,34 @@ function PhoneSheet({
 }) {
   const player = usePlayer();
   const glow = coverGlow(book);
+  const swipe = useSwipeDown(onClose);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
-    <div className={clsx("fixed inset-0 z-40 flex flex-col overflow-hidden pt-safe", glow.className)} style={glow.style}>
-      <div className="flex shrink-0 flex-col gap-1.5 px-4">
-        <span aria-hidden className="mx-auto mt-1.5 h-1 w-10 rounded-full bg-border" />
-        <div className="flex items-center gap-3 pt-1.5">
-          {/* Read along closes from its player row; the other tabs have none. */}
-          {tab !== "read" && <CloseSheetButton onClose={onClose} />}
-          <Link to={`/books/${book.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 no-underline">
+    <div
+      className={clsx("fixed inset-0 z-40 flex flex-col overflow-hidden pt-safe", glow.className)}
+      style={{ ...glow.style, ...swipe.style }}
+    >
+      {/* The whole header drags the sheet down to close it; the handle is
+          also a button (tap, keyboard, screen readers). */}
+      <div className="flex shrink-0 touch-none flex-col px-4" {...swipe.handlers}>
+        <button
+          type="button"
+          aria-label="Back to player"
+          title="Back to player"
+          onClick={onClose}
+          className="tap -mb-1 flex h-11 w-full items-center justify-center"
+        >
+          <span aria-hidden className="h-1 w-10 rounded-full bg-border" />
+        </button>
+        <div className="flex items-center gap-3">
+          <Link to={`/books/${book.id}`}
+          state={FROM_PLAYER} className="flex min-w-0 flex-1 items-center gap-2.5 no-underline">
             <BookCover book={book} showPlaceholderText={false} className="aspect-[2/3] w-7 shrink-0 rounded-xs" />
             <span className="flex min-w-0 flex-col text-left">
               <span className="truncate text-md font-semibold text-fg">{player.chapter?.title}</span>
@@ -314,7 +315,7 @@ function PhoneSheet({
           {tab === "read" && <AutoScrollToggle value={controls.autoScroll} onChange={controls.setAutoScroll} />}
           <TextSizePicker step={controls.sizeStep} onStep={controls.setSizeStep} />
         </div>
-        <PlayerTabs tab={tab} onSelect={onSelect} className="mt-1" />
+        <PlayerTabs tab={tab} onSelect={onSelect} className="mt-2.5" />
       </div>
       <div
         role="tabpanel"
@@ -342,20 +343,12 @@ function PhoneSheet({
             <SkipButton direction="back" />
             <PlayButton size={60} />
             <SkipButton direction="forward" />
-            <CloseSheetButton onClose={onClose} />
+            {/* Keeps play centred where the close chevron used to sit. */}
+            <span aria-hidden className="size-11" />
           </div>
         </section>
       )}
     </div>
-  );
-}
-
-/** Closes the phone panel sheet back to the full player. */
-function CloseSheetButton({ onClose }: { onClose: () => void }) {
-  return (
-    <button type="button" aria-label="Back to player" title="Back to player" onClick={onClose} className={iconButton}>
-      <Icon name="ChevronDown" size={22} />
-    </button>
   );
 }
 
@@ -373,17 +366,18 @@ function PhonePlayer({ book }: { book: Book }) {
           type="button"
           aria-label="Close player"
           title="Close player"
-          onClick={() => navigate(`/books/${book.id}`)}
+          onClick={() => navigate(`/books/${book.id}`, { state: FROM_PLAYER })}
           className={iconButton}
         >
           <Icon name="ChevronDown" size={22} />
         </button>
         <span className="eyebrow">Now playing</span>
-        <PhoneMoreMenu />
+        <StopButton />
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-6 px-4">
         <Link
           to={`/books/${book.id}`}
+          state={FROM_PLAYER}
           aria-label={`Open ${book.title}`}
           className="mx-auto block shrink-0 no-underline"
         >

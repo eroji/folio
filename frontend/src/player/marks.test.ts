@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spokenFraction, timeForFraction, type Marks } from "./marks";
+import { sentenceStartFraction, spokenFraction, timeForFraction, type Marks } from "./marks";
 
 // Sentence 2 starts half-way through the text at 2 s, sentence 3 at 75 % at 5 s.
 const MARKS: Marks = [
@@ -28,5 +28,17 @@ describe("sentence marks", () => {
     expect(spokenFraction(3, 6, null)).toBeCloseTo(0.5);
     expect(timeForFraction(0.5, 6, undefined)).toBeCloseTo(3);
     expect(spokenFraction(3, 0, MARKS)).toBe(0); // no duration yet
+  });
+});
+
+describe("sentenceStartFraction", () => {
+  const marks: [number, number][] = [[0, 0], [0.4, 3], [0.7, 6]];
+  it("is where the sentence being spoken begins", () => {
+    expect(sentenceStartFraction(4.5, 10, marks)).toBe(0.4);
+    expect(sentenceStartFraction(9, 10, marks)).toBe(0.7);
+    expect(sentenceStartFraction(1, 10, marks)).toBe(0);
+  });
+  it("is the spoken share when the clip has no marks", () => {
+    expect(sentenceStartFraction(2.5, 10, null)).toBe(0.25);
   });
 });
