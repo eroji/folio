@@ -1035,9 +1035,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const flowing = s.intent && !s.preparing && !s.stalled && !s.error;
     const state: MediaSessionPlaybackState = flowing ? "playing" : "paused";
     if (ms.playbackState !== state) ms.playbackState = state;
-    if (streaming()) {
-      // The stream is one real track: iOS shows its own position and state,
-      // which (unlike a published position) stop when the audio stops.
+    // A complete stream (EXT-X-ENDLIST) is one real track: iOS shows its own
+    // position and state, which (unlike a published position) stop when the
+    // audio stops. A stream still growing (EVENT, no ENDLIST) has an infinite
+    // duration and iOS draws it as live — no bar, no times — so it gets the
+    // chapter position below, like the clip player.
+    if (streaming() && Number.isFinite(el.duration) && el.duration > 0) {
       if (sessionKeys.current.position !== "stream" && ms.setPositionState) {
         sessionKeys.current.position = "stream";
         try {

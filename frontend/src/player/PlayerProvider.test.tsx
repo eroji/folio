@@ -1171,14 +1171,16 @@ describe("PlayerProvider HLS stream (Safari / iOS)", () => {
     await waitFor(() => expect(finishedCalls).toEqual([{ finished: true }]));
   });
 
-  it("leaves the lock-screen position to the stream itself", async () => {
+  it("leaves the lock-screen position to a complete stream itself", async () => {
     // A published position keeps the lock-screen clock running on silence when
     // a locked phone freezes the page; the stream's own position stops with it.
+    // A playlist with EXT-X-ENDLIST has a finite duration iOS can show.
     const setPositionState = vi.fn();
     Object.defineProperty(navigator, "mediaSession", {
       configurable: true,
       value: { playbackState: "none", metadata: null, setActionHandler: vi.fn(), setPositionState },
     });
+    vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(40);
     try {
       installPlayerFetch({ stream: true });
       const getPlayer = renderPlayer();
@@ -1187,6 +1189,39 @@ describe("PlayerProvider HLS stream (Safari / iOS)", () => {
       setPositionState.mockClear();
       at(getPlayer().element, 13);
       expect(setPositionState.mock.calls.every((call) => call.length === 0)).toBe(true);
+    } finally {
+      Reflect.deleteProperty(navigator, "mediaSession");
+    }
+  });
+
+  it("publishes the chapter position while the stream is still growing, also after pause and resume", async () => {
+    // An EVENT playlist without EXT-X-ENDLIST reports an infinite duration, and
+    // iOS then draws the lock screen as a live stream: cover and buttons, no
+    // bar, no elapsed or remaining time — what a resume after pause showed.
+    const setPositionState = vi.fn();
+    Object.defineProperty(navigator, "mediaSession", {
+      configurable: true,
+      value: { playbackState: "none", metadata: null, setActionHandler: vi.fn(), setPositionState },
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(Infinity);
+    const published = () =>
+      setPositionState.mock.calls.filter((call) => call.length > 0).map((call) => call[0] as MediaPositionState);
+    try {
+      installPlayerFetch({ stream: true });
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      await timelineLoaded();
+      at(getPlayer().element, 13); // CH1 seg1, 3 s in: 13 s into the 20 s chapter
+      expect(published().at(-1)).toMatchObject({ duration: 20, position: expect.closeTo(13, 0) });
+
+      act(() => getPlayer().pause());
+      setPositionState.mockClear();
+      await act(async () => {
+        await getPlayer().play();
+      });
+      at(getPlayer().element, 15);
+      expect(getPlayer().playing).toBe(true);
+      expect(published().at(-1)).toMatchObject({ duration: 20, position: expect.closeTo(15, 0) });
     } finally {
       Reflect.deleteProperty(navigator, "mediaSession");
     }
