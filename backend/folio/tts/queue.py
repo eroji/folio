@@ -229,12 +229,23 @@ def _notify(session: Session, book_id: str | None, segment_id: UUID, status: str
     )
 
 
-def claim_next_tts(session: Session) -> SegmentAudio | None:
-    """Claim the most urgent queued row, or None. SKIP LOCKED: workers never collide."""
+def urgent_priority(settings: Settings) -> int:
+    """The lowest-urgency priority someone is waiting on: the playing segment
+    and its lookahead window. Rows past it are background prefetch (the rest of
+    a chapter) and wait behind imports."""
+    return PRIORITY_LOOKAHEAD + settings.tts_lookahead
+
+
+def claim_next_tts(session: Session, max_priority: int | None = None) -> SegmentAudio | None:
+    """Claim the most urgent queued row (at most ``max_priority`` when given), or
+    None. SKIP LOCKED: workers never collide."""
+    conditions = [SegmentAudio.status == "queued"]
+    if max_priority is not None:
+        conditions.append(SegmentAudio.priority <= max_priority)
     row = (
         session.execute(
             select(SegmentAudio)
-            .where(SegmentAudio.status == "queued")
+            .where(*conditions)
             .order_by(SegmentAudio.priority, SegmentAudio.created_at, SegmentAudio.id)
             .limit(1)
             .with_for_update(skip_locked=True)

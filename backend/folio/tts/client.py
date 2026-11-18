@@ -6,6 +6,7 @@ Verified against the homelab Qwen3 service (docs/TTS.md).
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any, Self
 
@@ -28,6 +29,17 @@ class _Rejected(Exception):
     def __init__(self, status: int) -> None:
         super().__init__(f"tts rejected request ({status})")
         self.status = status
+
+
+_SLOTS: dict[int, threading.BoundedSemaphore] = {}
+_SLOTS_LOCK = threading.Lock()
+
+
+def _slots(count: int) -> threading.BoundedSemaphore:
+    """The process-wide cap on TTS requests in flight (TTS_CONCURRENCY): the
+    worker's audio lanes and each segment's parallel sentences share it."""
+    with _SLOTS_LOCK:
+        return _SLOTS.setdefault(count, threading.BoundedSemaphore(count))
 
 
 class TtsClient:
@@ -59,17 +71,19 @@ class TtsClient:
 
         ``instructions`` is the narration prompt sent alongside (omitted when
         empty). One counter increment and one histogram observation per call,
-        retries included (spec: Observability).
+        retries included (spec: Observability); the time excludes waiting for a
+        free slot under TTS_CONCURRENCY.
         """
-        start = time.perf_counter()
-        result = "error"
-        try:
-            out = self._synthesize(text, voice, instructions)
-            result = "ok"
-            return out
-        finally:
-            TTS_REQUESTS_TOTAL.labels(result).inc()
-            TTS_REQUEST_SECONDS.observe(time.perf_counter() - start)
+        with _slots(max(1, self.settings.tts_concurrency)):
+            start = time.perf_counter()
+            result = "error"
+            try:
+                out = self._synthesize(text, voice, instructions)
+                result = "ok"
+                return out
+            finally:
+                TTS_REQUESTS_TOTAL.labels(result).inc()
+                TTS_REQUEST_SECONDS.observe(time.perf_counter() - start)
 
     def _synthesize(
         self, text: str, voice: str, instructions: str | None = None
