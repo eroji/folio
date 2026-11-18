@@ -1,7 +1,7 @@
 """Google Books provider (spec: Metadata → Sources, optional API key).
 
 ``volumes?q=`` where ``q`` is the ISBN when we have one, else the title/author
-query. Without an API key (Admin → Integrations, else GOOGLE_BOOKS_API_KEY) the
+query. Without an API key (Admin → Metadata, else GOOGLE_BOOKS_API_KEY) the
 endpoint answers 429 most of the time; every non-200, timeout and parse failure
 is "no results" (logged, never raised) — Google Books is strictly best-effort.
 """
@@ -95,7 +95,7 @@ def search(
         _pause(response)
         logger.warning(
             "Google Books rate limited (HTTP 429)%s; pausing it",
-            "" if api_key else " — no API key is set (Admin → Integrations)",
+            "" if api_key else " — no API key is set (Admin → Metadata)",
         )
         return []
     if response.status_code != 200:

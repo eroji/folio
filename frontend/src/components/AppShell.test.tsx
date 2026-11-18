@@ -171,12 +171,14 @@ describe("AppShell", () => {
     expect(logo!.isConnected).toBe(true);
   });
 
-  it("links Add books to Upload and lists in-progress books from /me/continue", async () => {
+  it("lists in-progress books from /me/continue, with Upload only as a nav item", async () => {
     const book = makeBook();
     renderShell({ continueItems: [{ book, progress: makeProgress({ percent: 38 }) }] });
     await boot();
     const sidebar = navs()[0]!;
-    expect(within(sidebar).getByRole("link", { name: "Add books" }).getAttribute("href")).toBe("/upload");
+    // The redundant "Add books" button is gone; Upload stays in the nav.
+    expect(within(sidebar).queryByRole("link", { name: "Add books" })).toBeNull();
+    expect(within(sidebar).getByRole("link", { name: "Upload" }).getAttribute("href")).toBe("/upload");
     const item = within(sidebar).getByRole("link", { name: /Dune/ });
     expect(item.getAttribute("href")).toBe(`/books/${book.id}`);
     expect(within(item).getByText("38%")).toBeTruthy();

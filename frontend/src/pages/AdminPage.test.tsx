@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,7 +39,7 @@ interface VoiceRowData {
   instructions?: string;
 }
 
-let voices: { defaults: Record<string, string>; items: VoiceRowData[] } = { defaults: {}, items: [] };
+let voices: { defaults: Record<string, string>; items: VoiceRowData[]; style_prompts?: boolean } = { defaults: {}, items: [] };
 let patchFails = false;
 let deleteFails = false;
 
@@ -97,6 +97,11 @@ beforeEach(() => {
       const method = init?.method ?? "GET";
       if (url.includes("/voices/preview")) {
         return { ok: true, status: 200, blob: async () => new Blob(["opus-bytes"]) } as Response;
+      }
+      if (url.includes("/admin/voices/style-prompts") && method === "PUT") {
+        const body = JSON.parse(String(init?.body)) as { enabled: boolean };
+        voices.style_prompts = body.enabled;
+        return jsonResponse(200, { style_prompts: body.enabled });
       }
       if (url.includes("/admin/voices/defaults") && method === "PUT") {
         const body = JSON.parse(String(init?.body)) as { language: string; voice_id: string };
@@ -224,10 +229,10 @@ describe("AdminPage", () => {
     expect(screen.getByRole("tab", { name: "Cache" }).getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Cache" }), { key: "End" });
-    expect(screen.getByRole("tab", { name: "Integrations" }).getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Integrations" }));
+    expect(screen.getByRole("tab", { name: "AI" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "AI" }));
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Integrations" }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "AI" }), { key: "Home" });
     expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Jobs" }));
   });
 
@@ -628,6 +633,20 @@ describe("AdminPage voices section", () => {
     expect(bodyOf(findCall("/voices/preview", "POST"))).toEqual({ voice: "marcus-en" });
     fireEvent.click(preview);
     await vi.waitFor(() => expect(window.HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1));
+  });
+
+  it("switches style prompts from the Voices pane, and drops the language-detection paragraph", async () => {
+    voices.style_prompts = false;
+    renderAdmin();
+    const panel = await openVoices();
+    expect(within(panel).queryByText(/language is detected automatically/)).toBeNull();
+    const toggle = await within(panel).findByRole("switch", { name: "Send style prompts" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    await waitFor(() => expect(bodyOf(lastCall("/admin/voices/style-prompts", "PUT"))).toEqual({ enabled: true }));
+    await waitFor(() =>
+      expect(within(panel).getByRole("switch", { name: "Send style prompts" }).getAttribute("aria-checked")).toBe("true"),
+    );
   });
 
   it("refreshes the voices from the header button", async () => {

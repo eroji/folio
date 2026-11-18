@@ -22,6 +22,7 @@ from folio.routers.auth import UserPublic
 from folio.routers.voices import get_tts_client
 from folio.security import require_csrf
 from folio.tts import TtsClient, discover_voices
+from folio.tts.narration import set_style_prompts
 from folio.voice_catalog import (
     MAX_INSTRUCTION_LENGTH,
     build_catalog,
@@ -284,6 +285,24 @@ def patch_voice(
 class VoiceDefaultsBody(BaseModel):
     language: Literal["en", "ja", "ko", "zh"]
     voice_id: str = Field(min_length=1, max_length=64)
+
+
+class StylePromptsBody(BaseModel):
+    enabled: bool
+
+
+@router.put("/voices/style-prompts")
+def put_style_prompts(
+    request: Request,
+    body: StylePromptsBody,
+    db: Annotated[DbSession, Depends(get_session)],
+) -> dict[str, Any]:
+    """Send the voices' instructions (plus books' delivery notes) to the engine,
+    or not. Overrides TTS_INSTRUCTIONS; audio is generated again as it plays."""
+    require_csrf(request, request.state.session_row)
+    set_style_prompts(db, body.enabled)
+    db.commit()
+    return {"style_prompts": body.enabled}
 
 
 @router.put("/voices/defaults")

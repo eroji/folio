@@ -25,6 +25,8 @@ export interface VoicesResponse {
   items: Voice[];
   /** Server default voice per base language; null when the server has none. */
   defaults?: Record<string, string | null>;
+  /** Voice instructions (and books' delivery notes) are sent to the engine. */
+  style_prompts?: boolean;
 }
 
 /** "zh-TW" / "zh_Hans" / "zh" -> "zh"; lower-case base of a language tag. */
@@ -136,6 +138,20 @@ function patchVoicesCache(queryClient: QueryClient, update: (data: VoicesRespons
   for (const refresh of [false, true]) {
     queryClient.setQueryData<VoicesResponse>(voicesQueryKey(refresh), (old) => (old ? update(old) : old));
   }
+}
+
+/** PUT /admin/voices/style-prompts: send the narration prompts to the engine
+ * or not (overrides TTS_INSTRUCTIONS). */
+export function useSetStylePrompts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      api.put<{ style_prompts: boolean }>("/admin/voices/style-prompts", { enabled }),
+    onSuccess: (data) => {
+      patchVoicesCache(queryClient, (old) => ({ ...old, style_prompts: data.style_prompts }));
+      void queryClient.invalidateQueries({ queryKey: ["admin", "integrations"] });
+    },
+  });
 }
 
 /** PATCH /admin/voices/{id}: display name and/or manual language override.

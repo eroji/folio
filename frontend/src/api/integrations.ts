@@ -5,6 +5,7 @@
  * POST   /admin/integrations/google-books/test       → TestResult  ({api_key?} draft)
  * POST   /admin/integrations/language-model/test     → TestResult  (draft fields)
  * POST   /admin/integrations/language-model/test-ocr → OcrResult   (multipart: file?, draft fields)
+ * POST   /admin/integrations/language-model/models   → ModelList   (draft base_url/api_key)
  * A test never saves; fields it is not given fall back to the saved ones. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
@@ -17,6 +18,8 @@ export interface Integrations {
     ocr_model: string;
     ocr: boolean;
     suggest: boolean;
+    /** Off: every request asks the model not to think first. */
+    thinking: boolean;
     key_set: boolean;
     key_hint: string | null;
   };
@@ -32,6 +35,7 @@ export interface LanguageModelDraft {
   api_key?: string | null;
   ocr?: boolean;
   suggest?: boolean;
+  thinking?: boolean;
 }
 
 export interface IntegrationsUpdate {
@@ -43,6 +47,12 @@ export interface TestResult {
   ok: boolean;
   message: string;
   reply?: string;
+}
+
+export interface ModelList {
+  ok: boolean;
+  models: string[];
+  message?: string;
 }
 
 export interface OcrResult extends TestResult {
@@ -84,4 +94,9 @@ export function testOcr(draft: LanguageModelDraft, file?: File): Promise<OcrResu
   }
   if (file) form.append("file", file, file.name);
   return api.post<OcrResult>("/admin/integrations/language-model/test-ocr", form);
+}
+
+/** The models the endpoint offers (GET {base_url}/models, asked by the server). */
+export function listModels(draft: LanguageModelDraft): Promise<ModelList> {
+  return api.post<ModelList>("/admin/integrations/language-model/models", draft);
 }

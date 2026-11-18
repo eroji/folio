@@ -147,14 +147,15 @@ def suggest_for_book(session: Session, settings: Settings, target: UUID | Job) -
         return
     model = load_integrations(session).language_model
     if not model.configured:
-        raise LlmError("The language model is not set up (Admin → Integrations).")
+        raise LlmError("The language model is not set up (Admin → AI).")
     text = _book_text(session, book)
     if not text.strip():
         return
     reply = chat(
         model,
         [{"role": "system", "content": SYSTEM}, {"role": "user", "content": _prompt(book, text)}],
-        max_tokens=2000,
+        # Room for the answer even if the server ignores "don't think".
+        max_tokens=4096,
     )
     data = parse_json(reply.text)
     if not isinstance(data, dict):

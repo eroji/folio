@@ -23,6 +23,7 @@ from folio.integrations import load_integrations
 from folio.jobs import enqueue, notify
 from folio.models import Book, Job, PronunciationRule, User
 from folio.security import require_csrf
+from folio.tts.narration import style_prompts_on
 from folio.tts.queue import invalidate_book_audio
 
 router = APIRouter(prefix="/api/v1/books/{book_id}/pronunciation", tags=["books"])
@@ -120,7 +121,7 @@ def list_rules(
         "can_suggest": model.configured,
         "suggesting": _pending_suggest(db, book.id) is not None,
         # Whether the engine receives style prompts (voice + delivery notes) at all.
-        "style_prompts": settings.tts_instructions,
+        "style_prompts": style_prompts_on(db, settings),
     }
 
 
@@ -143,9 +144,7 @@ def suggest_rules(
     require_csrf(request, request.state.session_row)
     book = _get_book(db, book_id, user)
     if not load_integrations(db).language_model.configured:
-        raise ApiError(
-            "language_model_off", "Set up a language model under Admin → Integrations first.", 409
-        )
+        raise ApiError("language_model_off", "Set up a language model under Admin → AI first.", 409)
     job = _pending_suggest(db, book.id) or enqueue(db, "suggest", book.id, user_id=user.id)
     db.commit()
     notify(

@@ -1,4 +1,4 @@
-"""Admin → Integrations: provider API keys and the language model.
+"""Admin → Metadata (provider API keys) and Admin → AI (the language model).
 
 GET shows the settings with keys masked (set or not, last four characters);
 PUT changes what it is given (a key left out stays, an empty one is removed).
@@ -29,9 +29,10 @@ from folio.integrations import (
     load_integrations,
     save_integrations,
 )
-from folio.llm import LlmError, chat, read_page
+from folio.llm import LlmError, chat, list_models, read_page
 from folio.metadata import googlebooks
 from folio.security import require_csrf
+from folio.tts.narration import style_prompts_on
 
 router = APIRouter(
     prefix="/api/v1/admin/integrations", tags=["admin"], dependencies=[Depends(require_admin)]
@@ -59,6 +60,7 @@ class LanguageModelBody(BaseModel):
     api_key: str | None = Field(default=None, max_length=500)
     ocr: bool | None = None
     suggest: bool | None = None
+    thinking: bool | None = None
 
 
 class IntegrationsBody(BaseModel):
@@ -70,7 +72,7 @@ class GoogleTestBody(BaseModel):
     api_key: str | None = Field(default=None, max_length=500)
 
 
-def _public(value: Integrations, settings: Settings) -> dict[str, Any]:
+def _public(value: Integrations, settings: Settings, db: DbSession) -> dict[str, Any]:
     llm = value.language_model
     return {
         "google_books": {
@@ -85,11 +87,12 @@ def _public(value: Integrations, settings: Settings) -> dict[str, Any]:
             "ocr_model": llm.ocr_model,
             "ocr": llm.ocr,
             "suggest": llm.suggest,
+            "thinking": llm.thinking,
             "key_set": bool(llm.api_key),
             "key_hint": key_hint(llm.api_key),
         },
         # Voice and book delivery notes reach the engine only when this is on.
-        "style_prompts": settings.tts_instructions,
+        "style_prompts": style_prompts_on(db, settings),
     }
 
 
@@ -112,6 +115,7 @@ def _merged(saved: LanguageModel, draft: LanguageModelBody) -> LanguageModel:
         api_key=(draft.api_key or "").strip() if "api_key" in given else saved.api_key,
         ocr=draft.ocr if draft.ocr is not None else saved.ocr,
         suggest=draft.suggest if draft.suggest is not None else saved.suggest,
+        thinking=draft.thinking if draft.thinking is not None else saved.thinking,
     )
 
 
@@ -120,7 +124,7 @@ def get_integrations(
     db: Annotated[DbSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, Any]:
-    return _public(load_integrations(db), settings)
+    return _public(load_integrations(db), settings, db)
 
 
 @router.put("")
@@ -145,7 +149,7 @@ def put_integrations(
     updated = Integrations(google_books_api_key=google, language_model=llm)
     save_integrations(db, updated)
     db.commit()
-    return _public(updated, settings)
+    return _public(updated, settings, db)
 
 
 @router.post("/google-books/test")
@@ -184,13 +188,38 @@ def test_language_model(
         )
     except LlmError as exc:
         return {"ok": False, "message": str(exc)}
+    message = f"{reply.model} answered in {reply.latency_ms} ms."
+    if reply.reasoning_tokens and not cfg.thinking:
+        message += (
+            f" It still thought first ({reply.reasoning_tokens} reasoning tokens): this server"
+            " ignores the request not to think, which slows every task."
+        )
+    elif reply.reasoning_tokens:
+        message += f" It thought first ({reply.reasoning_tokens} reasoning tokens)."
     return {
         "ok": True,
-        "message": f"{reply.model} answered in {reply.latency_ms} ms.",
+        "message": message,
         "reply": reply.text[:200],
         "latency_ms": reply.latency_ms,
         "model": reply.model,
+        "reasoning_tokens": reply.reasoning_tokens,
     }
+
+
+@router.post("/language-model/models")
+def list_language_models(
+    request: Request,
+    body: LanguageModelBody,
+    db: Annotated[DbSession, Depends(get_session)],
+) -> dict[str, Any]:
+    """The models the endpoint offers, for the model pickers (the draft base URL
+    and key, else the saved ones)."""
+    require_csrf(request, request.state.session_row)
+    cfg = _merged(load_integrations(db).language_model, body)
+    try:
+        return {"ok": True, "models": list_models(cfg)}
+    except LlmError as exc:
+        return {"ok": False, "message": str(exc), "models": []}
 
 
 def sample_page() -> bytes:

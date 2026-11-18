@@ -363,3 +363,28 @@ async def test_preview_speaks_the_language_the_voice_is_assigned(
         assert response.status_code == 200, response.text
     assert spoken["tess"] == voices_module._SAMPLES["ja"]
     assert spoken["mina"] == voices_module._SAMPLES["en"]  # no language known: English
+
+
+async def test_previews_follow_the_style_prompt_switch(
+    vclient: httpx.AsyncClient, tts_handler: _Handlers, db: Session
+) -> None:
+    from folio.tts.narration import set_style_prompts
+
+    sent: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/audio/voices":
+            return httpx.Response(200, json=ENGINE_VOICES)
+        sent.append(json.loads(request.content).get("instructions"))
+        return httpx.Response(200, content=SILENT_OPUS, headers={"content-type": "audio/ogg"})
+
+    tts_handler.fn = handler
+    body = {"voice": "ashley-en", "instructions": "Warm and brisk."}
+    await vclient.post("/api/v1/voices/preview", json=body, headers=csrf(vclient))
+    assert (await vclient.get("/api/v1/voices")).json()["style_prompts"] is True
+    set_style_prompts(db, False)
+    db.commit()
+    await vclient.post("/api/v1/voices/preview", json=body, headers=csrf(vclient))
+    # Off: the preview sounds like real narration, without the prompt.
+    assert sent == ["Warm and brisk.", None]
+    assert (await vclient.get("/api/v1/voices")).json()["style_prompts"] is False
