@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useBook } from "../api/books";
 import { useContinueListening, type ContinueItem } from "../api/progress";
 import { useEvents } from "../hooks/useEvents";
+import { useAppUpdate } from "../hooks/useAppUpdate";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { AccountMenu } from "./AccountMenu";
 import { Icon } from "./Icon";
@@ -308,6 +309,11 @@ function Shell() {
   // with the page itself, so this costs no extra request.
   const bookGlowId = /^\/books\/([^/?]+)/.exec(location.pathname)?.[1];
   const bookGlowQuery = useBook(bookGlowId ?? "");
+  // A deploy reloads the app when it next opens or comes to the foreground;
+  // while audio plays it asks instead (production builds only: dev has HMR).
+  const playingRef = useRef(player.playing);
+  playingRef.current = player.playing;
+  const update = useAppUpdate({ enabled: import.meta.env.PROD, isBusy: () => playingRef.current });
 
   // Handoff "When the player shows": load the most recently played book,
   // paused, once per app start, so Resume is one click from any page.
@@ -391,6 +397,24 @@ function Shell() {
         </div>
       )}
       {player.book && (phone ? !onPlayerPage && <MiniPlayer /> : <PlayerBar />)}
+      {update.outdated && (
+        // Top of the screen: clear of the mini player, the bar and the phone player.
+        <div className="pointer-events-none fixed inset-x-0 top-[calc(0.75rem+env(safe-area-inset-top))] z-[60] flex justify-center px-4">
+          <div
+            role="status"
+            className="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-raised py-1.5 pr-1.5 pl-4 text-base shadow-(--shadow-menu)"
+          >
+            <span>A new version of Folio is ready.</span>
+            <button
+              type="button"
+              onClick={update.reload}
+              className="tap h-9 rounded-full bg-fg px-3.5 text-base font-bold text-on-fg"
+            >
+              Reload
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
