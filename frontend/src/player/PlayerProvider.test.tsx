@@ -1104,6 +1104,37 @@ describe("PlayerProvider HLS stream (Safari / iOS)", () => {
     expect(getPlayer().element.src).toContain(`/api/v1/audio/${CH1}-seg0`);
   });
 
+  it("keeps the clip player in desktop Chrome and Edge even though they now play HLS", async () => {
+    // Chrome 157 on Windows took the stream path (built for Safari): it waited on
+    // the growing playlist, joined it near the end, and could not seek.
+    for (const ua of [
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0",
+    ]) {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+      installPlayerFetch({ stream: true });
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      expect(getPlayer().element.src).toContain(`/api/v1/audio/${CH1}-seg0`);
+      cleanup();
+    }
+  });
+
+  it("streams in every iOS browser and desktop Safari (all WebKit)", async () => {
+    for (const ua of [
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.7 Mobile/15E148 Safari/604.1",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.0.0 Mobile/15E148 Safari/604.1",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.7 Safari/605.1.15",
+    ]) {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+      installPlayerFetch({ stream: true });
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      expect(getPlayer().element.getAttribute("src")).toBe(playlist(`${CH1}-seg0`));
+      cleanup();
+    }
+  });
+
   it("follows the stream across segments and into the next chapter, saving each", async () => {
     // No page code runs between clips: the position comes from currentTime.
     const { saveCalls } = installPlayerFetch({ stream: true });

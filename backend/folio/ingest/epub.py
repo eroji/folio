@@ -69,11 +69,45 @@ def _chapter_content(item: Any, titles: dict[str, str]) -> tuple[str, str]:
             FOOTNOTE_LINK_TEXT.match(a.get_text(strip=True)) or a.get("role") == "doc-noteref"
         ):
             a.decompose()
-    title = titles.get(basename(item.get_name())) or (
-        soup.title.get_text(strip=True) if soup.title else ""
-    )
+    title = titles.get(basename(item.get_name())) or _heading_title(soup) or _html_title(soup)
     text = "\n".join(line for line in soup.get_text("\n").splitlines() if line.strip())
     return title, text
+
+
+_HEADINGS = ["h1", "h2", "h3"]
+_SUBHEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+_MAX_TITLE = 120
+# Conversion tools fill <title> with file numbering ("Chapter 7", "part0005"):
+# meaningless once front matter is turned off, so such titles count as none.
+_GENERIC_TITLE = re.compile(
+    r"^(?:(?:chapter|chap|part|section|page|text)[\s_-]*)?[\divxlc]+(?:\.x?html?)?$", re.IGNORECASE
+)
+
+
+def _clean(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _heading_title(soup: Any) -> str:
+    """A chapter that is not in the table of contents names itself in its
+    first heading; a heading right after it is its subtitle ("Louise ·
+    August 1975")."""
+    body = soup.body or soup
+    heading = body.find(_HEADINGS)
+    if heading is None:
+        return ""
+    title = _clean(heading.get_text(" "))
+    following = heading.find_next_sibling()
+    if title and following is not None and following.name in _SUBHEADINGS:
+        subtitle = _clean(following.get_text(" "))
+        if subtitle:
+            title = f"{title} · {subtitle}"
+    return title[:_MAX_TITLE]
+
+
+def _html_title(soup: Any) -> str:
+    title = _clean(soup.title.get_text(" ")) if soup.title else ""
+    return "" if _GENERIC_TITLE.match(title) else title[:_MAX_TITLE]
 
 
 def _first(book: epub.EpubBook, namespace: str, name: str) -> str | None:
