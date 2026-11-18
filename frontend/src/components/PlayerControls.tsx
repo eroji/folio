@@ -77,12 +77,13 @@ export function ChapterNavButton({ delta }: { delta: -1 | 1 }) {
 /** The card closes this long after the last change (timer resets on each). */
 const SPEED_AUTO_CLOSE_MS = 3000;
 
-/** Speed as a text button opening the speed card (handoff "Playback speed
- * slider"): current value + eyebrow above a 210px vertical track with step
- * dots; the grid comes from config (useSpeedOptions), never hard-coded. The
- * card centers above the button — on the phone controls pass
- * placement="sheet" and the card sits centered in a small bottom sheet.
- * Closes on Esc, outside click, or 3 s after the last change. */
+/** Speed as a text button opening the speed card: a "Playback speed" title
+ * and the current value above a horizontal slider with a labelled tick per
+ * speed (tap a label or drag); the grid comes from config (useSpeedOptions),
+ * never hard-coded. On the desktop bar the card is a popover anchored to the
+ * bar's right edge; the phone controls pass placement="sheet" and the card
+ * spans a bottom sheet. Closes on Esc, outside click, or 3 s after the last
+ * change. */
 export function SpeedButton({ className, placement = "center" }: { className?: string; placement?: "center" | "sheet" }) {
   const player = usePlayer();
   const { options } = useSpeedOptions();
@@ -106,15 +107,15 @@ export function SpeedButton({ className, placement = "center" }: { className?: s
     armClose(); // the 3 s window restarts on every change
   }
 
-  /** Value at a clientY on the track (bottom = min), snapped to the grid. */
-  function valueFromY(clientY: number): number {
+  /** Value at a clientX on the track (left = min), snapped to the grid. */
+  function valueFromX(clientX: number): number {
     const rect = track.current?.getBoundingClientRect();
-    if (!rect || rect.height <= 0) return current;
-    const ratio = 1 - Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    if (!rect || rect.width <= 0) return current;
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     return snapSpeed(options.min + ratio * (options.max - options.min), options);
   }
-  const dragTo = useRef<(y: number) => void>(() => {});
-  dragTo.current = (y: number) => change(valueFromY(y));
+  const dragTo = useRef<(x: number) => void>(() => {});
+  dragTo.current = (x: number) => change(valueFromX(x));
 
   useEffect(() => {
     if (!open) return;
@@ -138,7 +139,7 @@ export function SpeedButton({ className, placement = "center" }: { className?: s
 
   useEffect(() => {
     if (!dragging) return;
-    const onMove = (event: PointerEvent) => dragTo.current(event.clientY);
+    const onMove = (event: PointerEvent) => dragTo.current(event.clientX);
     const onUp = () => setDragging(false);
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
@@ -179,65 +180,71 @@ export function SpeedButton({ className, placement = "center" }: { className?: s
     change(positions[Math.min(positions.length - 1, Math.max(0, next))]!);
   }
 
+  const percent = (i: number) => (i / Math.max(1, positions.length - 1)) * 100;
   const card = (
     <div
       role="dialog"
       aria-label="Playback speed"
       className={clsx(
-        "w-[84px] rounded-2xl border border-border bg-raised px-2.5 pt-4 pb-[18px] shadow-(--shadow-menu)",
+        "flex flex-col gap-3 px-5",
         placement === "sheet"
-          ? "relative z-30"
-          : "absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2",
+          ? "relative z-30 w-full max-w-md pb-2"
+          : "absolute right-0 bottom-full z-20 mb-2 w-[340px] rounded-2xl border border-border bg-raised pt-4 pb-3 shadow-(--shadow-menu)",
       )}
     >
-      <div className="flex flex-col items-center gap-0.5">
-        <span aria-live="polite" className="font-display text-[20px] tabular">
+      <div className="flex items-baseline justify-between">
+        <span className="eyebrow">Playback speed</span>
+        <span data-speed-value aria-live="polite" className="font-display text-[24px] tabular">
           {formatSpeed(player.rate)}×
         </span>
-        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-fg-2">Speed</span>
       </div>
+      {/* The slider box spans the labels too: a tap on "1.05" lands at its x. */}
       <div
         ref={track}
         role="slider"
         tabIndex={0}
         aria-label="Playback speed"
-        aria-orientation="vertical"
+        aria-orientation="horizontal"
         aria-valuemin={options.min}
         aria-valuemax={options.max}
         aria-valuenow={current}
         aria-valuetext={`${formatSpeed(player.rate)} times`}
-        className="relative mx-auto mt-3.5 h-[210px] w-7 cursor-pointer touch-none"
+        className="relative mx-3 h-14 cursor-pointer touch-none rounded-sm"
         onPointerDown={(event) => {
           event.preventDefault();
           setDragging(true);
-          change(valueFromY(event.clientY));
+          change(valueFromX(event.clientX));
         }}
         onKeyDown={onKeyDown}
       >
-        <span aria-hidden className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2 rounded-full bg-[#34343A]" />
+        <span aria-hidden className="absolute inset-x-0 top-3 h-1.5 rounded-full bg-border" />
         <span
           data-speed-fill
           aria-hidden
-          className="absolute bottom-0 left-1/2 w-2 -translate-x-1/2 rounded-full bg-accent"
-          style={{ height: `${fraction * 100}%` }}
+          className="absolute top-3 left-0 h-1.5 rounded-full bg-accent"
+          style={{ width: `${fraction * 100}%` }}
         />
         {positions.map((value, i) => (
           <span
             key={value}
             data-speed-step
+            data-current={value === current ? "true" : undefined}
             aria-hidden
             className={clsx(
-              "absolute left-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full",
-              value <= current ? "bg-bg/55" : "bg-[#5A5A62]",
+              "absolute top-3.5 flex -translate-x-1/2 flex-col items-center gap-3.5 text-sm tabular",
+              value === current ? "font-bold text-fg" : "font-medium text-fg-2",
             )}
-            style={{ top: `${(1 - i / Math.max(1, positions.length - 1)) * 100}%` }}
-          />
+            style={{ left: `${percent(i)}%` }}
+          >
+            <span className={clsx("size-1 rounded-full", value <= current ? "bg-bg/55" : "bg-fg-2/60")} />
+            {formatSpeed(value)}
+          </span>
         ))}
         <span
           data-speed-thumb
           aria-hidden
-          className="absolute left-1/2 size-[22px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-fg shadow-[0_0_0_4px_rgb(var(--accent-rgb)/0.35),0_2px_6px_rgb(0_0_0/0.5)]"
-          style={{ top: `${(1 - fraction) * 100}%` }}
+          className="absolute top-[3px] size-6 -translate-x-1/2 rounded-full bg-fg shadow-[0_0_0_4px_rgb(var(--accent-rgb)/0.35),0_2px_6px_rgb(0_0_0/0.5)]"
+          style={{ left: `${fraction * 100}%` }}
         />
       </div>
     </div>
@@ -271,7 +278,8 @@ export function SpeedButton({ className, placement = "center" }: { className?: s
               className="fixed inset-0 z-20 cursor-default bg-bg/60"
               onClick={() => setOpen(false)}
             />
-            <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center rounded-t-2xl border-t border-border bg-surface pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+            <div className="fixed inset-x-0 bottom-0 z-30 flex flex-col items-center gap-3 rounded-t-2xl border-t border-border bg-surface pt-2.5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+              <span aria-hidden className="h-1 w-9 rounded-full bg-border" />
               {card}
             </div>
           </>
