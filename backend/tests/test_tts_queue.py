@@ -454,6 +454,33 @@ def test_worker_loop_claims_tts_rows_before_ingest_jobs(
     assert ingest.status == "queued"  # the ingest job waits for the next iteration
 
 
+def test_worker_runs_an_import_before_background_prefetch(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A whole-chapter prefetch (~100 segments, ~1000 sentence requests) kept an
+    upload "processing" until it drained: only audio someone is waiting for
+    (the playing segment and the lookahead window) goes before imports."""
+    calls: list[str] = []
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    monkeypatch.setattr(
+        worker, "run_tts_job", lambda _db, _s, row: calls.append(f"tts {row.priority}")
+    )
+    monkeypatch.setitem(worker.HANDLERS, "ingest", lambda _db, _s, _job: calls.append("ingest"))
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _segments(db, book)[0]
+    far = settings.tts_lookahead + 30  # a segment deep in a chapter prefetch
+    db.add(SegmentAudio(segment_id=segment.id, voice="far", status="queued", priority=100 + far))
+    db.add(SegmentAudio(segment_id=segment.id, voice="now", status="queued", priority=10))
+    db.add(Job(type="ingest", book_id=book.id, status="queued"))
+    db.commit()
+
+    for _ in range(3):
+        assert worker.run_once(db, settings) is True
+        db.commit()
+
+    assert calls == ["tts 10", "ingest", f"tts {100 + far}"]
+
+
 def test_prepare_notifies_only_when_the_window_changes(
     db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
