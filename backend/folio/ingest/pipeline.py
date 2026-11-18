@@ -6,6 +6,7 @@ idempotent: chapters/segments are deleted before being rebuilt, so a
 reprocess or a retry never duplicates rows.
 """
 
+import dataclasses
 import logging
 from pathlib import Path
 from uuid import UUID
@@ -152,6 +153,31 @@ def _store_cover(settings: Settings, book: Book, cover: bytes | None) -> None:
         pass  # an unsupported embedded cover leaves the book cover-less, never fails ingest
 
 
+# A chapter with this much speech or less (or no word at all) is a part-title
+# page, a separator or an empty shell: it starts switched off.
+MIN_CHAPTER_SPEECH_S = 3.0
+
+
+def _too_short(text: str, settings: Settings) -> bool:
+    if not any(ch.isalnum() for ch in text):
+        return True
+    return len(text.strip()) / settings.tts_chars_per_second <= MIN_CHAPTER_SPEECH_S
+
+
+def _switch_off_short(
+    chapters: list[ExtractedChapter], settings: Settings
+) -> list[ExtractedChapter]:
+    """Turn off chapters too short to narrate, unless that would leave the
+    book with nothing to play (a book of short poems keeps them)."""
+    off = [chapter.excluded or _too_short(chapter.text, settings) for chapter in chapters]
+    if all(off):
+        return chapters
+    return [
+        dataclasses.replace(chapter, excluded=gone)
+        for chapter, gone in zip(chapters, off, strict=True)
+    ]
+
+
 def _persist_chapters(
     session: Session, settings: Settings, book: Book, chapters: list[ExtractedChapter]
 ) -> None:
@@ -159,7 +185,8 @@ def _persist_chapters(
     session.execute(delete(Chapter).where(Chapter.book_id == book.id))
     language = book.language
     total = 0
-    for idx, chapter in enumerate(clean_chapters(chapters, language)):
+    cleaned = _switch_off_short(clean_chapters(chapters, language), settings)
+    for idx, chapter in enumerate(cleaned):
         segmented = segment_chapter(chapter, language, max_chars=settings.tts_max_chars)
         row = Chapter(
             book_id=book.id,
