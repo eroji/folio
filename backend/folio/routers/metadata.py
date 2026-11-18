@@ -27,7 +27,7 @@ from folio.metadata.service import genre_from_subjects, search_book
 from folio.models import Book, MetadataCandidate, User
 from folio.routers.books import _public
 from folio.security import require_csrf
-from folio.text import clean_description
+from folio.text import description_text
 
 router = APIRouter(prefix="/api/v1/books", tags=["metadata"])
 
@@ -87,7 +87,7 @@ def metadata_search(
     for candidate in candidates:
         item = dataclasses.asdict(candidate)
         item["description"] = (
-            clean_description(candidate.description) if candidate.description else None
+            description_text(candidate.description) if candidate.description else None
         )
         # The drawer offers a Genre suggestion without duplicating the mapping.
         item["suggested_genre"] = genre_from_subjects(candidate.tags)
