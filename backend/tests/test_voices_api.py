@@ -334,3 +334,32 @@ async def test_preview_requires_csrf_and_maps_tts_errors_to_502(
     )
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "tts_unavailable"
+
+
+async def test_preview_speaks_the_language_the_voice_is_assigned(
+    vclient: httpx.AsyncClient, tts_handler: _Handlers, db: Session
+) -> None:
+    """A cloned voice id carries no language suffix ("tess"): the preview
+    speaks the language the Voices page shows for it (admin override, then
+    detection), not English for every voice."""
+    from folio.voice_catalog import save_voice_languages
+
+    engine = {"voices": ["tts", "tess", "mina"], "uploaded_voices": []}
+    spoken: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/audio/voices":
+            return httpx.Response(200, json=engine)
+        body: dict[str, Any] = json.loads(request.content)
+        spoken[body["voice"]] = body["input"]
+        return httpx.Response(200, content=SILENT_OPUS, headers={"content-type": "audio/ogg"})
+
+    tts_handler.fn = handler
+    save_voice_languages(db, {"tess": "ja"})
+    for voice in ("tess", "mina"):
+        response = await vclient.post(
+            "/api/v1/voices/preview", json={"voice": voice}, headers=csrf(vclient)
+        )
+        assert response.status_code == 200, response.text
+    assert spoken["tess"] == voices_module._SAMPLES["ja"]
+    assert spoken["mina"] == voices_module._SAMPLES["en"]  # no language known: English

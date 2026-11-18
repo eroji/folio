@@ -44,7 +44,7 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 | `TTS_MAX_CHARS` | `800` | optional | Max characters per TTS segment. |
 | `TTS_REQUEST_CHARS` | `400` | optional | Longest single TTS request. Every sentence is its own request (sentences under 40 characters ride with the next) and the clips are joined, recording where each sentence starts for read-along; a sentence longer than this is cut at clauses. `0` sends each segment as one request. Segments already synthesized keep their clips; Reprocess a book to re-make its audio. |
 | `TTS_LOOKAHEAD` | `6` | optional | Segments generated ahead of playback. |
-| `TTS_CONCURRENCY` | `2` | optional | Max parallel TTS requests across all users (shared GPU). |
+| `TTS_CONCURRENCY` | `4` | optional | Most TTS requests in flight at once: a segment's sentences are synthesized this many at a time (VoxCPM2: 8 sentences took 6.0 s one by one, 2.1 s four at a time). Lower it for an engine that serves one request at a time. |
 | `TTS_CHARS_PER_SECOND` | `15` | optional | Duration estimate before audio exists. |
 | `TTS_SPEED_MIN` | `0.9` | optional | Lowest playback speed the engine supports; served by `GET /me/speed-options`. |
 | `TTS_SPEED_MAX` | `1.15` | optional | Highest playback speed. |

@@ -19,7 +19,13 @@ from folio.models import User
 from folio.security import require_csrf
 from folio.tts import TtsClient, TtsError, discover_voices, get_or_synthesize
 from folio.tts.voices import last_refreshed
-from folio.voice_catalog import MAX_INSTRUCTION_LENGTH, build_catalog
+from folio.voice_catalog import (
+    MAX_INSTRUCTION_LENGTH,
+    base_language,
+    build_catalog,
+    load_voice_languages,
+    voice_languages,
+)
 
 router = APIRouter(prefix="/api/v1/voices", tags=["voices"])
 
@@ -69,7 +75,23 @@ def list_voices(
     return body
 
 
-def _default_sample(voice: str, settings: Settings) -> str:
+def _assigned_language(
+    db: DbSession, settings: Settings, client: TtsClient, voice: str
+) -> str | None:
+    """The language the Voices page shows for ``voice``: the admin's override,
+    else what the engine or the id says. Cloned voices ("tess") carry no
+    language in their id, so this is often the only place it is known."""
+    try:
+        voices = discover_voices(settings, client)
+    except TtsError:
+        voices = []
+    known = voice_languages(db, voices)
+    return known.get(voice) or base_language(load_voice_languages(db).get(voice))
+
+
+def _default_sample(voice: str, settings: Settings, language: str | None = None) -> str:
+    if language in _SAMPLES:
+        return _SAMPLES[language]
     match = re.search(settings.tts_voice_lang_pattern, voice)
     code = match.group(1).lower() if match and match.lastindex else ""
     if not code:
@@ -89,10 +111,13 @@ def preview_voice(
 ) -> FileResponse:
     """Speak a short sample in ``voice``; cached like any other clip."""
     require_csrf(request, request.state.session_row)
-    text = body.text or _default_sample(body.voice, settings)
+    language = _assigned_language(db, settings, client, body.voice)
+    text = body.text or _default_sample(body.voice, settings, language)
     instructions = (body.instructions or "").strip()
     try:
-        audio, _ = get_or_synthesize(db, settings, client, text, body.voice, instructions)
+        audio, _ = get_or_synthesize(
+            db, settings, client, text, body.voice, instructions, language=language or "en"
+        )
     except (TtsError, httpx.HTTPError):
         raise ApiError("tts_unavailable", "The TTS backend is unreachable.", 502) from None
     path = Path(audio.path)

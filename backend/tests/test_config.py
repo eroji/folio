@@ -120,7 +120,7 @@ def test_spec_defaults(clean_env: None, monkeypatch: pytest.MonkeyPatch) -> None
         "tts_voice_lang_pattern": "-(en|ja|kr|ko|zh)$",
         "tts_max_chars": 800,
         "tts_lookahead": 6,
-        "tts_concurrency": 2,
+        "tts_concurrency": 4,  # measured on VoxCPM2, see docs/DECISIONS.md
         "tts_chars_per_second": 15.0,
         "tts_speed_min": 0.9,
         "tts_speed_max": 1.15,

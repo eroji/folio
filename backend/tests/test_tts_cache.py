@@ -148,6 +148,63 @@ def test_split_segments_have_their_own_key(settings: Settings) -> None:
     assert speech_cache_key(whole, "tess", _LONG, "", "en") == single
 
 
+def test_sentences_are_synthesized_in_parallel_up_to_the_cap_and_kept_in_order(
+    db: Session, settings: Settings
+) -> None:
+    """VoxCPM2 serves concurrent requests (8 sentences: 6.0 s one at a time,
+    2.1 s four at a time), so a segment's sentences go out TTS_CONCURRENCY at
+    a time; whatever order they finish in, the clip keeps reading order."""
+    import random
+    import re
+    import threading
+    import time
+
+    from folio.tts.adts import adts_duration
+
+    def frames(count: int) -> bytes:
+        length = 27
+        header = bytes(
+            [
+                0xFF,
+                0xF1,
+                (1 << 6) | (6 << 2),
+                (1 << 6),
+                (length >> 3) & 0xFF,
+                ((length & 0x07) << 5) | 0x1F,
+                0xFC,
+            ]
+        )
+        return (header + b"\x00" * 20) * count
+
+    class _Concurrent:
+        def __init__(self) -> None:
+            self.lock = threading.Lock()
+            self.active = 0
+            self.peak = 0
+
+        def synthesize(
+            self, text: str, _voice: str, _instructions: str | None = None
+        ) -> tuple[bytes, str]:
+            with self.lock:
+                self.active += 1
+                self.peak = max(self.peak, self.active)
+            time.sleep(random.uniform(0.01, 0.05))  # finish out of order
+            with self.lock:
+                self.active -= 1
+            number = int(re.search(r"number (\d+)", text).group(1))  # type: ignore[union-attr]
+            return frames(number + 1), "aac"  # sentence n lasts n + 1 frames
+
+    capped = settings.model_copy(update={"tts_concurrency": 3, "tts_format": "aac"})
+    client = _Concurrent()
+    row, _ = get_or_synthesize(db, capped, client, _LONG, "tess", language="en")
+    assert client.peak == 3  # parallel, never past the cap
+    frame = 1024 / 24000
+    expected = [sum(range(1, n + 1)) * frame for n in range(12)]  # starts in reading order
+    assert [mark[1] for mark in row.marks or []] == pytest.approx(expected, abs=0.002)
+    assert row.duration_s == pytest.approx(sum(range(1, 13)) * frame, abs=0.002)
+    assert adts_duration(Path(row.path).read_bytes()) == pytest.approx(row.duration_s)
+
+
 def test_mixed_formats_across_requests_fail_the_segment(db: Session, settings: Settings) -> None:
     from folio.tts import TtsError
 

@@ -56,3 +56,7 @@ A segment (up to `TTS_MAX_CHARS` = 800 characters, about 50 s of audio) used to 
 ### One sentence per request, with marks (v0.1.16)
 
 ~300-character requests still degraded in their later sentences with a cloned voice, so every sentence is now its own request (a sentence under 40 characters rides with the next; one over `TTS_REQUEST_CHARS` = 400 is cut at clauses). The joined clip stores `marks`: for each request, the fraction of the segment's text it starts at and the second it starts in the clip (exact ADTS/MP3 frame counts, Opus decoded samples). `POST /books/{id}/audio/prepare` returns them and read-along interpolates within sentences instead of assuming an even pace over the whole segment. `audio.text_key` identifies what was said regardless of the split, so a ready segment keeps its clip when only the split changes (clips from v0.1.14/0.1.15 are recognized by their `|req=300` key).
+
+### Parallel sentences (`TTS_CONCURRENCY`, measured 2026-11-18)
+
+VoxCPM2 serves concurrent requests. Eight sentence-sized requests (`tess`, AAC): 6.0 s one at a time, 3.4 s two at a time, 2.1 s four at a time, 1.95 s eight at a time. A segment's sentences now go out `TTS_CONCURRENCY` (default 4) at a time and are joined in reading order. The worker still synthesizes one segment at a time, so this is also the cap on requests in flight.

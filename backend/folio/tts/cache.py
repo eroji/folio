@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -156,12 +157,14 @@ def get_or_synthesize(
         return row, True
 
     pieces = _pieces(settings, normalized, language)
-    clips: list[bytes] = []
-    formats: set[str] = set()
-    for piece in pieces:
-        clip, piece_fmt = client.synthesize(piece.text, voice, instructions)
-        clips.append(clip)
-        formats.add(piece_fmt)
+    # The sentences go out TTS_CONCURRENCY at a time (VoxCPM2 serves concurrent
+    # requests: 8 sentences took 6.0 s one by one, 2.1 s four at a time); map
+    # keeps reading order however they finish, and the first error propagates.
+    workers = max(1, min(len(pieces), settings.tts_concurrency))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(lambda p: client.synthesize(p.text, voice, instructions), pieces))
+    clips = [clip for clip, _ in results]
+    formats = {piece_fmt for _, piece_fmt in results}
     if len(formats) != 1:
         raise TtsError("The TTS engine changed audio format mid-segment.", code="tts_bad_audio")
     fmt = formats.pop()
