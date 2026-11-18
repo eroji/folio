@@ -58,6 +58,18 @@ export interface Chapter {
   char_count: number;
   /** Excluded chapters are skipped by playback; absent means included. */
   excluded?: boolean;
+  /** This listener's place in the chapter; null/absent: never played. */
+  progress?: ChapterProgress | null;
+}
+
+export interface ChapterProgress {
+  /** Null: start of the chapter (a finished chapter starts over). */
+  segment_id: string | null;
+  offset_s: number;
+  /** How far into the chapter, by characters. */
+  percent: number;
+  /** Heard to the end at least once. */
+  finished: boolean;
 }
 
 export interface BookListResponse {

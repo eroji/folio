@@ -17,6 +17,7 @@ import { ResumePrompt } from "./ResumePrompt";
 import { PlayerProvider } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import folioMark from "../assets/folio-mark.svg";
+import { closedBook } from "../player/closed";
 
 export function AppShell() {
   return (
@@ -331,6 +332,9 @@ function Shell() {
     const item = continueData?.items[0];
     if (item) {
       started.current = true;
+      // A player the listener stopped and closed stays closed across reloads,
+      // until something else is played (here or, for another book, elsewhere).
+      if (item.book.id === closedBook()) return;
       void p.current.load(item.book.id, item.progress.chapter_id);
     }
   }, [continueData, location]);

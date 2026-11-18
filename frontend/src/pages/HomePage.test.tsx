@@ -8,7 +8,6 @@ import { PlayerProvider } from "../player/PlayerProvider";
 import {
   BOOK_ID,
   CH1,
-  CH2,
   installPlayerFetch,
   makeBook,
   makeProgress,
@@ -68,11 +67,6 @@ const HOME = {
       time_left_s: 9360,
     },
   ],
-  next_chapters: [
-    // idx 5 with earlier chapters excluded: the card must show the included
-    // position (2), not the source index (6).
-    { book: makeBook(), chapter: { id: CH2, idx: 5, number: 2, title: "The Keeper", duration_s: 1080 } },
-  ],
   recent: [shelfBook()],
 };
 
@@ -124,21 +118,16 @@ afterEach(() => {
 });
 
 describe("HomePage", () => {
-  it("renders the three shelves with the reference copy", async () => {
+  it("renders the Continue and Recently added shelves with the reference copy", async () => {
     mockHome();
     renderHome();
     const continueShelf = await screen.findByRole("region", { name: "Continue listening" });
     expect(within(continueShelf).queryByText("Browser User")).toBeNull(); // no name eyebrow
     expect(within(continueShelf).getByText("Ch. 2 · 2 h 36 m left")).toBeTruthy();
 
-    const next = await screen.findByRole("region", { name: "Next chapters" });
-    expect(within(next).getByText("2 · The Keeper")).toBeTruthy();
-    expect(within(next).getByText("Dune · 18 min")).toBeTruthy();
-    expect(within(next).getByText("Frank Herbert")).toBeTruthy(); // author under the book title
-    // The cover is a plain 2:3 tile: the fallback title never renders inside it.
-    const row = within(next).getByText("Dune · 18 min").closest("button")!;
-    expect(row.firstElementChild?.textContent).toBe("");
-    expect(within(next).getByRole("button", { name: "Play next" })).toBeTruthy();
+    // No Next chapters shelf: one stray tap there skipped a chapter and moved the place.
+    expect(screen.queryByRole("region", { name: "Next chapters" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Play next" })).toBeNull();
 
     const recent = await screen.findByRole("region", { name: "Recently added" });
     expect(within(recent).getByText("H. G. Wells · 3 h 32 m")).toBeTruthy();
@@ -208,25 +197,11 @@ describe("HomePage", () => {
     // No playback: the click never loads the book or prepares audio.
     expect(vi.mocked(fetch).mock.calls.every(([url]) => !String(url).includes("/audio/prepare"))).toBe(true);
     // Still on Home: the shelves remain rendered and nothing navigated.
-    expect(screen.getByRole("region", { name: "Next chapters" })).toBeTruthy();
-  });
-
-  it("starts the first row from Play next", async () => {
-    stubMedia();
-    mockHome();
-    renderHome();
-    const next = await screen.findByRole("region", { name: "Next chapters" });
-    fireEvent.click(within(next).getByRole("button", { name: "Play next" }));
-    await vi.waitFor(() => {
-      const call = vi
-        .mocked(fetch)
-        .mock.calls.find(([url]) => String(url).includes("/audio/prepare"));
-      expect(call).toBeTruthy();
-    });
+    expect(screen.getByRole("region", { name: "Recently added" })).toBeTruthy();
   });
 
   it("shows the empty state when every shelf is empty", async () => {
-    mockHome({ continue: [], next_chapters: [], recent: [] });
+    mockHome({ continue: [], recent: [] });
     renderHome();
     expect(await screen.findByRole("heading", { name: "Your library is empty" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Upload books" })).toBeTruthy();

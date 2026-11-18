@@ -1,7 +1,8 @@
 /** Chapter row in the Direction D shape (handoff "Book page → Chapters"):
  * 52px row, number / title / length; played rows are secondary and show only
  * a Check (no length),
- * the playing row raised with an accent AudioLines and a percent line.
+ * the playing row raised with an accent AudioLines and a percent line; a
+ * partly heard row shows its own percent line.
  * Used by the book page and the player's Up next tab. */
 import clsx from "clsx";
 import { formatTime } from "../player/PlayerProvider";
@@ -19,7 +20,7 @@ export function ChapterRow({
   chapter: Chapter;
   number: number;
   state: "played" | "current" | null;
-  /** Percent through this chapter (the playing row only). */
+  /** Percent through this chapter (the playing row, or a partly heard one). */
   percent?: number | null;
   /** Chapter length in seconds. */
   seconds: number;
@@ -47,7 +48,7 @@ export function ChapterRow({
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className={clsx("truncate text-md", current ? "font-bold text-fg" : "font-medium")}>{chapter.title}</span>
-        {current && percent != null && (
+        {state !== "played" && percent != null && (
           <span className="text-xs tabular text-fg-2">
             {percent}% · {formatTime(remaining)} left
           </span>

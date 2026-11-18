@@ -281,33 +281,28 @@ export function BookDetailPage() {
   // Resume candidates come from the included list only: a saved chapter that
   // was later excluded must not resume (the player starts at the beginning).
   const progressChapter = progress ? included.find((chapter) => chapter.id === progress.chapter_id) ?? null : null;
-  const currentIndex = loadedHere ? player.chapters.findIndex((chapter) => chapter.id === player.chapter?.id) : -1;
   const currentId = loadedHere ? player.chapter?.id ?? null : progressChapter?.id ?? null;
   const resumeChapter = loadedHere ? player.chapter : progressChapter;
 
-  /** "played" is approximate: chapters before the progress (or live player)
-   * chapter count as played; a finished book is all played (DECISIONS).
-   * Positions come from the included list so excluded chapters neither leave
-   * gaps in the numbering nor shift what counts as played. */
+  /** Per-chapter progress from the server: a chapter heard to its end is
+   * "played"; the loaded (or saved) one is "current". */
   function chapterState(chapter: Chapter): "played" | "current" | null {
     if (finished) return "played";
     if (chapter.id === currentId) return "current";
-    const position = included.indexOf(chapter); // -1 for excluded chapters
-    if (currentIndex >= 0) return position < currentIndex ? "played" : null;
-    if (progressChapter) return position < included.indexOf(progressChapter) ? "played" : null;
-    return null;
+    return chapter.progress?.finished ? "played" : null;
   }
 
   function chapterPercent(chapter: Chapter): number | null {
     // Live position when the player knows the chapter's audio duration;
-    // otherwise the character-based position from the saved progress row.
+    // otherwise the chapter's own saved place (by characters).
     if (loadedHere && chapter.id === player.chapter?.id && player.chapterTotal > 0) {
       return Math.round((player.chapterElapsed / player.chapterTotal) * 100);
     }
-    if (!progress || chapter.id !== progressChapter?.id || chapter.char_count === 0) return null;
-    const before = included.filter((other) => other.idx < chapter.idx).reduce((sum, other) => sum + other.char_count, 0);
-    const into = (progress.percent / 100) * book.total_chars - before;
-    return Math.min(100, Math.max(0, Math.round((into / chapter.char_count) * 100)));
+    const place = chapter.progress;
+    if (!place?.segment_id) return null;
+    const percent = Math.round(place.percent);
+    // Partly heard chapters show their place too; a bare 0 % only on the current row.
+    return chapter.id === currentId || percent > 0 ? percent : null;
   }
 
   async function playFrom(chapterId?: string) {

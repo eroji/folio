@@ -39,6 +39,7 @@ import {
 } from "../api/settings";
 import type { ResumePromptProps } from "../components/ResumePrompt";
 import type { Book, BookDetailResponse, Chapter, Progress } from "../api/types";
+import { forgetClosed, rememberClosed } from "./closed";
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
 export const TTS_LOOKAHEAD = 6;
@@ -179,6 +180,9 @@ interface Machine {
   /** Chapter whose end already paused the stream (stop-at-chapter-end), so the
    * resume that follows does not pause again on the same boundary. */
   chapterStop: string | null;
+  /** Chapter just played to its end: the next save marks it listened (and
+   * its next visit starts over). Cleared by any move inside a chapter. */
+  chapterDone: string | null;
   resumeLoading: boolean; // resume not applied yet: saves stay quiet
   finished: boolean;
   finishedMarked: boolean; // the finished PUT fires once per session
@@ -215,7 +219,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, prebuffering: false, progress: {}, error: null,
-    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null,
+    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null, chapterDone: null,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
   const el = useMemo(() => new Audio(), []);
@@ -294,6 +298,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return chars + segment.char_start + (segment.char_end - segment.char_start) * share;
   };
 
+  /** Each chapter's own place (null: start over), seeded from the book's
+   * per-chapter progress and kept current by every save, so jumping to a
+   * chapter resumes where the listener left it. */
+  const places = useRef(new Map<string, { segment_id: string; offset_s: number } | null>());
+
   /** Restart the 10 s save timer; every save calls this so saves never bunch up. */
   function armSaveTimer() {
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
@@ -314,11 +323,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const segment = s.segments[s.index];
     if (!book || !chapter || !segment || s.resumeLoading) return;
     armSaveTimer();
+    const done = s.chapterDone === chapter.id;
+    places.current.set(chapter.id, done ? null : { segment_id: segment.id, offset_s: s.time });
     void saveProgress(book.id, {
       chapter_id: chapter.id,
       segment_id: segment.id,
       offset_s: s.time,
       device_label: deviceLabel(),
+      ...(done ? { chapter_finished: true } : {}),
     }).then((res) => {
       if (!res) return;
       rememberPosition(book.id, res.progress);
@@ -488,6 +500,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       t >= entry.start + entry.duration - CHAPTER_STOP_S
     ) {
       s.chapterStop = entry.chapter_id;
+      s.chapterDone = entry.chapter_id;
       adoptStreamEntry(entry, t - entry.start);
       pause();
       return;
@@ -526,7 +539,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const book = s.book;
     const ci = s.chapters.findIndex((c) => c.id === chapterId);
     if (!book || ci < 0) return;
+    // Playback carried the stream past the old chapter's end: it was heard.
+    if (ci === s.chapterIdx + 1) s.chapterDone = s.chapters[s.chapterIdx]?.id ?? null;
     saveNow(); // the old chapter's last position
+    s.chapterDone = null;
     s.chapterIdx = ci;
     s.chapterStop = null;
     s.index = 0;
@@ -631,11 +647,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  async function openChapter(idx: number, autoplay: boolean) {
+  /** Open a chapter at its start, or (`resume`) where this listener left it. */
+  async function openChapter(idx: number, autoplay: boolean, resume = false) {
     const book = s.book;
     const chapter = s.chapters[idx];
     if (!book || !chapter) return;
     if (!s.resumeLoading && s.segments.length > 0) saveNow(); // chapter change: save the old position
+    s.chapterDone = null;
     silence(); // never let the old chapter's element keep running under the new one
     s.chapterIdx = idx;
     s.segments = [];
@@ -660,6 +678,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       bump();
       return;
     }
+    const place = resume ? places.current.get(chapter.id) : null;
+    const at = place ? s.segments.findIndex((seg) => seg.id === place.segment_id) : -1;
+    if (place && at >= 0) {
+      s.index = at;
+      s.offset = Math.max(0, place.offset_s - REWIND_S);
+      s.time = s.offset;
+    }
     if (autoplay) s.intent = true;
     await topUp();
   }
@@ -675,6 +700,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       s.playing = false;
       s.intent = false;
+      s.chapterDone = s.chapters[s.chapterIdx]?.id ?? null;
       markBookFinished();
       publishSession();
       bump();
@@ -696,6 +722,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     } else {
       if (s.sleep === "chapter") s.intent = false;
+      s.chapterDone = s.chapters[s.chapterIdx]?.id ?? null; // heard to the end
+      saveNow();
       void advanceChapter();
     }
     publishSession(); // synchronously: a locked screen may not render again soon
@@ -736,6 +764,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   async function load(bookId: string, chapterId?: string) {
     if (s.book?.id === bookId && s.segments.length > 0 && (!chapterId || s.chapters[s.chapterIdx]?.id === chapterId)) return;
     s.prebuffering = false; // a fresh session always starts normally
+    forgetClosed();
     const switching = s.book !== null && s.book.id !== bookId;
     try {
       const detail = await queryClient.fetchQuery({ queryKey: ["book", bookId], queryFn: () => fetchBookDetail(bookId) });
@@ -765,6 +794,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // chapters too deep once N chapters were excluded (the 16 % bug).
       const included = detail.chapters.filter((chapter) => !chapter.excluded);
       s.chapters = included;
+      places.current = new Map(
+        included.map((chapter) => {
+          const place = chapter.progress?.segment_id
+            ? { segment_id: chapter.progress.segment_id, offset_s: chapter.progress.offset_s }
+            : null;
+          return [chapter.id, place];
+        }),
+      );
       s.finished = Boolean(detail.progress?.finished_at);
       s.finishedMarked = s.finished;
       s.resumePrompt = null;
@@ -867,6 +904,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   function stop() {
     const bookId = s.book?.id;
+    if (bookId) rememberClosed(bookId); // a reload must not reopen it
     silence();
     s.intent = false;
     s.preparing = false;
@@ -924,6 +962,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Seek to a segment + offset within it; prepares first when unknown. */
   function seekSegment(index: number, offsetSeconds: number) {
     if (index < 0 || index >= s.segments.length) return;
+    s.chapterDone = null; // a move inside the chapter: it is being listened to again
     if (streaming()) {
       const at = entryIndexOf(s.segments[index]!.id);
       if (at >= 0) {
@@ -981,7 +1020,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   async function stepChapter(delta: number) {
     const idx = Math.min(Math.max(0, s.chapterIdx + delta), s.chapters.length - 1);
-    if (idx !== s.chapterIdx) await openChapter(idx, s.intent);
+    // A chosen chapter resumes where it was left (a finished one starts over).
+    if (idx !== s.chapterIdx) await openChapter(idx, s.intent, true);
   }
 
   function goToChapter(chapterId: string): Promise<void> {

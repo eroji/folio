@@ -24,9 +24,9 @@ from folio.errors import ApiError
 from folio.ingest import DRM_MESSAGE
 from folio.ingest.detect import Format, detect_format, epub_is_drm_protected
 from folio.jobs import enqueue, notify
-from folio.models import Book, BookFile, Chapter, Progress, Segment, User
+from folio.models import Book, BookFile, Chapter, ChapterProgress, Progress, Segment, User
 from folio.models.book import BOOK_SEARCH_EXPR
-from folio.routers.progress import progress_dict
+from folio.routers.progress import chapter_progress_dict, progress_dict
 from folio.security import require_csrf
 from folio.storage import book_dir, cover_dir, ensure_dirs, original_path
 from folio.text import decode_entities, description_text
@@ -83,6 +83,8 @@ class ChapterPublic(BaseModel):
     title: str
     char_count: int
     excluded: bool
+    # This listener's place in the chapter (null: never played).
+    progress: dict[str, Any] | None = None
 
 
 def _public(book: Book, user: User) -> BookPublic:
@@ -415,10 +417,29 @@ def get_book(
     ).all()
     row = db.get(Progress, (user.id, book.id))
     titles = display_titles(chapters)
+    listened = {
+        cp.chapter_id: cp
+        for cp in db.scalars(
+            select(ChapterProgress).where(
+                ChapterProgress.user_id == user.id, ChapterProgress.book_id == book.id
+            )
+        )
+    }
+    by_id = {c.id: c for c in chapters}
+
+    def chapter_progress(chapter: Chapter) -> dict[str, Any] | None:
+        cp = listened.get(chapter.id)
+        if cp is None:
+            return None
+        segment = db.get(Segment, cp.segment_id) if cp.segment_id else None
+        return chapter_progress_dict(cp, segment, by_id[chapter.id])
+
     return {
         "book": _public(book, user),
         "chapters": [
-            ChapterPublic.model_validate(c).model_copy(update={"title": titles[c.id]})
+            ChapterPublic.model_validate(c).model_copy(
+                update={"title": titles[c.id], "progress": chapter_progress(c)}
+            )
             for c in chapters
         ],
         "progress": progress_dict(row) if row else None,
