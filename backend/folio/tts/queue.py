@@ -36,7 +36,7 @@ from folio.tts import (
     normalize_speech_text,
     select_voice,
 )
-from folio.tts.cache import speech_cache_key
+from folio.tts.cache import single_request_key, speech_cache_key
 from folio.tts.narration import engine_instructions
 from folio.tts.pronunciation import apply_rules
 from folio.voice_catalog import effective_defaults
@@ -174,13 +174,8 @@ def prepare(
     # player re-prepare on each frame and floods the browser.
     changed: list[tuple[Segment, SegmentAudio, bool]] = []
     for offset, segment in enumerate(segments[start : start + count + 1]):
-        key = speech_cache_key(
-            settings,
-            voice,
-            normalize_speech_text(apply_rules(segment.text, rules)),
-            instructions,
-            book.language,
-        )
+        normalized = normalize_speech_text(apply_rules(segment.text, rules))
+        key = speech_cache_key(settings, voice, normalized, instructions, book.language)
         audio = session.get(Audio, key)
         if audio is not None and not Path(audio.path).is_file():
             audio = None  # row survived an eviction that removed the file
@@ -191,6 +186,19 @@ def prepare(
         priority = PRIORITY_NOW if offset == 0 else PRIORITY_LOOKAHEAD + offset
         row, created = _segment_row(session, segment.id, voice, priority)
         before = None if created else row.status
+        if audio is None and row.status == "ready" and row.cache_key != key:
+            # A clip made as one request, before segments were split per
+            # TTS_REQUEST_CHARS, stays: re-queueing a ready segment shrinks an
+            # iOS HLS stream that already listed it (Safari stalls) and swaps
+            # clips under its timeline (read-along drifts). New audio is split.
+            legacy = session.get(Audio, row.cache_key) if row.cache_key else None
+            if (
+                legacy is not None
+                and legacy.cache_key
+                == single_request_key(settings, voice, normalized, instructions)
+                and Path(legacy.path).is_file()
+            ):
+                audio = legacy
         if audio is not None:
             row.cache_key, row.status, row.error = audio.cache_key, "ready", None
         elif row.status == "queued":

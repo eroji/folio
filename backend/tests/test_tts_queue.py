@@ -632,3 +632,52 @@ def test_a_split_segment_is_found_in_the_cache_by_the_next_prepare(
     db.commit()
     window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
     assert window[0][1].status == "ready"
+
+
+def test_prepare_keeps_a_ready_clip_made_before_requests_were_split(
+    db: Session, settings: Settings
+) -> None:
+    """A segment synthesized as one request (before TTS_REQUEST_CHARS) stays
+    ready on its clip. Flipping it back to queued re-keyed every cached segment
+    on deploy: an iOS HLS stream that had listed it then shrank (Safari stalled
+    on "Preparing audio") and swapped clips under the timeline (read-along
+    drifted)."""
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _segments(db, book)[0]
+    segment.text = " ".join(
+        f"Sentence {n} walks slowly along the harbour wall in the evening fog." for n in range(10)
+    )
+    db.commit()
+    legacy = _seed_audio(db, settings, segment.text)  # the single-request key (no |req=N)
+    db.add(
+        SegmentAudio(
+            segment_id=segment.id,
+            voice="ashley-en",
+            status="ready",
+            cache_key=legacy.cache_key,
+            priority=10,
+        )
+    )
+    db.commit()
+
+    window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+
+    row = window[0][1]
+    assert (row.status, row.cache_key) == ("ready", legacy.cache_key)
+
+
+def test_prepare_requeues_a_ready_row_whose_clip_file_is_gone(
+    db: Session, settings: Settings
+) -> None:
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _segments(db, book)[0]
+    legacy = _seed_audio(db, settings, segment.text)
+    Path(legacy.path).unlink()
+    db.add(
+        SegmentAudio(
+            segment_id=segment.id, voice="ashley-en", status="ready", cache_key=legacy.cache_key
+        )
+    )
+    db.commit()
+    window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    assert window[0][1].status == "queued"  # evicted: synthesize again

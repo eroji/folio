@@ -67,6 +67,19 @@ def speech_pieces(settings: Settings, normalized: str, language: str) -> list[st
     return split_for_speech(normalized, language, settings.tts_request_chars)
 
 
+def single_request_key(settings: Settings, voice: str, normalized: str, instructions: str) -> str:
+    """The key the same text had when every segment was one request (before
+    ``TTS_REQUEST_CHARS``)."""
+    return cache_key(
+        settings.tts_model,
+        voice,
+        settings.tts_format,
+        normalized,
+        instructions,
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
+    )
+
+
 def speech_cache_key(
     settings: Settings, voice: str, normalized: str, instructions: str, language: str
 ) -> str:
