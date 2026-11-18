@@ -37,7 +37,9 @@ export function notifyUnauthenticated(): void {
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // FormData sets its own multipart Content-Type (with the boundary).
+  const form = body instanceof FormData;
+  if (body !== undefined && !form) headers["Content-Type"] = "application/json";
   if (method !== "GET") {
     const token = csrfToken();
     if (token) headers["X-CSRF-Token"] = token;
@@ -46,7 +48,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     method,
     credentials: "same-origin",
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
   // A failed sign-in is a 401 too, but it is the login form's to show.
   if (response.status === 401 && path !== "/auth/login") notifyUnauthenticated();

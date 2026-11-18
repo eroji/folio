@@ -34,6 +34,9 @@ export interface Book {
   /** Direction D genre (fixed suggestion list, free text allowed). */
   genre?: string | null;
   narrator_voice: string | null;
+  /** How to narrate this book (language model or hand-written); joins the
+   * voice's style prompt when the speech engine takes one. */
+  delivery_note?: string | null;
   cover_url: string | null;
   /** "r g b" dominant cover color for the glow; null until a cover is stored. */
   cover_rgb?: string | null;

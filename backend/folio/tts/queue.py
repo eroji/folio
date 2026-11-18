@@ -113,11 +113,12 @@ def _segment_row(
 
 
 def _rules(session: Session, book_id: UUID) -> list[PronunciationRule]:
-    """The book's pronunciation rules in creation order (apply_rules order)."""
+    """The book's accepted pronunciation rules in creation order (apply_rules
+    order); suggestions change nothing until accepted."""
     return list(
         session.scalars(
             select(PronunciationRule)
-            .where(PronunciationRule.book_id == book_id)
+            .where(PronunciationRule.book_id == book_id, PronunciationRule.suggested.is_(False))
             .order_by(PronunciationRule.created_at, PronunciationRule.id)
         )
     )
@@ -162,7 +163,7 @@ def prepare(
     if count is None:
         count = settings.tts_lookahead
     rules = _rules(session, book.id)
-    instructions = engine_instructions(session, settings, voice, book.genre)
+    instructions = engine_instructions(session, settings, voice, book.genre, book.delivery_note)
     segments = _ordered_segments(session, book)
     start = next((i for i, s in enumerate(segments) if s.id == segment_id), None)
     if start is None:
@@ -276,7 +277,11 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
         rules = _rules(session, chapter.book_id) if chapter else []
         book = session.get(Book, chapter.book_id) if chapter else None
         instructions = engine_instructions(
-            session, settings, row.voice, book.genre if book else None
+            session,
+            settings,
+            row.voice,
+            book.genre if book else None,
+            book.delivery_note if book else None,
         )
 
         def progress(done: int, total: int) -> None:

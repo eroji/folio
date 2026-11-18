@@ -20,6 +20,7 @@ from folio.config import get_settings
 from folio.db import get_session
 from folio.deps import can_edit_book, get_current_user
 from folio.errors import ApiError
+from folio.integrations import google_books_key
 from folio.metadata import Candidate
 from folio.metadata import service as metadata_service
 from folio.metadata.match import score_candidate
@@ -77,7 +78,8 @@ def metadata_search(
 ) -> dict[str, Any]:
     book = _get_book(db, book_id)
     _require_edit(user, book)
-    candidates = search_book(get_settings(), q, isbn, http_client)
+    settings = get_settings()
+    candidates = search_book(settings, q, isbn, http_client, google_books_key(db, settings))
     # Providers return their own relevance order; the UI shows a match
     # percentage, so score every candidate against this book (as auto_fetch does).
     for candidate in candidates:

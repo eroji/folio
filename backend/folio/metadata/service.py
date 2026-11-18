@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from folio.config import GENRES, Settings
 from folio.covers import DOWNLOAD_TIMEOUT_S, MAX_REDIRECTS, download_cover, store_cover
 from folio.errors import ApiError
+from folio.integrations import google_books_key
 from folio.metadata import Candidate, googlebooks, openlibrary
 from folio.metadata.match import decide as decide_match
 from folio.metadata.match import (
@@ -202,12 +203,18 @@ def _dedupe(candidates: list[Candidate]) -> list[Candidate]:
 
 
 def search_book(
-    settings: Settings, query: str | None, isbn: str | None, client: httpx.Client
+    settings: Settings,
+    query: str | None,
+    isbn: str | None,
+    client: httpx.Client,
+    google_key: str = "",
 ) -> list[Candidate]:
     """Search both providers and return merged, deduped, score-sorted candidates."""
     if not settings.metadata_online:
         return []
-    merged = openlibrary.search(query, isbn, client) + googlebooks.search(query, isbn, client)
+    merged = openlibrary.search(query, isbn, client) + googlebooks.search(
+        query, isbn, client, google_key
+    )
     return _dedupe(merged)
 
 
@@ -271,7 +278,7 @@ def auto_fetch(session: Session, settings: Settings, book: Book, client: httpx.C
     """
     isbn = book.isbn13 or book.isbn10
     query = None if isbn else f"{book.title} {first_author(book.authors)}".strip()
-    candidates = search_book(settings, query, isbn, client)
+    candidates = search_book(settings, query, isbn, client, google_books_key(session, settings))
     if not candidates:
         return
     for candidate in candidates:

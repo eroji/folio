@@ -30,7 +30,7 @@ test("an edited title survives a reprocess", async ({ page }) => {
   // Unique per run so a previous run's edit cannot satisfy the assertion.
   const editedTitle = `The Lighthouse at Low Tide ${Date.now()}`;
   await page.getByRole("textbox", { name: "Title", exact: true }).fill(editedTitle);
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 
   const heading = page.getByRole("heading", { name: editedTitle });
   await expect(heading).toBeVisible();

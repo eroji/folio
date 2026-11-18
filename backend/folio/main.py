@@ -26,6 +26,7 @@ from folio.routers.auth import router as auth_router
 from folio.routers.books import router as books_router
 from folio.routers.covers import router as covers_router
 from folio.routers.events import router as events_router
+from folio.routers.integrations import router as integrations_router
 from folio.routers.me import router as me_router
 from folio.routers.metadata import router as metadata_router
 from folio.routers.progress import router as progress_router
@@ -86,6 +87,7 @@ def create_app() -> FastAPI:
     app.add_api_route("/api/v1/admin/health", admin_health, methods=["GET"])
     app.include_router(auth_router)
     app.include_router(admin_router)
+    app.include_router(integrations_router)
     app.include_router(covers_router)
     app.include_router(books_router)
     app.include_router(search_router)

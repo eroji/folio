@@ -115,7 +115,7 @@ Target server runs Docker Compose. Deploy = put a real `.env` on the host, then 
 
 ## Out of scope
 
-DRM removal, OCR, hosting a TTS model, native apps, public sign-up, multi-tenancy, Redis, Web Audio graphs, component libraries, ORMs with async sessions. If the spec lists it under M3–M6, do not build it now.
+DRM removal, hosting an OCR engine or a TTS model (OCR goes through the admin-configured language model), native apps, public sign-up, multi-tenancy, Redis, Web Audio graphs, component libraries, ORMs with async sessions. If the spec lists it under M3–M6, do not build it now.
 
 ## Reporting back
 

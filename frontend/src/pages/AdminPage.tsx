@@ -12,6 +12,7 @@ import type { Job, User } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { timeAgo } from "../components/PlayerControls";
+import { AdminIntegrations } from "./AdminIntegrations";
 import { AdminVoices } from "./AdminVoices";
 
 /** Body of GET /admin/cache (plan M6 Task A2). */
@@ -37,6 +38,7 @@ const SECTIONS = [
   { id: "cache", label: "Cache" },
   { id: "users", label: "Users" },
   { id: "voices", label: "Voices" },
+  { id: "integrations", label: "Integrations" },
 ] as const;
 
 const cellButton = "tap grid size-10 place-items-center rounded-full text-fg hover:bg-raised disabled:opacity-40";
@@ -347,6 +349,7 @@ export function AdminPage() {
           )}
 
           {section === "voices" && <AdminVoices />}
+          {section === "integrations" && <AdminIntegrations />}
         </div>
       </div>
     </div>

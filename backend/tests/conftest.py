@@ -143,3 +143,11 @@ def mock_tts() -> Iterator[str]:
 
     with serve() as url:
         yield url
+
+
+@pytest.fixture(autouse=True)
+def _google_books_not_paused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 429 pauses Google Books process-wide; every test starts unpaused."""
+    from folio.metadata import googlebooks
+
+    monkeypatch.setattr(googlebooks, "_paused_until", 0.0)

@@ -70,6 +70,9 @@ class Book(Base):
     )
     # Direction D: free-text genre (the config.GENRES list is a suggestion, not a constraint).
     genre: Mapped[str | None] = mapped_column(Text)
+    # How to narrate this book (language model or hand-written); sent with the
+    # voice's style prompt when the engine takes one (TTS_INSTRUCTIONS).
+    delivery_note: Mapped[str | None] = mapped_column(Text)
     narrator_voice: Mapped[str | None] = mapped_column(String(64))
     cover_key: Mapped[str | None] = mapped_column(String(255))
     # Dominant cover color as "R G B" for the page glow; null until a cover is stored.
@@ -160,6 +163,10 @@ class PronunciationRule(Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     after_number: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    # Proposed by the language model: not applied to speech until accepted.
+    suggested: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     case_sensitive: Mapped[bool] = mapped_column(
