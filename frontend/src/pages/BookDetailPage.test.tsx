@@ -789,6 +789,15 @@ describe("BookDetailPage", () => {
     expect(prepareCalls.some((call) => call.voice === "zoe-en")).toBe(true);
   });
 
+  it("moves focus into the narrator dialog so Escape closes it", async () => {
+    book = makeBook({ can_edit: true });
+    renderDetail();
+    const dialog = await openNarratorDialog();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Narrator voice" })).toBeNull();
+  });
+
   it("previews a voice from the dialog without selecting it", async () => {
     book = makeBook({ can_edit: true });
     renderDetail();

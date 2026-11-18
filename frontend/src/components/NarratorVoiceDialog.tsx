@@ -27,6 +27,7 @@ export function NarratorVoiceDialog({
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
   const sample = useRef<{ voice: string; url: string; audio: HTMLAudioElement } | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   function stopPreview() {
     if (sample.current) {
@@ -36,6 +37,8 @@ export function NarratorVoiceDialog({
     }
   }
   useEffect(() => stopPreview, []);
+  // A modal takes focus on open, so Escape (handled inside) and Tab work at once.
+  useEffect(() => closeRef.current?.focus(), []);
 
   function close() {
     stopPreview();
@@ -102,6 +105,7 @@ export function NarratorVoiceDialog({
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-xl">Narrator voice</h2>
           <button
+            ref={closeRef}
             type="button"
             aria-label="Close"
             onClick={close}
