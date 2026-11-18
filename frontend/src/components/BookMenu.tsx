@@ -3,8 +3,9 @@ import clsx from "clsx";
 import { Icon } from "./Icon";
 
 /** ⋮ book menu (Direction D "Book page" item 6), visible to every listener:
- * Mark as finished/unfinished, Reset progress, Narrator voice (the only
- * place a book's narrator is chosen) and Go to author. Raised fill, 12px
+ * Mark as finished/unfinished, Reset progress, Narrator voice (row menus
+ * only, and only when the caller passes onNarrator — the book page has its
+ * own "Narrated by" row) and Go to author. Raised fill, 12px
  * radius, 40px rows. variant "inline": 44px outlined pill trigger next to the
  * primary action (desktop); variant "header": borderless 44px trigger for the
  * phone header. Keyboard: arrows open/cycle, Escape closes and refocuses. */
@@ -22,7 +23,8 @@ export function BookMenu({
   pending: boolean;
   onToggleFinished: (finished: boolean) => void;
   onReset: () => void;
-  onNarrator: () => void;
+  /** Omitted: no Narrator voice item (book page, or a book the listener can't edit). */
+  onNarrator?: () => void;
   onGoToAuthor: () => void;
   variant?: "inline" | "header";
   /** Row menus name the book in the trigger's label (search reference); the
@@ -129,18 +131,20 @@ export function BookMenu({
               <Icon name="RotateCcw" size={20} />
               Reset progress
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                close(false);
-                onNarrator();
-              }}
-              className={menuItem}
-            >
-              <Icon name="Speech" size={20} />
-              Narrator voice
-            </button>
+            {onNarrator && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  close(false);
+                  onNarrator();
+                }}
+                className={menuItem}
+              >
+                <Icon name="Speech" size={20} />
+                Narrator voice
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

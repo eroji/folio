@@ -20,10 +20,9 @@ test("the narrator voice override persists across a reload", async ({ page }) =>
   await expect(row).toContainText(/Ready|already in your library/i, { timeout: 90_000 });
   await row.getByRole("link").first().click();
 
-  // Direction D: the book page's narrator is set only from the ⋮ menu.
+  // The book page's narrator row sits right under the primary action.
   const openNarrator = async () => {
-    await page.getByRole("button", { name: "More options for this book" }).click();
-    await page.getByRole("menuitem", { name: "Narrator voice" }).click();
+    await page.getByRole("button", { name: /^Narrator voice, / }).click();
   };
   const dialog = page.getByRole("dialog", { name: "Narrator voice" });
   await openNarrator();

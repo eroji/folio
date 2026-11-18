@@ -181,17 +181,39 @@ describe("PlayerPage (phone)", () => {
     expect(screen.getByRole("link", { name: "Open Dune" }).getAttribute("href")).toBe(`/books/${BOOK_ID}`);
   });
 
-  it("the speed card opens centered in a bottom sheet above the controls", async () => {
+  it("the speed card is a full-width bottom sheet with a horizontal slider", async () => {
     stubMatchMedia(false);
     await renderAtPlayer();
     fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
     const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
-    const sheet = dialog.parentElement!; // fixed bottom sheet, card centered in it
+    const sheet = dialog.parentElement!; // fixed bottom sheet
     expect(sheet.className).toContain("fixed");
     expect(sheet.className).toContain("inset-x-0");
     expect(sheet.className).toContain("bottom-0");
-    expect(sheet.className).toContain("justify-center");
-    expect(within(dialog).getByRole("slider", { name: "Playback speed" })).toBeTruthy();
+    expect(dialog.className).toContain("w-full"); // the slider spans the sheet
+    const slider = within(dialog).getByRole("slider", { name: "Playback speed" });
+    expect(slider.getAttribute("aria-orientation")).toBe("horizontal");
+  });
+
+  it("the voice button beside speed opens the narrator dialog and switches the voice", async () => {
+    stubMatchMedia(false);
+    const installed = installPlayerFetch({ book: { can_edit: true } });
+    await renderAtPlayer();
+    const voice = await screen.findByRole("button", { name: "Narrator voice, Ashley" });
+    expect(voice.textContent).toContain("Ashley");
+    fireEvent.click(voice);
+    const dialog = await screen.findByRole("dialog", { name: "Narrator voice" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Zoe" }));
+    await waitFor(() => expect(installed.patchCalls).toEqual([{ narrator_voice: "zoe-en" }]));
+    await waitFor(() => expect(installed.prepareCalls.some((call) => call.voice === "zoe-en")).toBe(true));
+  });
+
+  it("listeners who cannot edit the book see no voice button", async () => {
+    stubMatchMedia(false);
+    installPlayerFetch({ book: { can_edit: false } });
+    await renderAtPlayer();
+    await screen.findByRole("button", { name: "Playback speed, 1.0 times" });
+    expect(screen.queryByRole("button", { name: /Narrator voice/ })).toBeNull();
   });
 
   it("the Read along tab opens the sheet with pinned controls", async () => {

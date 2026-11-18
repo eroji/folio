@@ -89,6 +89,7 @@ function makeRule(overrides: Partial<PronunciationRule> = {}): PronunciationRule
 }
 
 const VOICES = {
+  defaults: { en: "zoe-en" },
   items: [
     { id: "ashley-en", language: "en", description: null, available: true, display_name: "Ashley" },
     // No display_name: the dialog must fall back to the parsed name ("Zoe").
@@ -318,8 +319,7 @@ async function openMore() {
 }
 
 async function openNarratorDialog() {
-  await openMore();
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Narrator voice" }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Narrator voice, / }));
   return screen.findByRole("dialog", { name: "Narrator voice" });
 }
 
@@ -735,15 +735,35 @@ describe("BookDetailPage", () => {
     expect(authorLinks[0]!.getAttribute("href")).toBe("/search?q=Frank%20Herbert");
   });
 
-  it("has no narrator voice button in the hero — only the ⋮ menu entry", async () => {
+  it("shows the narrator in a row under Play, not in the ⋮ menu", async () => {
+    book = makeBook({ narrator_voice: "ashley-en", can_edit: true });
     renderDetail();
-    await screen.findByRole("button", { name: "Play" });
-    expect(screen.queryByRole("button", { name: /Narrator voice/ })).toBeNull();
+    const play = await screen.findByRole("button", { name: "Play" });
+    const row = await screen.findByRole("button", { name: "Narrator voice, Ashley" });
+    expect(row.textContent).toContain("Narrated by Ashley"); // display name, not the id
+    // Directly below the primary action.
+    expect(play.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await openMore();
-    expect(await screen.findByRole("menuitem", { name: "Narrator voice" })).toBeTruthy();
+    await screen.findByRole("menuitem", { name: "Go to author" });
+    expect(screen.queryByRole("menuitem", { name: "Narrator voice" })).toBeNull();
   });
 
-  it("opens the narrator dialog from the ⋮ menu and saves the choice with a PATCH", async () => {
+  it("falls back to the server default voice for the book's language", async () => {
+    book = makeBook({ narrator_voice: null, can_edit: true });
+    renderDetail();
+    const row = await screen.findByRole("button", { name: "Narrator voice, Zoe" });
+    expect(row.textContent).toContain("Narrated by Zoe");
+  });
+
+  it("shows the narrator as plain text to listeners who cannot change it", async () => {
+    book = makeBook({ narrator_voice: "ashley-en", can_edit: false });
+    renderDetail();
+    expect(await screen.findByText("Narrated by Ashley")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Narrator voice/ })).toBeNull();
+  });
+
+  it("opens the narrator dialog from the row under Play and saves the choice with a PATCH", async () => {
+    book = makeBook({ can_edit: true });
     renderDetail();
     const dialog = await openNarratorDialog();
     // Language voices only, by display name or the parsed fallback.
@@ -757,6 +777,7 @@ describe("BookDetailPage", () => {
   });
 
   it("reloads the active player at the same position when the narrator changes", async () => {
+    book = makeBook({ can_edit: true });
     renderDetail();
     fireEvent.click(await screen.findByRole("button", { name: "Play" }));
     await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s1")).toBe(true));
@@ -769,6 +790,7 @@ describe("BookDetailPage", () => {
   });
 
   it("previews a voice from the dialog without selecting it", async () => {
+    book = makeBook({ can_edit: true });
     renderDetail();
     const dialog = await openNarratorDialog();
     fireEvent.click(await within(dialog).findByRole("button", { name: "Preview Ashley" }));
@@ -781,7 +803,7 @@ describe("BookDetailPage", () => {
   });
 
   it("marks the saved voice pressed and clears it with Use my default", async () => {
-    book = makeBook({ narrator_voice: "ashley-en" });
+    book = makeBook({ narrator_voice: "ashley-en", can_edit: true });
     renderDetail();
     const dialog = await openNarratorDialog();
     const ashley = await within(dialog).findByRole("button", { name: "Ashley" });

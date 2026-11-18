@@ -14,6 +14,7 @@ import { BookCover } from "./BookCard";
 import { ChapterRow } from "./ChapterRow";
 import { Icon } from "./Icon";
 import { ChapterNavButton, ChapterScrubber, PlayButton, SkipButton, SleepButton, SpeedButton, iconButton } from "./PlayerControls";
+import { VoiceButton } from "./NarratorControl";
 import { AutoScrollToggle, ReadAlong, TextSizePicker, useReadAlongControls } from "./ReadAlong";
 import { ResumePrompt } from "./ResumePrompt";
 
@@ -384,8 +385,9 @@ function PhonePlayer({ book }: { book: Book }) {
           <SkipButton direction="forward" />
           <ChapterNavButton delta={1} />
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <SpeedButton className="bg-raised" placement="sheet" />
+          <VoiceButton />
           <SleepButton />
         </div>
         <PlayerTabs
