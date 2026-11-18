@@ -13,6 +13,9 @@ DRM_MESSAGE = "This file is DRM-protected or in an unsupported Kindle format"
 class ExtractedChapter:
     title: str
     text: str
+    # Front/back matter (copyright, contents, acknowledgments, ads...) starts
+    # turned off; the owner can turn it back on under Manage.
+    excluded: bool = False
 
 
 @dataclass

@@ -168,6 +168,7 @@ def _persist_chapters(
             # the ones set to narrate when they are shown.
             title=chapter.title.strip(),
             char_count=len(chapter.text),
+            excluded=chapter.excluded,
         )
         session.add(row)
         session.flush()
@@ -181,6 +182,7 @@ def _persist_chapters(
                     char_end=seg.char_end,
                 )
             )
-        total += len(chapter.text)
+        if not chapter.excluded:  # the book's length is what will be narrated
+            total += len(chapter.text)
     book.total_chars = total
     book.est_duration_s = total / settings.tts_chars_per_second

@@ -225,8 +225,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const lastPath = useRef<string | null>(null);
 
   const currentItem = () => s.status[s.segments[s.index]?.id ?? ""];
-  /** Safari (and iOS) play HLS natively; elsewhere the clip player stays. */
-  const hlsPlayable = () => el.canPlayType("application/vnd.apple.mpegurl") !== "";
+  /** The book stream is for Apple's WebKit (Safari, and every iOS browser),
+   * whose locked screen freezes the page between clips. Desktop Chrome and Edge
+   * also play HLS natively now, but treat the growing EVENT playlist as live:
+   * they joined it near the end, waited on it and could not seek. Their UA
+   * carries "Chrome/" (iOS Chrome says "CriOS/", iOS Edge "EdgiOS/"). */
+  const hlsPlayable = () =>
+    el.canPlayType("application/vnd.apple.mpegurl") !== "" &&
+    !/\b(?:Chrome|Chromium|Edg|OPR|Firefox)\//.test(navigator.userAgent);
   /** The element is playing (or holds) the book stream. */
   const streaming = () => s.stream !== null && s.loaded === s.stream.url;
   const entryIndexOf = (segmentId: string | undefined) =>
