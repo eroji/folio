@@ -1,4 +1,4 @@
-"""Direction D §5.3: GET /me/home — continue, next_chapters, recent shelves + filters."""
+"""Direction D §5.3: GET /me/home — continue and recent shelves + filters."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def _user(db: Session) -> User:
 
 async def test_home_empty(auth_client: httpx.AsyncClient) -> None:
     body = (await auth_client.get("/api/v1/me/home")).json()
-    assert body == {"continue": [], "next_chapters": [], "recent": []}
+    assert body == {"continue": [], "recent": []}
 
 
 async def test_home_shelves_and_shape(auth_client: httpx.AsyncClient, db: Session) -> None:
@@ -127,7 +127,7 @@ async def test_home_shelves_and_shape(auth_client: httpx.AsyncClient, db: Sessio
     _fresh_book(db, user, "Fresh")
 
     body = (await auth_client.get("/api/v1/me/home")).json()
-    assert set(body) == {"continue", "next_chapters", "recent"}
+    assert set(body) == {"continue", "recent"}  # no Next chapters shelf
 
     assert [i["book"]["title"] for i in body["continue"]] == ["Newest", "AtLastChapter", "Older"]
     newest = body["continue"][0]
@@ -136,13 +136,6 @@ async def test_home_shelves_and_shape(auth_client: httpx.AsyncClient, db: Sessio
     assert newest["chapter"]["id"]
     assert newest["time_left_s"] == pytest.approx(3600.0)  # 7200 s at 50 %
     assert newest["progress"]["percent"] == 50.0
-
-    # one row per in-progress book; the book at its last chapter has no next chapter
-    by_book = {i["book"]["title"]: i["chapter"] for i in body["next_chapters"]}
-    assert set(by_book) == {"Newest", "Older"}
-    assert by_book["Newest"]["idx"] == 2 and by_book["Newest"]["duration_s"] == pytest.approx(10.0)
-    assert by_book["Newest"]["number"] == 3  # no exclusions: number == idx + 1
-    assert by_book["Older"]["idx"] == 1 and by_book["Older"]["number"] == 2
 
     assert [b["title"] for b in body["recent"]] == ["Fresh", "Newest", "AtLastChapter", "Older"]
 
@@ -163,37 +156,6 @@ async def test_home_continue_number_skips_excluded(
     assert chapter["title"] == "Ch 5"
 
 
-async def test_home_next_chapter_number_skips_excluded(
-    auth_client: httpx.AsyncClient, db: Session
-) -> None:
-    """The next chapter's ``number`` is its 1-based position among the chapters
-    that are still included, matching the book page (not the source ``idx``)."""
-    user = _user(db)
-    # Included chapters are idx 1 and idx 5, so the next one shows as "2", not "6".
-    _listening_book(db, user, "Gaps", chapters=6, at=1, exclude=(0, 2, 3, 4))
-
-    body = (await auth_client.get("/api/v1/me/home")).json()
-    assert len(body["next_chapters"]) == 1
-    nxt = body["next_chapters"][0]["chapter"]
-    assert nxt["idx"] == 5
-    assert nxt["number"] == 2
-    assert nxt["title"] == "Ch 6"
-
-
-async def test_home_next_chapter_excludes_excluded_next(
-    auth_client: httpx.AsyncClient, db: Session
-) -> None:
-    """An excluded chapter is never offered as the next one; the following
-    included chapter is, numbered after the one being played."""
-    user = _user(db)
-    _listening_book(db, user, "Skip", chapters=4, at=1, exclude=(2,))
-
-    body = (await auth_client.get("/api/v1/me/home")).json()
-    nxt = body["next_chapters"][0]["chapter"]
-    assert nxt["idx"] == 3
-    assert nxt["number"] == 3  # included: idx 0, 1, 3
-
-
 async def test_home_status_filter(auth_client: httpx.AsyncClient, db: Session) -> None:
     user = _user(db)
     _listening_book(db, user, "Going")
@@ -205,7 +167,7 @@ async def test_home_status_filter(auth_client: httpx.AsyncClient, db: Session) -
     assert [i["book"]["title"] for i in body["continue"]] == ["Going"]
 
     body = (await auth_client.get("/api/v1/me/home", params={"status": "finished"})).json()
-    assert body["continue"] == [] and body["next_chapters"] == []
+    assert body["continue"] == []
     assert [b["title"] for b in body["recent"]] == ["Done"]
 
     body = (await auth_client.get("/api/v1/me/home", params={"status": "not_started"})).json()

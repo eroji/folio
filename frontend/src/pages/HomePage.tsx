@@ -1,5 +1,5 @@
-/** Home (Direction D §4): filter chips, the Continue listening, Next chapters
- * and Recently added shelves from GET /me/home, and a "Browse by genre" block
+/** Home (Direction D §4): filter chips, the Continue listening and Recently
+ * added shelves from GET /me/home, and a "Browse by genre" block
  * of genre shelves from GET /books?group=genre. A Continue card's cover and
  * title both link to the book; playback resumes from there (docs/DECISIONS.md). */
 import { useState } from "react";
@@ -13,11 +13,9 @@ import {
   type BookGroupShelf,
   type HomeContinueItem,
   type HomeFilters,
-  type HomeNextItem,
 } from "../api/books";
 import { useProgressMembership } from "../api/progress";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import { usePlayer } from "../player/usePlayer";
 import { BookCard, BookCover } from "../components/BookCard";
 import { useCarouselRow } from "../components/Carousel";
 import { CoverProgressBadge } from "../components/CoverProgressBadge";
@@ -100,48 +98,6 @@ function continueMeta(item: HomeContinueItem): string {
   return item.chapter ? `Ch. ${item.chapter.number ?? item.chapter.idx + 1} · ${left}` : left;
 }
 
-/** Reference copy for chapter lengths: "18 min", but "2 h 36 m" beyond an hour. */
-function chapterLength(seconds: number): string {
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  return minutes < 60 ? `${minutes} min` : formatLength(seconds);
-}
-
-function NextChapterRow({
-  item,
-  phone,
-  onStart,
-}: {
-  item: HomeNextItem;
-  phone: boolean;
-  onStart: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onStart}
-      className="tap flex min-w-0 items-center gap-3.5 rounded-lg px-1 py-1.5 text-left hover:bg-raised"
-    >
-      <BookCover
-        book={item.book}
-        showPlaceholderText={false}
-        className={clsx("shrink-0 rounded-md", phone ? "aspect-[2/3] w-12" : "aspect-[2/3] w-14")}
-      />
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-md font-semibold">
-          {item.chapter.number ?? item.chapter.idx + 1} · {item.chapter.title}
-        </span>
-        <span className="truncate text-base text-fg-2">
-          {item.book.title}
-          {item.chapter.duration_s != null && ` · ${chapterLength(item.chapter.duration_s)}`}
-        </span>
-        {item.book.authors.length > 0 && (
-          <span className="truncate text-sm text-fg-2">{item.book.authors.join(", ")}</span>
-        )}
-      </span>
-    </button>
-  );
-}
-
 /** One genre shelf in the "Browse by genre" block: same shape as the Library
  * genre shelves (name + count, "See all" pill, 150px cover cards) with Home's
  * pill styling. `count` is the number of books the current chips leave. */
@@ -189,7 +145,6 @@ function GenreShelf({
 }
 
 export function HomePage() {
-  const player = usePlayer();
   const phone = !useMediaQuery("(min-width: 768px)");
   const [chip, setChip] = useState<string>("all");
 
@@ -205,12 +160,11 @@ export function HomePage() {
   const { progressById } = useProgressMembership();
 
   const items = data?.continue ?? [];
-  const next = data?.next_chapters ?? [];
   const recent = data?.recent ?? [];
   const languages = [
     ...new Set([...recent, ...items.map((item) => item.book)].map((book) => book.language)),
   ].sort();
-  const empty = !isPending && !error && items.length + next.length + recent.length === 0;
+  const empty = !isPending && !error && items.length + recent.length === 0;
 
   /** Genre shelves: GET /books?group=genre honours the status chip; the language
    * and duration chips have no server parameter, so they filter the loaded
@@ -236,13 +190,6 @@ export function HomePage() {
       (a, b) =>
         Number(a.shelf.key === null) - Number(b.shelf.key === null) || b.shelf.count - a.shelf.count,
     );
-
-  /** Load (or switch to) the book and start it playing, without navigating. */
-  async function start(bookId: string, chapterId?: string) {
-    if (player.book?.id !== bookId) await player.load(bookId, chapterId);
-    else if (chapterId && player.chapter?.id !== chapterId) await player.goToChapter(chapterId);
-    await player.play();
-  }
 
   const cardWidth = phone ? "w-[140px]" : "w-[176px]";
   const continueRow = useCarouselRow(
@@ -360,34 +307,6 @@ export function HomePage() {
                 {continueRow.arrows}
               </div>
               {continueRow.row}
-            </section>
-          )}
-
-          {next.length > 0 && (
-            <section aria-label="Next chapters" className="flex flex-col gap-3.5">
-              <div className="flex items-end justify-between gap-4">
-                <h2 className="font-display text-2xl">Next chapters</h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const first = (phone ? next.slice(0, 3) : next)[0];
-                    if (first) void start(first.book.id, first.chapter.id);
-                  }}
-                  className="tap inline-flex h-9 shrink-0 items-center rounded-full border border-border px-4 text-base font-semibold text-fg hover:bg-raised"
-                >
-                  Play next
-                </button>
-              </div>
-              <div className="grid gap-x-8 gap-y-1 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
-                {(phone ? next.slice(0, 3) : next).map((item) => (
-                  <NextChapterRow
-                    key={item.chapter.id}
-                    item={item}
-                    phone={phone}
-                    onStart={() => void start(item.book.id, item.chapter.id)}
-                  />
-                ))}
-              </div>
             </section>
           )}
 

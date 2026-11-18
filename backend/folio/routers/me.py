@@ -192,13 +192,12 @@ def home(
     language: str | None = None,
     max_minutes: int | None = Query(default=None, ge=1),
 ) -> dict[str, Any]:
-    """Home shelves (Direction D §5.3): continue, next_chapters, recent.
+    """Home shelves (Direction D §5.3): continue and recent.
 
     The chip filters map onto the shelves: ``status`` only ever matches
-    ``in_progress`` for the continue/next shelves (they are in-progress by
+    ``in_progress`` for the continue shelf (it is in-progress by
     definition), language and max_minutes apply everywhere.
     """
-    cps = get_settings().tts_chars_per_second
     book_filters = []
     if language:
         book_filters.append(Book.language == language)
@@ -223,7 +222,6 @@ def home(
         ]
 
     continue_items: list[dict[str, Any]] = []
-    next_items: list[dict[str, Any]] = []
     for row, book in rows:
         chapter = db.get(Chapter, row.chapter_id)
         titles = display_titles(db.scalars(select(Chapter).where(Chapter.book_id == book.id)).all())
@@ -244,29 +242,6 @@ def home(
                 "time_left_s": max(0.0, book.est_duration_s * (1 - row.percent / 100)),
             }
         )
-        if chapter is not None:
-            nxt = db.scalar(
-                select(Chapter)
-                .where(
-                    Chapter.book_id == book.id,
-                    Chapter.idx > chapter.idx,
-                    Chapter.excluded.is_(False),
-                )
-                .order_by(Chapter.idx)
-            )
-            if nxt is not None:
-                next_items.append(
-                    {
-                        "book": _public(book, user),
-                        "chapter": {
-                            "id": str(nxt.id),
-                            "idx": nxt.idx,
-                            "number": _included_number(db, book.id, nxt.idx),
-                            "title": titles[nxt.id],
-                            "duration_s": nxt.char_count / cps,
-                        },
-                    }
-                )
 
     recent_stmt = select(Book).where(*book_filters)
     progress_join = (Progress.book_id == Book.id) & (Progress.user_id == user.id)
@@ -290,7 +265,6 @@ def home(
     )
     return {
         "continue": continue_items,
-        "next_chapters": next_items,
         "recent": [_public(b, user) for b in recent],
     }
 
