@@ -17,6 +17,7 @@ import { ChapterNavButton, ChapterScrubber, PlayButton, SkipButton, SpeedButton,
 import { ListeningControls } from "./ListeningControls";
 import { AutoScrollToggle, ReadAlong, TextSizePicker, useReadAlongControls } from "./ReadAlong";
 import { ResumePrompt } from "./ResumePrompt";
+import { preparingPercent, preparingText } from "../player/preparing";
 
 type PanelTab = "next" | "read" | "about";
 const TABS: { id: PanelTab; label: string }[] = [
@@ -151,9 +152,23 @@ function PlayerStatus() {
   return (
     <div aria-live="polite" className="text-center">
       {player.preparing && (
-        <p role="status" className="text-sm text-fg-2">
-          Preparing audio…
-        </p>
+        <>
+          <p role="status" className="text-sm tabular text-fg-2">
+            {preparingText(player.preparingProgress)}
+          </p>
+          {player.preparingProgress && player.preparingProgress.total > 1 && (
+            <div
+              aria-hidden
+              data-preparing-bar
+              className="mx-auto mt-1.5 h-1 w-40 overflow-hidden rounded-full bg-border"
+            >
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-300"
+                style={{ width: `${preparingPercent(player.preparingProgress)}%` }}
+              />
+            </div>
+          )}
+        </>
       )}
       {player.error && (
         <p role="alert" className="text-sm text-danger">

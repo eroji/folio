@@ -267,6 +267,22 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
         instructions = engine_instructions(
             session, settings, row.voice, book.genre if book else None
         )
+
+        def progress(done: int, total: int) -> None:
+            # "4 of 11 sentences" for the player; no status change, so the
+            # player only redraws (no re-prepare).
+            notify(
+                session,
+                {
+                    "event": "audio",
+                    "book_id": book_id,
+                    "segment_id": str(row.segment_id),
+                    "status": "generating",
+                    "done": done,
+                    "total": total,
+                },
+            )
+
         with TtsClient(settings) as client:
             audio, _ = get_or_synthesize(
                 session,
@@ -276,6 +292,7 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
                 row.voice,
                 instructions,
                 language=book.language if book else "en",
+                on_progress=progress,
             )
         row.cache_key, row.status, row.error = audio.cache_key, "ready", None
     except TtsError as exc:

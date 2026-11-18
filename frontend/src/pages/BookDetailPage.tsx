@@ -40,6 +40,7 @@ import { Switch } from "../components/Switch";
 import { formatTime } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import type { Candidate, Chapter } from "../api/types";
+import { preparingPercent } from "../player/preparing";
 
 /** "4 h 12 m" / "36 m" for meta and time-left lines. */
 function formatLength(seconds: number): string {
@@ -347,7 +348,9 @@ export function BookDetailPage() {
     : playingHere
       ? "Pause"
       : preparingHere
-        ? "Preparing…"
+        ? loadedHere && preparingPercent(player.preparingProgress) !== null
+          ? `Preparing… ${preparingPercent(player.preparingProgress)}%`
+          : "Preparing…"
         : finished
           ? "Play again"
           : resumeChapter || loadedHere

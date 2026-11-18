@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installMockEventSource } from "../test/eventsource";
+import { installMockEventSource, MockEventSource } from "../test/eventsource";
 import { BOOK_ID, CH1, CH2, installPlayerFetch, makeProgress, renderPlayer, stubMedia } from "../test/player";
 import type { AudioStatus } from "../api/audio";
 import { deviceLabel } from "../api/progress";
@@ -115,6 +115,43 @@ describe("PlayerBar", () => {
     expect(getPlayer().playing).toBe(true);
     expect(within(bar).queryByRole("status")).toBeNull();
     expect(within(bar).getByText("Dune · Frank Herbert")).toBeTruthy();
+  });
+
+  it("counts the sentences of the segment being prepared", async () => {
+    vi.useFakeTimers();
+    installPlayerFetch({ statuses: { [`${CH1}-seg0`]: "generating" } });
+    const getPlayer = await loadBar();
+    await act(async () => {
+      getPlayer().toggle();
+    });
+    const bar = screen.getByRole("region", { name: "Now playing" });
+    const prepares = () =>
+      vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/audio/prepare")).length;
+    const before = prepares();
+    act(() => {
+      MockEventSource.instances[0]!.emit("audio", {
+        book_id: BOOK_ID,
+        segment_id: `${CH1}-seg0`,
+        status: "generating",
+        done: 4,
+        total: 11,
+      });
+    });
+    expect(getPlayer().preparingProgress).toEqual({ done: 4, total: 11 });
+    expect(within(bar).getByRole("status").textContent).toBe("Preparing audio… 4 of 11 sentences");
+    expect(prepares()).toBe(before); // a progress frame only redraws, it never re-prepares
+
+    act(() => {
+      // Progress for another segment (the lookahead) is not what we wait on.
+      MockEventSource.instances[0]!.emit("audio", {
+        book_id: BOOK_ID,
+        segment_id: `${CH1}-seg1`,
+        status: "generating",
+        done: 9,
+        total: 9,
+      });
+    });
+    expect(within(bar).getByRole("status").textContent).toBe("Preparing audio… 4 of 11 sentences");
   });
 
   it("speed button opens a card with a horizontal slider and a labelled tick per speed", async () => {

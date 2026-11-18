@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -139,6 +140,7 @@ def get_or_synthesize(
     voice: str,
     instructions: str = "",
     language: str = "en",
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> tuple[Audio, bool]:
     """Return ``(audio_row, was_cached)``; a cache hit makes no HTTP call.
 
@@ -146,7 +148,8 @@ def get_or_synthesize(
     clips are joined into one file: a cloned voice drifts and picks up
     artifacts late in one long generation. The clip records where each
     request starts (``marks``) for read-along. ``language`` picks the
-    sentence splitter.
+    sentence splitter. ``on_progress(done, total)`` is called from this
+    thread as the sentences finish (from 0), when there is more than one.
     """
     normalized = normalize_speech_text(text)
     key = speech_cache_key(settings, voice, normalized, instructions, language)
@@ -161,8 +164,20 @@ def get_or_synthesize(
     # requests: 8 sentences took 6.0 s one by one, 2.1 s four at a time); map
     # keeps reading order however they finish, and the first error propagates.
     workers = max(1, min(len(pieces), settings.tts_concurrency))
+    report = on_progress if len(pieces) > 1 else None
+    if report:
+        report(0, len(pieces))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(lambda p: client.synthesize(p.text, voice, instructions), pieces))
+        futures = {
+            pool.submit(client.synthesize, piece.text, voice, instructions): index
+            for index, piece in enumerate(pieces)
+        }
+        ordered: list[tuple[bytes, str] | None] = [None] * len(pieces)
+        for done, future in enumerate(as_completed(futures), start=1):
+            ordered[futures[future]] = future.result()  # the first error propagates
+            if report:
+                report(done, len(pieces))
+    results = [result for result in ordered if result is not None]
     clips = [clip for clip, _ in results]
     formats = {piece_fmt for _, piece_fmt in results}
     if len(formats) != 1:
