@@ -12,7 +12,7 @@ _RATES = (96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 
 _SAMPLES_PER_BLOCK = 1024
 
 
-def _skip_id3(data: bytes) -> int:
+def id3_size(data: bytes) -> int:
     if len(data) >= 10 and data[:3] == b"ID3":
         size = data[6] << 21 | data[7] << 14 | data[8] << 7 | data[9]  # syncsafe
         return 10 + size + (10 if data[5] & 0x10 else 0)  # footer flag
@@ -25,7 +25,7 @@ def adts_duration(data: bytes) -> float:
     Stops at the first byte run that is not a valid ADTS header (trailing
     padding or garbage), so the sum only ever counts whole frames.
     """
-    pos = _skip_id3(data)
+    pos = id3_size(data)
     samples = 0
     rate = 0
     while pos + 7 <= len(data):

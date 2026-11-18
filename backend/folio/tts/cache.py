@@ -1,8 +1,9 @@
 """Content-addressed audio cache: keys, paths, synthesis and LRU eviction.
 
 A segment is synthesized once per (endpoint, model, voice, format, normalized
-text, narration instruction); the key deliberately excludes playback speed because
-speed is a browser ``playbackRate`` only (spec: Backend contract). Files live under
+text, narration instruction, request size when it was split); the key
+deliberately excludes playback speed because speed is a browser
+``playbackRate`` only (spec: Backend contract). Files live under
 ``DATA_DIR/audio/<key[:2]>/<key>.<ext>``.
 """
 
@@ -18,9 +19,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from folio.config import Settings
+from folio.ingest.segment import split_for_speech
 from folio.models.audio import Audio, SegmentAudio
 from folio.storage import audio_path, ensure_dirs
+from folio.tts import TtsError
 from folio.tts.adts import adts_duration
+from folio.tts.join import join_clips
 from folio.tts.text import normalize_speech_text
 
 if TYPE_CHECKING:
@@ -30,22 +34,54 @@ _RECENT = timedelta(minutes=10)  # never evict a file created in the last 10 min
 
 
 def cache_key(
-    model: str, voice: str, fmt: str, text: str, instructions: str = "", endpoint: str = ""
+    model: str,
+    voice: str,
+    fmt: str,
+    text: str,
+    instructions: str = "",
+    endpoint: str = "",
+    request_chars: int = 0,
 ) -> str:
-    """sha256 of ``[endpoint|]model|voice|fmt|text[|instructions]``.
+    """sha256 of ``[endpoint|]model|voice|fmt|text[|instructions][|req=N]``.
 
     The endpoint is part of the seed because two engines serve different audio
     under the same voice id: without it, switching ``TTS_BASE_URL`` replays the
     old engine's clips (and any id the new engine substitutes stays poisoned
-    under that id). Empty instructions/endpoint are not appended, so keys
-    without them are unchanged.
+    under that id). ``request_chars`` is set only for text synthesized as
+    several requests, so clips made as one long generation are replaced. Empty
+    instructions/endpoint/request size are not appended, so keys without them
+    are unchanged.
     """
     seed = f"{model}|{voice}|{fmt}|{text}"
     if endpoint:
         seed = f"{endpoint}|{seed}"
     if instructions:
         seed += f"|{instructions}"
+    if request_chars:
+        seed += f"|req={request_chars}"
     return hashlib.sha256(seed.encode()).hexdigest()
+
+
+def speech_pieces(settings: Settings, normalized: str, language: str) -> list[str]:
+    """The requests one normalized text is synthesized as (TTS_REQUEST_CHARS)."""
+    return split_for_speech(normalized, language, settings.tts_request_chars)
+
+
+def speech_cache_key(
+    settings: Settings, voice: str, normalized: str, instructions: str, language: str
+) -> str:
+    """The key ``get_or_synthesize`` files ``normalized`` under; the queue's
+    ``prepare`` must compute the same one to find the clip."""
+    split = len(speech_pieces(settings, normalized, language)) > 1
+    return cache_key(
+        settings.tts_model,
+        voice,
+        settings.tts_format,
+        normalized,
+        instructions,
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
+        request_chars=settings.tts_request_chars if split else 0,
+    )
 
 
 def cache_path(settings: Settings, key: str, fmt: str) -> Path:
@@ -75,24 +111,33 @@ def get_or_synthesize(
     text: str,
     voice: str,
     instructions: str = "",
+    language: str = "en",
 ) -> tuple[Audio, bool]:
-    """Return ``(audio_row, was_cached)``; a cache hit makes no HTTP call."""
+    """Return ``(audio_row, was_cached)``; a cache hit makes no HTTP call.
+
+    Text longer than ``TTS_REQUEST_CHARS`` goes out as several requests of
+    whole sentences, one after another, and the clips are joined into one
+    file: a cloned voice drifts and picks up artifacts late in one long
+    generation. ``language`` picks the sentence splitter.
+    """
     normalized = normalize_speech_text(text)
-    key = cache_key(
-        settings.tts_model,
-        voice,
-        settings.tts_format,
-        normalized,
-        instructions,
-        endpoint=(settings.tts_base_url or "").rstrip("/"),
-    )
+    key = speech_cache_key(settings, voice, normalized, instructions, language)
     row = session.get(Audio, key)
     if row is not None and Path(row.path).exists():
         row.last_played_at = datetime.now(UTC)
         session.commit()
         return row, True
 
-    data, fmt = client.synthesize(normalized, voice, instructions)
+    clips: list[bytes] = []
+    formats: set[str] = set()
+    for piece in speech_pieces(settings, normalized, language):
+        clip, piece_fmt = client.synthesize(piece, voice, instructions)
+        clips.append(clip)
+        formats.add(piece_fmt)
+    if len(formats) != 1:
+        raise TtsError("The TTS engine changed audio format mid-segment.", code="tts_bad_audio")
+    fmt = formats.pop()
+    data = join_clips(clips, fmt)
     path = cache_path(settings, key, fmt)
     ensure_dirs(path.parent)
     tmp = path.parent / f"{path.name}.part"

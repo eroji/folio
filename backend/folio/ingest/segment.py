@@ -93,14 +93,9 @@ def _split_span(
     ]
 
 
-def segment_chapter(chapter: Any, language: str, max_chars: int = 800) -> SegmentedChapter:
-    """Segment a cleaned chapter (duck-typed ``.title``/``.text``).
-
-    Sentences are packed greedily into segments of at most ``max_chars``; a
-    sentence is only split when it alone exceeds the limit.
-    """
-    text = chapter.text
-    sentences = _locate(text, split_sentences(text, language))
+def _pack(text: str, sentences: list[SegmentedSentence], max_chars: int) -> list[SegmentedSentence]:
+    """Pack sentences greedily into pieces of at most ``max_chars``; a sentence
+    is only split (at clauses, then words) when it alone exceeds the limit."""
     segments: list[SegmentedSentence] = []
     group_open = False
     group_start = group_end = 0
@@ -113,4 +108,23 @@ def segment_chapter(chapter: Any, language: str, max_chars: int = 800) -> Segmen
         group_start, group_end, group_open = sentence.char_start, sentence.char_end, True
     if group_open:
         segments += _split_span(text, group_start, group_end, max_chars)
+    return segments
+
+
+def segment_chapter(chapter: Any, language: str, max_chars: int = 800) -> SegmentedChapter:
+    """Segment a cleaned chapter (duck-typed ``.title``/``.text``) into
+    sentences and TTS-length segments of at most ``max_chars``."""
+    text = chapter.text
+    sentences = _locate(text, split_sentences(text, language))
+    segments = _pack(text, sentences, max_chars)
     return SegmentedChapter(title=chapter.title, text=text, sentences=sentences, segments=segments)
+
+
+def split_for_speech(text: str, language: str, max_chars: int) -> list[str]:
+    """One segment's text as the pieces sent to the engine, one request each
+    (``TTS_REQUEST_CHARS``): whole sentences packed up to ``max_chars``.
+    ``max_chars`` 0, or a text that already fits, is a single piece."""
+    if max_chars <= 0 or len(text) <= max_chars:
+        return [text]
+    pieces = _pack(text, _locate(text, split_sentences(text, language)), max_chars)
+    return [piece.text.strip() for piece in pieces if piece.text.strip()] or [text]
