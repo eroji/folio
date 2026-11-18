@@ -34,3 +34,14 @@ export function timeForFraction(fraction: number, duration: number, marks?: Mark
   const share = to > from ? (clamped - from) / (to - from) : 0;
   return start + share * (end - start);
 }
+
+/** Share of the text where the sentence being spoken at `t` begins: a new
+ * voice restarts there (its clip has a different length and pace). Without
+ * marks, the share spoken so far. */
+export function sentenceStartFraction(t: number, duration: number, marks?: Marks | null): number {
+  const fraction = spokenFraction(t, duration, marks);
+  if (!marks || marks.length < 2) return fraction;
+  let start = 0;
+  for (const [from] of marks) if (from <= fraction) start = from;
+  return start;
+}

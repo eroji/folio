@@ -40,6 +40,7 @@ import {
 import type { ResumePromptProps } from "../components/ResumePrompt";
 import type { Book, BookDetailResponse, Chapter, Progress } from "../api/types";
 import { forgetClosed, rememberClosed } from "./closed";
+import { sentenceStartFraction, timeForFraction } from "./marks";
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
 export const TTS_LOOKAHEAD = 6;
@@ -183,6 +184,9 @@ interface Machine {
   /** Chapter just played to its end: the next save marks it listened (and
    * its next visit starts over). Cleared by any move inside a chapter. */
   chapterDone: string | null;
+  /** After a voice change: the share of the segment's text to restart at once
+   * the new voice's clip (and its length) is known. */
+  voiceSwap: { segment: string; fraction: number } | null;
   resumeLoading: boolean; // resume not applied yet: saves stay quiet
   finished: boolean;
   finishedMarked: boolean; // the finished PUT fires once per session
@@ -219,7 +223,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, prebuffering: false, progress: {}, error: null,
-    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null, chapterDone: null,
+    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null, chapterDone: null, voiceSwap: null,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
   const el = useMemo(() => new Audio(), []);
@@ -243,6 +247,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     !/\b(?:Chrome|Chromium|Edg|OPR|Firefox)\//.test(navigator.userAgent);
   /** The element is playing (or holds) the book stream. */
   const streaming = () => s.stream !== null && s.loaded === s.stream.url;
+  /** Forget the stream. The element may still hold it and fire one more
+   * timeupdate (pausing queues one) on the stream's clock, which must never be
+   * read as an offset into the current segment: let go of it too. */
+  const dropStream = () => {
+    if (streaming()) s.loaded = null;
+    s.stream = null;
+  };
   const entryIndexOf = (segmentId: string | undefined) =>
     s.stream && segmentId ? s.stream.entries.findIndex((e) => e.segment_id === segmentId) : -1;
   /** Index of the stream entry playing at stream time `t`, or -1 past the listed run. */
@@ -607,18 +618,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // one in-flight prepare is enough and dozens would exhaust the browser.
     if (toppingUp.current) return;
     toppingUp.current = true;
+    const voice = effectiveVoice(s.book);
+    let stale = false;
     try {
-      const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, effectiveVoice(s.book));
-      s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
-      s.streamVoice = res.stream && res.voice ? res.voice : null;
-      if (s.playing) fetchNextClip();
+      const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, voice);
+      // The voice changed while this was in flight: its statuses and stream
+      // are the old voice's. Ask again instead of playing them.
+      stale = !s.book || effectiveVoice(s.book) !== voice;
+      if (!stale) {
+        s.status = { ...s.status, ...Object.fromEntries(res.items.map((item) => [item.segment_id, item])) };
+        s.streamVoice = res.stream && res.voice ? res.voice : null;
+        applyVoiceSwap();
+        if (s.playing) fetchNextClip();
+      }
     } catch (error) {
       fail(error instanceof Error ? error.message : "Could not reach the server.");
     } finally {
       toppingUp.current = false;
     }
+    if (stale) {
+      void topUp();
+      return;
+    }
     pump();
     bump();
+  }
+
+  /** Once the new voice's clip for the segment exists, place the restart at
+   * the same sentence in it. */
+  function applyVoiceSwap() {
+    const swap = s.voiceSwap;
+    if (!swap) return;
+    if (s.segments[s.index]?.id !== swap.segment) {
+      s.voiceSwap = null;
+      return;
+    }
+    const item = s.status[swap.segment];
+    if (item?.status !== "ready" || !item.duration_s) return;
+    s.offset = timeForFraction(swap.fraction, item.duration_s, item.marks);
+    s.time = s.offset;
+    s.voiceSwap = null;
   }
 
   /** Book narrator wins over the per-language preference (server: book →
@@ -654,6 +693,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!book || !chapter) return;
     if (!s.resumeLoading && s.segments.length > 0) saveNow(); // chapter change: save the old position
     s.chapterDone = null;
+    s.voiceSwap = null;
     silence(); // never let the old chapter's element keep running under the new one
     s.chapterIdx = idx;
     s.segments = [];
@@ -771,7 +811,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (switching) {
         // Never carry the previous book's position into the new one.
         silence();
-        s.stream = null;
+        dropStream();
         s.streamVoice = null;
         s.chapterIdx = 0;
         s.segments = [];
@@ -912,7 +952,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     saveNow(); // never lose the position we stop at
     for (const objectUrl of clips.current.values()) URL.revokeObjectURL(objectUrl);
     clips.current.clear();
-    s.stream = null;
+    dropStream();
     s.streamVoice = null;
     s.book = null;
     s.chapters = [];
@@ -945,10 +985,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Read the live element while playing so the reload resumes exactly where
     // the listener was, not at the last (throttled) timeupdate.
     const offset = s.playing ? liveTime() : s.time;
+    const segment = s.segments[s.index];
+    const old = segment ? s.status[segment.id] : undefined;
+    // The new voice's clip has another length and pace: restart at the same
+    // sentence (placed once its clip exists), not at the old clip's second.
+    s.voiceSwap =
+      segment && old?.duration_s
+        ? { segment: segment.id, fraction: sentenceStartFraction(offset, old.duration_s, old.marks) }
+        : null;
     s.offset = offset;
     s.time = offset;
     silence();
-    s.stream = null; // the new voice is a different stream
+    dropStream(); // the new voice is a different stream
+    s.loaded = null; // the element holds the old voice: the next start loads the new one
     s.status = {};
     prefetchedChapter.current = null; // the new voice has to be synthesized for the whole chapter
     // A playing listener buffers the lookahead before resuming; a paused one
@@ -963,6 +1012,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   function seekSegment(index: number, offsetSeconds: number) {
     if (index < 0 || index >= s.segments.length) return;
     s.chapterDone = null; // a move inside the chapter: it is being listened to again
+    s.voiceSwap = null; // an explicit place wins over the voice-change restart
     if (streaming()) {
       const at = entryIndexOf(s.segments[index]!.id);
       if (at >= 0) {
@@ -977,7 +1027,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         bump();
         return;
       }
-      s.stream = null; // outside it: the next pump starts a stream there
+      dropStream(); // outside it: the next pump starts a stream there
     }
     s.index = index;
     s.offset = Math.max(0, offsetSeconds);
