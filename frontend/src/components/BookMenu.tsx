@@ -3,9 +3,10 @@ import clsx from "clsx";
 import { Icon } from "./Icon";
 
 /** ⋮ book menu (Direction D "Book page" item 6), visible to every listener:
- * Mark as finished/unfinished, Reset progress, Narrator voice (row menus
- * only, and only when the caller passes onNarrator — the book page has its
- * own "Narrated by" row) and Go to author. Raised fill, 12px
+ * Mark as finished/unfinished, Reset progress, Narrator voice (only when
+ * the caller passes onNarrator: row menus and the desktop book page, for
+ * editors; the phone book page has a "Narrated by" row instead) and Go to
+ * author. Raised fill, 12px
  * radius, 40px rows. variant "inline": 44px outlined pill trigger next to the
  * primary action (desktop); variant "header": borderless 44px trigger for the
  * phone header. Keyboard: arrows open/cycle, Escape closes and refocuses. */

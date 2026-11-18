@@ -748,6 +748,44 @@ describe("BookDetailPage", () => {
     expect(screen.queryByRole("menuitem", { name: "Narrator voice" })).toBeNull();
   });
 
+  it("on desktop the narrator is in the ⋮ menu beside Resume, with no row", async () => {
+    stubViewport(true);
+    book = makeBook({ narrator_voice: "ashley-en", can_edit: true });
+    renderDetail();
+    await screen.findByRole("button", { name: "Play" });
+    expect(screen.queryByRole("button", { name: /^Narrator voice, / })).toBeNull();
+    expect(screen.queryByText(/Narrated by/)).toBeNull();
+    await openMore();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Narrator voice" }));
+    const dialog = await screen.findByRole("dialog", { name: "Narrator voice" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Zoe" }));
+    await vi.waitFor(() => expect(lastPatchBody()).toEqual({ narrator_voice: "zoe-en" }));
+  });
+
+  it("on desktop the narrator reload still runs after the menu's dialog closes", async () => {
+    stubViewport(true);
+    book = makeBook({ can_edit: true });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Play" }));
+    await vi.waitFor(() => expect(prepareCalls.some((call) => call.segment_id === "s1")).toBe(true));
+    const before = prepareCalls.length;
+    await openMore();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Narrator voice" }));
+    const dialog = await screen.findByRole("dialog", { name: "Narrator voice" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Zoe" }));
+    await vi.waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
+    expect(prepareCalls.some((call) => call.voice === "zoe-en")).toBe(true);
+  });
+
+  it("on desktop listeners who cannot edit get no Narrator voice menu item", async () => {
+    stubViewport(true);
+    book = makeBook({ can_edit: false });
+    renderDetail();
+    await openMore();
+    await screen.findByRole("menuitem", { name: "Go to author" });
+    expect(screen.queryByRole("menuitem", { name: "Narrator voice" })).toBeNull();
+  });
+
   it("falls back to the server default voice for the book's language", async () => {
     book = makeBook({ narrator_voice: null, can_edit: true });
     renderDetail();

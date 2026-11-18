@@ -67,7 +67,24 @@ function useNarratorDialog(book: Book) {
   return { openDialog: () => setOpen(true), dialog };
 }
 
-/** Book page: a full-width row directly under Play / Resume. */
+/** The modal voice dialog for a menu entry (desktop book page ⋮). Render it
+ * always and toggle `open`: the PATCH lives here, so the voice reload still
+ * runs after the dialog has closed. */
+export function NarratorPicker({ book, open, onClose }: { book: Book; open: boolean; onClose: () => void }) {
+  const change = useChangeNarrator(book);
+  if (!open) return null;
+  return (
+    <NarratorVoiceDialog
+      value={book.narrator_voice}
+      language={book.language}
+      error={change.error}
+      onClose={onClose}
+      onSelect={change.select}
+    />
+  );
+}
+
+/** Phone book page: a full-width row directly under Play / Resume. */
 export function NarratorRow({ book, canChange }: { book: Book; canChange: boolean }) {
   const { label } = useNarrator(book);
   const { openDialog, dialog } = useNarratorDialog(book);
