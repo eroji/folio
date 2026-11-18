@@ -12,6 +12,7 @@ import { BookCover } from "./BookCard";
 import { Icon } from "./Icon";
 import { ListeningControls } from "./ListeningControls";
 import { ChapterNavButton, PlayButton, SkipButton, iconButton, timeAgo } from "./PlayerControls";
+import { preparingText } from "../player/preparing";
 
 export function PlayerBar() {
   const player = usePlayer();
@@ -54,8 +55,8 @@ export function PlayerBar() {
         <span className="flex min-w-0 flex-col text-left">
           <span className="truncate text-md font-semibold text-fg">{player.chapter?.title}</span>
           {player.preparing ? (
-            <span role="status" className="truncate text-sm text-fg-2">
-              Preparing audio…
+            <span role="status" className="truncate text-sm tabular text-fg-2">
+              {preparingText(player.preparingProgress)}
             </span>
           ) : (
             <span className="truncate text-sm text-fg-2">{subtitle}</span>

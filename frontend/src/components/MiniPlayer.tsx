@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
 import { PlayButton, SkipButton } from "./PlayerControls";
+import { preparingText } from "../player/preparing";
 
 export function MiniPlayer() {
   const player = usePlayer();
@@ -32,8 +33,8 @@ export function MiniPlayer() {
         <span className="flex min-w-0 flex-col text-left">
           <span className="truncate text-md font-semibold text-fg">{player.chapter?.title}</span>
           {player.preparing ? (
-            <span role="status" className="truncate text-sm text-fg-2">
-              Preparing audio…
+            <span role="status" className="truncate text-sm tabular text-fg-2">
+              {preparingText(player.preparingProgress)}
             </span>
           ) : (
             <span className="truncate text-sm text-fg-2">{book.title}</span>

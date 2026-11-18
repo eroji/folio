@@ -205,6 +205,39 @@ def test_sentences_are_synthesized_in_parallel_up_to_the_cap_and_kept_in_order(
     assert adts_duration(Path(row.path).read_bytes()) == pytest.approx(row.duration_s)
 
 
+def test_progress_is_reported_as_sentences_finish(db: Session, settings: Settings) -> None:
+    """The player shows "4 of 12 sentences" while a segment is prepared."""
+    import threading
+
+    seen: list[tuple[int, int, str]] = []
+    get_or_synthesize(
+        db,
+        settings,
+        _CountingClient(),
+        _LONG,
+        "tess",
+        language="en",
+        on_progress=lambda done, total: seen.append((done, total, threading.current_thread().name)),
+    )
+    assert [(done, total) for done, total, _ in seen] == [(n, 12) for n in range(13)]
+    # Reported from the caller's thread, so the callback may use its DB session.
+    assert {name for *_, name in seen} == {threading.current_thread().name}
+
+
+def test_a_cache_hit_or_single_request_reports_no_progress(db: Session, settings: Settings) -> None:
+    seen: list[tuple[int, int]] = []
+    for _ in range(2):
+        get_or_synthesize(
+            db,
+            settings,
+            _CountingClient(),
+            "Once upon a time.",
+            "tess",
+            on_progress=lambda done, total: seen.append((done, total)),
+        )
+    assert seen == []  # one request: nothing worth counting
+
+
 def test_mixed_formats_across_requests_fail_the_segment(db: Session, settings: Settings) -> None:
     from folio.tts import TtsError
 

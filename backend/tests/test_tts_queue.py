@@ -737,3 +737,30 @@ def test_prepare_keeps_a_ready_clip_of_the_same_text_whatever_its_split(
     _ready_on(db, segment, clip)
     window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
     assert (window[0][1].status, window[0][1].cache_key) == ("ready", "f" * 64)
+
+
+def test_run_tts_job_announces_sentence_progress(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _long_segment(db, book)
+    prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    row = claim_next_tts(db)
+    assert row is not None
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    frames: list[dict[str, Any]] = []
+    monkeypatch.setattr(queue_module, "notify", lambda _db, payload: frames.append(payload))
+
+    run_tts_job(db, settings, row)
+
+    progress = [f for f in frames if "done" in f]
+    assert progress[0] == {
+        "event": "audio",
+        "book_id": str(book.id),
+        "segment_id": str(segment.id),
+        "status": "generating",
+        "done": 0,
+        "total": 10,
+    }
+    assert [f["done"] for f in progress] == list(range(11))
+    assert frames[-1]["status"] == "ready" and "done" not in frames[-1]

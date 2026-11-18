@@ -97,6 +97,9 @@ export interface PlayerContextValue {
   status: Record<string, PreparedSegment>;
   playing: boolean;
   preparing: boolean;
+  /** While preparing: sentences of the awaited segment synthesized so far
+   * (from the worker's SSE frames); null before the first frame. */
+  preparingProgress: { done: number; total: number } | null;
   error: string | null;
   /** Seconds played within the current segment. */
   time: number;
@@ -158,6 +161,7 @@ interface Machine {
   playing: boolean;
   preparing: boolean;
   prebuffering: boolean; // a voice reload or a generation stall is filling its lookahead before (re)starting
+  progress: Record<string, { done: number; total: number }>; // segment id → sentences synthesized
   error: string | null;
   time: number;
   rate: number;
@@ -210,7 +214,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
-    intent: false, playing: false, preparing: false, prebuffering: false, error: null,
+    intent: false, playing: false, preparing: false, prebuffering: false, progress: {}, error: null,
     time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
@@ -1216,10 +1220,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const frame = JSON.parse((event as MessageEvent<string>).data) as {
           book_id?: string | null;
           segment_id?: string;
+          done?: number;
+          total?: number;
         };
         // Ignore other books and segments outside the current window.
         if (frame.book_id && frame.book_id !== s.book.id) return;
         if (frame.segment_id && !s.status[frame.segment_id]) return;
+        // Sentence progress: redraw "4 of 11 sentences"; nothing to re-prepare.
+        if (frame.segment_id && typeof frame.done === "number" && typeof frame.total === "number") {
+          s.progress[frame.segment_id] = { done: frame.done, total: frame.total };
+          bump();
+          return;
+        }
       } catch {
         return;
       }
@@ -1308,6 +1320,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     status: s.status,
     playing: s.playing,
     preparing: s.preparing,
+    preparingProgress: (s.preparing && s.progress[s.segments[s.index]?.id ?? ""]) || null,
     error: s.error,
     time: s.time,
     rate: s.rate,
