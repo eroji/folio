@@ -164,7 +164,9 @@ def _persist_chapters(
         row = Chapter(
             book_id=book.id,
             idx=idx,
-            title=chapter.title.strip() or f"Chapter {idx + 1}",
+            # No made-up title: folio.chapters numbers untitled chapters among
+            # the ones set to narrate when they are shown.
+            title=chapter.title.strip(),
             char_count=len(chapter.text),
         )
         session.add(row)

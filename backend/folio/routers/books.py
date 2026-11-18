@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session as DbSession
 
+from folio.chapters import display_titles
 from folio.config import Settings, get_settings
 from folio.db import get_session
 from folio.deps import can_edit_book, get_current_user
@@ -413,9 +414,13 @@ def get_book(
         select(Chapter).where(Chapter.book_id == book.id).order_by(Chapter.idx)
     ).all()
     row = db.get(Progress, (user.id, book.id))
+    titles = display_titles(chapters)
     return {
         "book": _public(book, user),
-        "chapters": [ChapterPublic.model_validate(c) for c in chapters],
+        "chapters": [
+            ChapterPublic.model_validate(c).model_copy(update={"title": titles[c.id]})
+            for c in chapters
+        ],
         "progress": progress_dict(row) if row else None,
     }
 
@@ -550,7 +555,9 @@ def patch_chapter(
             chars += segment.char_start if segment else 0
         saved.percent = min(100.0, max(0.0, chars / total * 100)) if total else 0.0
     db.commit()
-    return {"chapter": ChapterPublic.model_validate(chapter).model_dump(mode="json")}
+    titles = display_titles(db.scalars(select(Chapter).where(Chapter.book_id == book.id)).all())
+    public = ChapterPublic.model_validate(chapter).model_copy(update={"title": titles[chapter.id]})
+    return {"chapter": public.model_dump(mode="json")}
 
 
 @router.get("/{book_id}/chapters/{chapter_id}/segments")

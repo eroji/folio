@@ -546,12 +546,13 @@ export function BookDetailPage() {
           <span className="text-sm tabular text-fg-2">{included.length} of {data.chapters.length} on</span>
         </div>
         <p className="pb-1 text-base text-fg-2">Turn off front matter you don’t want read aloud.</p>
-        {/* Manage lists every chapter, excluded ones included, so it keeps
-            the original source numbering (chapter.idx + 1). */}
+        {/* Manage lists every chapter, excluded ones included. Titles come
+            from the server, which numbers untitled chapters among the narrated
+            ones, so no source-position prefix (it would contradict them). */}
         {(showAllChapters ? data.chapters : data.chapters.slice(0, 10)).map((chapter) => (
           <div key={chapter.id} className="flex min-h-11 items-center justify-between gap-3">
             <span className={clsx("min-w-0 flex-1 truncate text-md", chapter.excluded ? "text-fg-2" : "text-fg")}>
-              {chapter.idx + 1} · {chapter.title}
+              {chapter.title}
             </span>
             <span className="flex shrink-0 items-center gap-3.5">
               <span className="text-sm tabular text-fg-2">{formatTime(chapterSeconds(chapter))}</span>
