@@ -61,7 +61,8 @@ class Settings(BaseSettings):
     # 0 = one request per segment.
     tts_request_chars: int = Field(default=400, ge=0)
     tts_lookahead: int = 6
-    tts_concurrency: int = 2
+    # Most TTS requests in flight at once (a segment's sentences go out in parallel).
+    tts_concurrency: int = Field(default=4, ge=1)
     tts_chars_per_second: float = 15.0
     # Playback-speed grid the UI builds its slider from (handoff §Player):
     # positions are min + n*step up to max. Step > 0 is validated here so the
