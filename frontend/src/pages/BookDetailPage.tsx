@@ -36,6 +36,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { NarratorName, NarratorPicker, NarratorRow } from "../components/NarratorControl";
 import { PronunciationRules } from "../components/PronunciationRules";
+import { DeliveryNote } from "../components/DeliveryNote";
 import { StatusBadge } from "../components/StatusBadge";
 import { Switch } from "../components/Switch";
 import { formatTime } from "../player/PlayerProvider";
@@ -591,9 +592,19 @@ export function BookDetailPage() {
         <PronunciationRules bookId={id} />
       </section>
 
+      <section className="flex flex-col gap-2 border-t border-border py-4">
+        <span className="text-lg font-bold">Delivery note</span>
+        <p className="text-base text-fg-2">How this book should be narrated: tone, pace and setting.</p>
+        <DeliveryNote book={book} />
+      </section>
+
       <ManageRow
         title="Processing"
-        description={`${STATUS_LABELS[book.status] ?? book.status} · ${data.chapters.length} chapters. Reprocessing rebuilds chapters and clears generated audio; everyone’s progress is kept.`}
+        description={`${STATUS_LABELS[book.status] ?? book.status} · ${data.chapters.length} chapters. Reprocessing rebuilds chapters and clears generated audio; everyone’s progress is kept.${
+          book.status === "needs_ocr"
+            ? " This PDF is scanned: once OCR is switched on under Admin → Integrations, reprocessing reads it with the language model."
+            : ""
+        }`}
       >
         <button
           type="button"

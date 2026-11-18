@@ -3,6 +3,7 @@ import {
   useAddPronunciationRule,
   useDeletePronunciationRule,
   usePronunciationRules,
+  useSuggestPronunciation,
   useUpdatePronunciationRule,
   type PronunciationRule,
 } from "../api/pronunciation";
@@ -23,18 +24,24 @@ const EMPTY_DRAFT: Draft = { match: "", say: "", whole_word: false, after_number
 /** Book settings → Pronunciation rules (plan Task C): a table of match → say
  * replacements with the three flags, a remove button per row, and an "Add
  * rule" row. Every write is optimistic against the list cache and reverts on
- * error; text edits commit on blur so typing does not fire a PATCH per key. */
+ * error; text edits commit on blur so typing does not fire a PATCH per key.
+ * The language model's suggestions are listed apart, to accept (they then
+ * shape the speech) or dismiss; nothing about the audio changes before that. */
 export function PronunciationRules({ bookId }: { bookId: string }) {
   const { data, isPending, error: loadError } = usePronunciationRules(bookId);
   const add = useAddPronunciationRule(bookId);
   const update = useUpdatePronunciationRule(bookId);
   const remove = useDeletePronunciationRule(bookId);
+  const suggest = useSuggestPronunciation(bookId);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [edits, setEdits] = useState<Record<string, { match?: string; say?: string }>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const rules = data?.items ?? [];
+  const all = data?.items ?? [];
+  const rules = all.filter((rule) => !rule.suggested);
+  const suggestions = all.filter((rule) => rule.suggested);
+  const suggesting = Boolean(data?.suggesting) || suggest.isPending;
 
   const [draftOpen, setDraftOpen] = useState(false);
 
@@ -92,9 +99,20 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
     remove.mutate(rule.id, { onSuccess: done });
   }
 
+  function accept(rule: PronunciationRule) {
+    setSaved(false);
+    update.mutate({ ruleId: rule.id, patch: { suggested: false } }, { onSuccess: done });
+  }
+
   const error =
     formError ??
-    (add.isError || update.isError || remove.isError ? "The change could not be saved." : loadError instanceof Error ? loadError.message : null);
+    (suggest.isError
+      ? suggest.error.message
+      : add.isError || update.isError || remove.isError
+        ? "The change could not be saved."
+        : loadError instanceof Error
+          ? loadError.message
+          : null);
 
   const flags = (rule: PronunciationRule, index: number) =>
     (["whole_word", "after_number", "case_sensitive"] as const).map((field) => (
@@ -147,7 +165,7 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
         ))}
       </ul>
 
-      <div>
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setDraftOpen((open) => !open)}
@@ -157,7 +175,62 @@ export function PronunciationRules({ bookId }: { bookId: string }) {
           <Icon name="Plus" size={18} />
           Add rule
         </button>
+        {data?.can_suggest && (
+          <button type="button" onClick={() => suggest.mutate()} disabled={suggesting} className={outlinePill}>
+            <Icon name="Speech" size={18} />
+            {suggesting ? "Suggesting…" : "Suggest rules"}
+          </button>
+        )}
       </div>
+
+      {suggestions.length > 0 && (
+        <section aria-label="Suggested rules" className="mt-2 flex flex-col gap-1.5 rounded-lg bg-raised p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-md font-semibold">Suggested · {suggestions.length}</span>
+            <button
+              type="button"
+              onClick={() => suggestions.forEach(accept)}
+              className={outlinePill}
+            >
+              Accept all
+            </button>
+          </div>
+          <p className="text-sm text-fg-2">
+            From the language model. Nothing changes how the book sounds until you accept it.
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {suggestions.map((rule) => (
+              <li key={rule.id} className="flex flex-wrap items-center gap-2.5">
+                <span className="min-w-24 flex-1 truncate text-md font-medium">{rule.match}</span>
+                <Icon name="ChevronRight" size={16} className="shrink-0 text-fg-2" />
+                <input
+                  aria-label={`Say ${rule.match}`}
+                  value={edits[rule.id]?.say ?? rule.say}
+                  onChange={(event) => setEdits((current) => ({ ...current, [rule.id]: { ...current[rule.id], say: event.target.value } }))}
+                  onBlur={() => commitText(rule, "say")}
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  aria-label={`Accept ${rule.match}`}
+                  onClick={() => accept(rule)}
+                  className="tap grid size-9 shrink-0 place-items-center rounded-full text-fg hover:bg-border"
+                >
+                  <Icon name="Check" size={18} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Dismiss ${rule.match}`}
+                  onClick={() => removeRule(rule)}
+                  className="tap grid size-9 shrink-0 place-items-center rounded-full text-fg-2 hover:bg-border hover:text-danger"
+                >
+                  <Icon name="X" size={18} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {draftOpen && (
         <div className="flex flex-wrap items-center gap-2.5 rounded-lg bg-raised p-2">

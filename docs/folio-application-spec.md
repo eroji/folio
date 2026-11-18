@@ -18,7 +18,7 @@ Folio is a self-hosted, mobile-friendly web app that turns uploaded ebooks (EPUB
 ### Non-goals (v1)
 
 - DRM removal. DRM-protected and KFX Kindle files are rejected with a clear error.
-- OCR of scanned PDFs (detect and flag them instead; OCR can come later).
+- Hosting an OCR engine. Scanned PDFs are flagged `needs_ocr`; an admin-configured language model (Admin → Integrations) can read them instead (2026-11-18).
 - Hosting the TTS model itself. Folio is only a client of the TTS API.
 - Native mobile apps, public sign-up, or multi-tenant hosting.
 
@@ -135,7 +135,7 @@ Max upload size defaults to 200 MB (`MAX_UPLOAD_MB`). Detect type by magic bytes
 2. **Convert** Kindle formats to EPUB (`ebook-convert`, 5-minute timeout).
 3. **Extract text** per chapter. Strip scripts, styles, images, footnote back-links and page numbers; keep paragraph breaks.
 4. **Clean** text for speech: normalize Unicode (NFKC), collapse whitespace, drop repeated running headers/footers in PDFs (lines repeated on more than 50% of pages), join hyphenated line breaks.
-5. **Detect scanned PDFs**: under 200 extractable characters per page on average → status `needs_ocr`, book still added with metadata but marked not playable.
+5. **Detect scanned PDFs**: under 200 extractable characters per page on average → status `needs_ocr`, book still added with metadata but marked not playable. When OCR is switched on (Admin → Integrations), the language model reads every page without a text layer instead and the book continues as usual.
 6. **Segment** each chapter into sentences (use `pysbd` with the book's language), then group sentences into segments of at most `TTS_MAX_CHARS` (default 800). Never split a sentence unless it alone exceeds the limit; then split on commas or spaces.
 7. **Extract embedded metadata and cover** (see Metadata).
 8. **Fetch online metadata** if enabled.
@@ -170,7 +170,7 @@ Folio fills metadata from the file first, then from online sources, and every fi
 
 1. **Embedded**: EPUB OPF metadata, PDF document info, Calibre's `ebook-meta` for Kindle files.
 2. **Open Library** (`/search.json`, `/isbn/{isbn}.json`, covers from `covers.openlibrary.org`), no key required.
-3. **Google Books** (`/books/v1/volumes?q=`), optional `GOOGLE_BOOKS_API_KEY`.
+3. **Google Books** (`/books/v1/volumes?q=`), optional API key (Admin → Integrations, else `GOOGLE_BOOKS_API_KEY`); after a 429 it is paused for a few minutes.
 
 Match by ISBN when present, else by title + first author. Apply an online match automatically only when it's an ISBN match or a title/author similarity of 0.9 or higher; otherwise save the candidates and show "Review metadata matches" on the book page.
 

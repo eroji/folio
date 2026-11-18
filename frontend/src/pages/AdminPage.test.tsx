@@ -224,10 +224,10 @@ describe("AdminPage", () => {
     expect(screen.getByRole("tab", { name: "Cache" }).getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Cache" }), { key: "End" });
-    expect(screen.getByRole("tab", { name: "Voices" }).getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Voices" }));
+    expect(screen.getByRole("tab", { name: "Integrations" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Integrations" }));
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Voices" }), { key: "Home" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Integrations" }), { key: "Home" });
     expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Jobs" }));
   });
 

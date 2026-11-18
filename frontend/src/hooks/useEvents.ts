@@ -19,6 +19,8 @@ export function useEvents(): void {
       queryClient.invalidateQueries({ queryKey: ["books"] });
       if (frame.book_id) {
         queryClient.invalidateQueries({ queryKey: ["book", frame.book_id] });
+        // A finished suggestion job brings new rules (and a delivery note).
+        if (event.type === "job") queryClient.invalidateQueries({ queryKey: ["pronunciation", frame.book_id] });
       }
     };
     source.addEventListener("job", onFrame);

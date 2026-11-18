@@ -21,6 +21,7 @@ export type BookPatch = Partial<
     | "tags"
     | "genre"
     | "narrator_voice"
+    | "delivery_note"
   >
 >;
 
