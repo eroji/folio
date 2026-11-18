@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import SQLAlchemyError
@@ -58,6 +58,21 @@ def admin_health(
     return JSONResponse(status_code=200 if db == "ok" else 503, content=body)
 
 
+# The app shell revalidates on every load: without a Cache-Control header iOS
+# reused a heuristically cached index.html, and installed PWAs kept the old UI
+# after a deploy. version.json is what the app polls to notice a new build.
+_REVALIDATE = frozenset({"index.html", "sw.js", "version.json", "site.webmanifest"})
+
+
+class _ImmutableStaticFiles(StaticFiles):
+    """/assets: Vite puts a content hash in every file name, so cache for good."""
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Folio", version="0.1.0")
     register_error_handlers(app)
@@ -93,7 +108,9 @@ def create_app() -> FastAPI:
     index = STATIC_DIR / "index.html"
     if index.is_file():
         if (STATIC_DIR / "assets").is_dir():
-            app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+            app.mount(
+                "/assets", _ImmutableStaticFiles(directory=STATIC_DIR / "assets"), name="assets"
+            )
 
         @app.api_route(
             "/api/{path:path}",
@@ -107,8 +124,10 @@ def create_app() -> FastAPI:
         def spa(path: str) -> FileResponse:
             candidate = (STATIC_DIR / path).resolve()
             if path and candidate.is_file() and candidate.is_relative_to(STATIC_DIR.resolve()):
+                if candidate.name in _REVALIDATE:
+                    return FileResponse(candidate, headers={"Cache-Control": "no-cache"})
                 return FileResponse(candidate)
-            return FileResponse(index)
+            return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
     return app
 

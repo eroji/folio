@@ -2,9 +2,11 @@
  * column (cover with accent progress bar, title, author link, meta, clamped
  * description, progress line, white primary pill + outlined ⋮) and pill tabs
  * on the right (Chapters / About / Manage). Under 768px it becomes one
- * centered column with a back + ⋮ header. The narrator sits in a "Narrated
- * by" row right under the primary action (changeable by editors only).
- * Playback drives the shared player state only. */
+ * centered column with a back + ⋮ header. The narrator: on the phone a
+ * "Narrated by" row right under the primary action; on desktop an entry in
+ * the ⋮ beside it (the player bar already has a Narrator control for the
+ * playing book). Changeable by editors only. Playback drives the shared
+ * player state only. */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Link, useLocation, useMatch, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -31,7 +33,7 @@ import { CoverProgressBadge } from "../components/CoverProgressBadge";
 import { EditDetailsDrawer } from "../components/EditDetailsDrawer";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
-import { NarratorName, NarratorRow } from "../components/NarratorControl";
+import { NarratorName, NarratorPicker, NarratorRow } from "../components/NarratorControl";
 import { PronunciationRules } from "../components/PronunciationRules";
 import { StatusBadge } from "../components/StatusBadge";
 import { Switch } from "../components/Switch";
@@ -156,6 +158,7 @@ export function BookDetailPage() {
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [narratorOpen, setNarratorOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; undo?: boolean } | null>(null);
 
   useEffect(() => {
@@ -391,6 +394,8 @@ export function BookDetailPage() {
       onToggleFinished={(value) => toggleFinished.mutate(value)}
       onReset={() => setResetOpen(true)}
       onGoToAuthor={() => void navigate(authorHref)}
+      // Desktop only: the phone has its "Narrated by" row instead.
+      onNarrator={variant === "inline" && canManage ? () => setNarratorOpen(true) : undefined}
     />
   );
 
@@ -722,13 +727,11 @@ export function BookDetailPage() {
                 </span>
               </div>
             )}
-            <div className="flex flex-col gap-2.5">
-              <div className="flex items-center gap-2.5">
-                {primaryButton(false)}
-                {bookMenu("inline")}
-              </div>
-              <NarratorRow book={book} canChange={canManage} />
+            <div className="flex items-center gap-2.5">
+              {primaryButton(false)}
+              {bookMenu("inline")}
             </div>
+            {canManage && <NarratorPicker book={book} open={narratorOpen} onClose={() => setNarratorOpen(false)} />}
           </div>
           <div className="flex min-w-0 flex-col gap-5">
             <TabList tabs={tabs} active={activeTab} onSelect={setTab} />

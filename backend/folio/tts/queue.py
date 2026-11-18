@@ -31,12 +31,12 @@ from folio.models import (
 from folio.tts import (
     TtsClient,
     TtsError,
-    cache_key,
     discover_voices,
     get_or_synthesize,
     normalize_speech_text,
     select_voice,
 )
+from folio.tts.cache import speech_cache_key
 from folio.tts.narration import engine_instructions
 from folio.tts.pronunciation import apply_rules
 from folio.voice_catalog import effective_defaults
@@ -174,13 +174,12 @@ def prepare(
     # player re-prepare on each frame and floods the browser.
     changed: list[tuple[Segment, SegmentAudio, bool]] = []
     for offset, segment in enumerate(segments[start : start + count + 1]):
-        key = cache_key(
-            settings.tts_model,
+        key = speech_cache_key(
+            settings,
             voice,
-            settings.tts_format,
             normalize_speech_text(apply_rules(segment.text, rules)),
             instructions,
-            endpoint=(settings.tts_base_url or "").rstrip("/"),
+            book.language,
         )
         audio = session.get(Audio, key)
         if audio is not None and not Path(audio.path).is_file():
@@ -263,6 +262,7 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
                 apply_rules(segment.text, rules),
                 row.voice,
                 instructions,
+                language=book.language if book else "en",
             )
         row.cache_key, row.status, row.error = audio.cache_key, "ready", None
     except TtsError as exc:

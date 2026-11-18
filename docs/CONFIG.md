@@ -42,6 +42,7 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 | `TTS_VOICES_TTL` | `600` | optional | Seconds the discovered voice list is cached. |
 | `TTS_VOICE_LANG_PATTERN` | `-(en\|ja\|kr\|ko\|zh)$` | optional | Language suffix matched from voice IDs; `kr` is treated as `ko`. |
 | `TTS_MAX_CHARS` | `800` | optional | Max characters per TTS segment. |
+| `TTS_REQUEST_CHARS` | `300` | optional | Max characters per TTS request. A longer segment is sent as several requests of whole sentences and the clips are joined (cloned voices degrade late in one long generation). `0` sends each segment as one request. Changing it re-synthesizes split segments on demand. |
 | `TTS_LOOKAHEAD` | `6` | optional | Segments generated ahead of playback. |
 | `TTS_CONCURRENCY` | `2` | optional | Max parallel TTS requests across all users (shared GPU). |
 | `TTS_CHARS_PER_SECOND` | `15` | optional | Duration estimate before audio exists. |

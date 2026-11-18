@@ -3,7 +3,7 @@
  * other /api/ call are network-only: audio must never live in the cache
  * (docs/folio-application-spec.md, PWA). Bump VERSION when the shell changes;
  * activate deletes everything from older versions. */
-const VERSION = "folio-v3";
+const VERSION = "folio-v4";
 const SHELL_CACHE = VERSION + "-shell";
 const CONTENT_CACHE = VERSION + "-content";
 const SHELL = [
@@ -22,9 +22,11 @@ const SHELL = [
  * file with a fake `self`.
  * - "network": never touch the cache (audio, SSE, API, non-GET).
  * - "cache":   cache-first with background refresh (assets, covers, icons).
- * - "navigate": network-first, /offline.html when offline. */
+ * - "navigate": network-first, /offline.html when offline.
+ * - "/version.json" is network-only: the app compares it with its own build. */
 function routeFor(path, method, mode) {
   if (method !== "GET") return "network";
+  if (path === "/version.json") return "network"; // the app's new-build check
   if (path.indexOf("/api/") !== 0) return mode === "navigate" ? "navigate" : "cache";
   if (path.indexOf("/api/v1/audio/") === 0) return "network";
   if (/^\/api\/v1\/books\/[^/]+\/cover(\?|$)/.test(path)) return "cache";
@@ -68,7 +70,9 @@ async function cacheFirst(event, request) {
 
 async function navigate(request) {
   try {
-    const response = await fetch(request);
+    // Revalidate even if the HTTP cache holds a copy: iOS kept serving an old
+    // index.html (no Cache-Control) to installed PWAs after a deploy.
+    const response = await fetch(request, { cache: "no-cache" });
     const cache = await caches.open(SHELL_CACHE);
     if (response.ok) cache.put(request, response.clone());
     return response;

@@ -48,3 +48,7 @@ Different segments behave like different seeds, so with a prompt the narrator's 
 ## AAC and the HLS book stream
 
 `TTS_FORMAT=aac` asks the engine for AAC-LC in ADTS framing (voxcpm2-openai ≥ 0.3.16, Q-028). Folio counts ADTS frames for exact clip durations and, on Safari/iOS, plays a book as one HLS stream built from those clips (see the spec, "Gapless-feeling playback"). The interaction with the engine is otherwise unchanged: one `/v1/audio/speech` request per segment, same queue and cache, only `response_format` differs. Switching the format re-keys every clip, so they re-synthesize on demand.
+
+## Requests per segment (`TTS_REQUEST_CHARS`, 2026-11-17)
+
+A segment (up to `TTS_MAX_CHARS` = 800 characters, about 50 s of audio) used to be one `/v1/audio/speech` request. With a cloned voice the later sentences of such a clip audibly lost likeness and picked up artifacts: one long autoregressive generation drifts away from the reference (the 2026-11-08 numbers above measured pitch and loudness, not timbre). Folio now sends a segment longer than `TTS_REQUEST_CHARS` (default 300) as several requests of whole sentences, one after another, and joins the clips into the segment's one cached file: ADTS and MP3 frames are concatenated (ID3 tags and Xing/Info frames dropped), Ogg Opus is re-muxed into one logical stream with recomputed granules and CRCs. Stored segments, read-along and progress are unchanged; split segments get a new cache key (`|req=N`), so their old single-request clips re-synthesize on demand while short segments keep theirs.

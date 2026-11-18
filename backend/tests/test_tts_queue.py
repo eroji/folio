@@ -606,3 +606,29 @@ def test_concurrent_prepares_of_the_same_segment_never_collide(
     rows = db.scalars(select(SegmentAudio).where(SegmentAudio.segment_id == segment_id)).all()
     assert len(rows) == 1
     assert rows[0].priority == 10  # the racing prepare still raised it to needed-now
+
+
+def test_a_split_segment_is_found_in_the_cache_by_the_next_prepare(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """prepare and the worker must agree on the key of a segment synthesized
+    as several requests, or every play would re-synthesize it."""
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _segments(db, book)[0]
+    segment.text = " ".join(
+        f"Sentence {n} walks slowly along the harbour wall in the evening fog." for n in range(10)
+    )
+    db.commit()
+    prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    row = claim_next_tts(db)
+    assert row is not None
+    synth = _Synth()
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s, synth=synth))
+    run_tts_job(db, settings, row)
+    assert row.status == "ready"
+    assert len(synth.captured) > 1  # split into several requests
+
+    db.delete(row)  # a fresh prepare must find the clip, not queue a new synthesis
+    db.commit()
+    window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    assert window[0][1].status == "ready"

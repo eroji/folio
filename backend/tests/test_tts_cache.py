@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from folio.config import Settings
 from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
 from folio.tts import cache_key, cache_path, duration_seconds, evict_if_needed, get_or_synthesize
+from folio.tts.cache import speech_cache_key
 
 sys_path = Path(__file__).resolve().parents[1]
 
@@ -28,11 +29,13 @@ class _CountingClient:
         self.data = SILENT_OPUS
         self.fmt = fmt
         self.calls = 0
+        self.texts: list[str] = []
 
     def synthesize(
-        self, _text: str, _voice: str, _instructions: str | None = None
+        self, text: str, _voice: str, _instructions: str | None = None
     ) -> tuple[bytes, str]:
         self.calls += 1
+        self.texts.append(text)
         return self.data, self.fmt
 
 
@@ -87,6 +90,57 @@ def test_normalize_before_keying_reuses_entries(db: Session, settings: Settings)
     # Same speech after normalization ("Doctor Who") hits the same key.
     _, cached = get_or_synthesize(db, settings, client, "See Doctor Who.", "ashley-en")
     assert cached is True and client.calls == 1
+
+
+_LONG = " ".join(
+    f"Sentence number {n} walks slowly along the harbour wall in the evening fog."
+    for n in range(12)
+)  # 12 x 74-75 chars
+
+
+def test_long_segment_is_sent_as_several_requests_and_joined(
+    db: Session, settings: Settings
+) -> None:
+    """Long single generations drift away from a cloned voice; each request
+    stays near TTS_REQUEST_CHARS and the clips are joined into one file."""
+    client = _CountingClient()
+    row, cached = get_or_synthesize(db, settings, client, _LONG, "tess", language="en")
+    assert cached is False
+    assert client.calls == 3  # 12 sentences of ~75 chars, 4 per 300-char request
+    assert all(len(text) <= settings.tts_request_chars for text in client.texts)
+    assert " ".join(client.texts) == _LONG  # nothing dropped, order kept
+    assert row.duration_s == pytest.approx(3.0, abs=0.1)  # three 1 s clips in one file
+    assert row.cache_key == speech_cache_key(settings, "tess", _LONG, "", "en")
+
+
+def test_request_size_is_part_of_the_key_only_when_a_segment_splits(settings: Settings) -> None:
+    short = speech_cache_key(settings, "tess", "Once upon a time.", "", "en")
+    endpoint = (settings.tts_base_url or "").rstrip("/")
+    assert short == cache_key(
+        settings.tts_model, "tess", settings.tts_format, "Once upon a time.", endpoint=endpoint
+    )  # short clips keep their old keys: nothing to re-synthesize
+    long_key = speech_cache_key(settings, "tess", _LONG, "", "en")
+    assert long_key != cache_key(
+        settings.tts_model, "tess", settings.tts_format, _LONG, endpoint=endpoint
+    )  # clips made as one long generation are replaced
+    whole = settings.model_copy(update={"tts_request_chars": 0})
+    assert speech_cache_key(whole, "tess", _LONG, "", "en") == cache_key(
+        settings.tts_model, "tess", settings.tts_format, _LONG, endpoint=endpoint
+    )
+
+
+def test_mixed_formats_across_requests_fail_the_segment(db: Session, settings: Settings) -> None:
+    from folio.tts import TtsError
+
+    class _Flaky(_CountingClient):
+        def synthesize(
+            self, text: str, voice: str, instructions: str | None = None
+        ) -> tuple[bytes, str]:
+            data, _ = super().synthesize(text, voice, instructions)
+            return data, "opus" if self.calls == 1 else "mp3"
+
+    with pytest.raises(TtsError):
+        get_or_synthesize(db, settings, _Flaky(), _LONG, "tess", language="en")
 
 
 def test_duration_seconds_missing_file_is_zero(tmp_path: Path) -> None:

@@ -34,6 +34,16 @@ describe("service worker", () => {
     expect(routeFor("/api/v1/books/1/cover")).toBe("cache");
   });
 
+  it("always asks the network for the build version", () => {
+    expect(routeFor("/version.json")).toBe("network");
+  });
+
+  it("revalidates navigations instead of trusting the HTTP cache", () => {
+    // iOS served a heuristically cached index.html to installed PWAs.
+    expect(swSource).toMatch(/fetch\(request, \{ cache: "no-cache" \}\)/);
+    expect(swSource).toMatch(/const VERSION = "folio-v4";/); // old caches are dropped on activate
+  });
+
   it("never caches non-GET requests", () => {
     expect(routeFor("/api/v1/books", "POST")).toBe("network");
     expect(routeFor("/assets/app-abc123.js", "POST")).toBe("network");
