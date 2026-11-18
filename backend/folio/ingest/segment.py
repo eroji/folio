@@ -120,11 +120,55 @@ def segment_chapter(chapter: Any, language: str, max_chars: int = 800) -> Segmen
     return SegmentedChapter(title=chapter.title, text=text, sentences=sentences, segments=segments)
 
 
+# A sentence shorter than this rides along with the next one: "Yes." or "He
+# nodded." alone makes a clipped, oddly paced generation.
+MIN_SPEECH_CHARS = 40
+
+
+def speech_pieces(text: str, language: str, max_chars: int) -> list[SegmentedSentence]:
+    """One segment's text as TTS requests: one sentence each (``TTS_REQUEST_CHARS``).
+
+    A cloned voice loses likeness and picks up artifacts the longer one
+    generation runs, so every sentence is its own request. Sentences shorter
+    than ``MIN_SPEECH_CHARS`` join the next one (a short last one joins the one
+    before); a sentence longer than ``max_chars`` is cut at clauses, then words.
+    ``max_chars`` 0 is one request for the whole text. Each piece's text is
+    stripped and ``char_start`` is where it begins in ``text``.
+    """
+    whole = [SegmentedSentence(text.strip(), len(text) - len(text.lstrip()), len(text.rstrip()))]
+    if max_chars <= 0 or not text.strip():
+        return whole
+    parts = [
+        part
+        for sentence in _locate(text, split_sentences(text, language))
+        for part in _split_span(text, sentence.char_start, sentence.char_end, max_chars)
+    ]
+    merged: list[SegmentedSentence] = []
+    for part in parts:
+        last = merged[-1] if merged else None
+        if (
+            last is not None
+            and len(text[last.char_start : last.char_end].strip()) < MIN_SPEECH_CHARS
+            and part.char_end - last.char_start <= max_chars
+        ):
+            merged[-1] = SegmentedSentence("", last.char_start, part.char_end)
+        else:
+            merged.append(SegmentedSentence("", part.char_start, part.char_end))
+    if (
+        len(merged) > 1
+        and len(text[merged[-1].char_start : merged[-1].char_end].strip()) < MIN_SPEECH_CHARS
+        and merged[-1].char_end - merged[-2].char_start <= max_chars
+    ):
+        merged[-2:] = [SegmentedSentence("", merged[-2].char_start, merged[-1].char_end)]
+    pieces = []
+    for piece in merged:
+        raw = text[piece.char_start : piece.char_end]
+        start = piece.char_start + len(raw) - len(raw.lstrip())
+        if raw.strip():
+            pieces.append(SegmentedSentence(raw.strip(), start, start + len(raw.strip())))
+    return pieces or whole
+
+
 def split_for_speech(text: str, language: str, max_chars: int) -> list[str]:
-    """One segment's text as the pieces sent to the engine, one request each
-    (``TTS_REQUEST_CHARS``): whole sentences packed up to ``max_chars``.
-    ``max_chars`` 0, or a text that already fits, is a single piece."""
-    if max_chars <= 0 or len(text) <= max_chars:
-        return [text]
-    pieces = _pack(text, _locate(text, split_sentences(text, language)), max_chars)
-    return [piece.text.strip() for piece in pieces if piece.text.strip()] or [text]
+    """The texts of ``speech_pieces``, in order."""
+    return [piece.text for piece in speech_pieces(text, language, max_chars)]

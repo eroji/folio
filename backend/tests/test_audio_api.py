@@ -156,6 +156,23 @@ async def test_prepare_returns_ready_url_and_duration(
     assert item["cache_key"] == audio.cache_key
     assert item["url"] == f"/api/v1/audio/{audio.cache_key}"
     assert item["duration_s"] == pytest.approx(1.0, abs=0.1)
+    assert item["marks"] is None  # a one-request clip has no sentence marks
+
+
+async def test_prepare_returns_the_sentence_marks_of_a_ready_clip(
+    auth_client: httpx.AsyncClient, db: Session, settings: Settings
+) -> None:
+    book, segments = _book_with_segments(db, count=1)
+    audio = _audio(db, settings, segments[0].text)
+    audio.marks = [[0.0, 0.0], [0.5, 0.42]]
+    db.commit()
+    response = await auth_client.post(
+        f"/api/v1/books/{book.id}/audio/prepare",
+        json={"segment_id": str(segments[0].id)},
+        headers=csrf(auth_client),
+    )
+    (item,) = response.json()["items"]
+    assert item["marks"] == [[0.0, 0.0], [0.5, 0.42]]
 
 
 async def test_prepare_segment_outside_book_is_404(

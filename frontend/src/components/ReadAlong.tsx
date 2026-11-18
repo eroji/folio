@@ -10,6 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import clsx from "clsx";
 import { usePlayer, type PlayerContextValue } from "../player/usePlayer";
 import { Icon } from "./Icon";
+import { spokenFraction, timeForFraction } from "../player/marks";
 
 /** Closing quotes/brackets stay with the sentence they end (handoff fix). */
 const SENTENCES = /[^.!?。！？…]+[.!?。！？…]*[\u2019\u201D"')\]}»]*/g;
@@ -33,9 +34,10 @@ interface Sentence {
 function spokenChars(p: PlayerContextValue): number {
   const current = p.segments[p.index];
   if (!current) return 0;
-  const duration = p.status[current.id]?.duration_s ?? 0;
+  const status = p.status[current.id];
   const t = p.playing ? p.liveTime() : p.time;
-  const share = duration > 0 ? Math.min(1, t / duration) : 0;
+  // The clip's sentence marks when it has them, else an even spread.
+  const share = spokenFraction(t, status?.duration_s ?? 0, status?.marks);
   return current.char_start + share * Math.max(0, current.char_end - current.char_start);
 }
 
@@ -204,9 +206,12 @@ export function ReadAlong({
       player.segments.flatMap((segment, segmentIdx) => {
         let local = 0;
         return splitSentences(segment.text).map((text) => {
-          const sentence: Sentence = { text, start: segment.char_start + local, segmentIdx };
-          local += text.length; // ponytail: separators are dropped, ±1 char drift is fine for highlighting
-          return sentence;
+          // Find each sentence where it really starts (separators were trimmed)
+          // so its offset lines up with the clip's sentence marks.
+          const found = segment.text.indexOf(text, local);
+          const at = found >= 0 ? found : local;
+          local = at + text.length;
+          return { text, start: segment.char_start + at, segmentIdx } satisfies Sentence;
         });
       }),
     [player.segments],
@@ -294,8 +299,9 @@ export function ReadAlong({
     const segment = player.segments[sentence.segmentIdx];
     if (!segment) return;
     const span = Math.max(1, segment.char_end - segment.char_start);
-    const seconds = player.status[segment.id]?.duration_s ?? 0;
-    player.seekSegment(sentence.segmentIdx, ((sentence.start - segment.char_start) / span) * seconds);
+    const status = player.status[segment.id];
+    const fraction = (sentence.start - segment.char_start) / span;
+    player.seekSegment(sentence.segmentIdx, timeForFraction(fraction, status?.duration_s ?? 0, status?.marks));
   };
 
   const base = TEXT_SIZES[c.sizeStep] ?? TEXT_SIZES[DEFAULT_SIZE_STEP]!;

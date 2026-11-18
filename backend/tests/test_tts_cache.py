@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from folio.config import Settings
 from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
 from folio.tts import cache_key, cache_path, duration_seconds, evict_if_needed, get_or_synthesize
-from folio.tts.cache import speech_cache_key
+from folio.tts.cache import single_request_key, speech_cache_key
 
 sys_path = Path(__file__).resolve().parents[1]
 
@@ -95,38 +95,57 @@ def test_normalize_before_keying_reuses_entries(db: Session, settings: Settings)
 _LONG = " ".join(
     f"Sentence number {n} walks slowly along the harbour wall in the evening fog."
     for n in range(12)
-)  # 12 x 74-75 chars
+)  # 12 sentences of 74-75 chars
 
 
-def test_long_segment_is_sent_as_several_requests_and_joined(
+def test_each_sentence_is_a_request_and_the_clip_knows_where_each_starts(
     db: Session, settings: Settings
 ) -> None:
-    """Long single generations drift away from a cloned voice; each request
-    stays near TTS_REQUEST_CHARS and the clips are joined into one file."""
+    """Cloned voices degrade late in a long generation, so every sentence is
+    its own request; the joined clip records where each sentence starts, which
+    is what read-along follows."""
     client = _CountingClient()
     row, cached = get_or_synthesize(db, settings, client, _LONG, "tess", language="en")
     assert cached is False
-    assert client.calls == 3  # 12 sentences of ~75 chars, 4 per 300-char request
-    assert all(len(text) <= settings.tts_request_chars for text in client.texts)
+    assert client.calls == 12  # one request per sentence
     assert " ".join(client.texts) == _LONG  # nothing dropped, order kept
-    assert row.duration_s == pytest.approx(3.0, abs=0.1)  # three 1 s clips in one file
+    assert row.duration_s == pytest.approx(12.0, abs=0.3)  # twelve 1 s clips in one file
+    assert row.marks is not None and len(row.marks) == 12
+    assert row.marks[0] == [0.0, 0.0]
+    fractions = [mark[0] for mark in row.marks]
+    seconds = [mark[1] for mark in row.marks]
+    assert fractions == sorted(fractions) and seconds == sorted(seconds)
+    assert fractions[6] == pytest.approx(_LONG.index("Sentence number 6") / len(_LONG))
+    # Each 1 s test clip decodes to ~1.02 s (encoder priming and padding stay
+    # in the joined file), so sentence 7 starts just after 6 s, evenly spaced.
+    assert 6.0 <= seconds[6] < 6.2
+    assert seconds[6] == pytest.approx(6 * seconds[1], rel=0.01)
     assert row.cache_key == speech_cache_key(settings, "tess", _LONG, "", "en")
+    assert row.text_key == single_request_key(settings, "tess", _LONG, "")
 
 
-def test_request_size_is_part_of_the_key_only_when_a_segment_splits(settings: Settings) -> None:
-    short = speech_cache_key(settings, "tess", "Once upon a time.", "", "en")
+def test_a_single_sentence_keeps_its_old_key_and_needs_no_marks(
+    db: Session, settings: Settings
+) -> None:
+    client = _CountingClient()
+    row, _ = get_or_synthesize(db, settings, client, "Once upon a time.", "tess", language="en")
+    assert row.marks is None
     endpoint = (settings.tts_base_url or "").rstrip("/")
-    assert short == cache_key(
+    assert row.cache_key == cache_key(
         settings.tts_model, "tess", settings.tts_format, "Once upon a time.", endpoint=endpoint
-    )  # short clips keep their old keys: nothing to re-synthesize
-    long_key = speech_cache_key(settings, "tess", _LONG, "", "en")
-    assert long_key != cache_key(
-        settings.tts_model, "tess", settings.tts_format, _LONG, endpoint=endpoint
-    )  # clips made as one long generation are replaced
-    whole = settings.model_copy(update={"tts_request_chars": 0})
-    assert speech_cache_key(whole, "tess", _LONG, "", "en") == cache_key(
-        settings.tts_model, "tess", settings.tts_format, _LONG, endpoint=endpoint
     )
+
+
+def test_split_segments_have_their_own_key(settings: Settings) -> None:
+    endpoint = (settings.tts_base_url or "").rstrip("/")
+    single = cache_key(settings.tts_model, "tess", settings.tts_format, _LONG, endpoint=endpoint)
+    v014 = cache_key(
+        settings.tts_model, "tess", settings.tts_format, _LONG, endpoint=endpoint, split="300"
+    )
+    key = speech_cache_key(settings, "tess", _LONG, "", "en")
+    assert key not in (single, v014)
+    whole = settings.model_copy(update={"tts_request_chars": 0})
+    assert speech_cache_key(whole, "tess", _LONG, "", "en") == single
 
 
 def test_mixed_formats_across_requests_fail_the_segment(db: Session, settings: Settings) -> None:

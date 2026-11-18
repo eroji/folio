@@ -681,3 +681,59 @@ def test_prepare_requeues_a_ready_row_whose_clip_file_is_gone(
     db.commit()
     window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
     assert window[0][1].status == "queued"  # evicted: synthesize again
+
+
+def _ready_on(db: Session, segment: Segment, audio: Audio) -> None:
+    db.add(
+        SegmentAudio(
+            segment_id=segment.id, voice="ashley-en", status="ready", cache_key=audio.cache_key
+        )
+    )
+    db.commit()
+
+
+def _long_segment(db: Session, book: Book) -> Segment:
+    segment = _segments(db, book)[0]
+    segment.text = " ".join(
+        f"Sentence {n} walks slowly along the harbour wall in the evening fog." for n in range(10)
+    )
+    db.commit()
+    return segment
+
+
+def test_prepare_keeps_a_ready_clip_from_the_300_character_split(
+    db: Session, settings: Settings
+) -> None:
+    """v0.1.14/v0.1.15 split segments into ~300-character requests. Those clips
+    stay ready: changing how requests are split must never re-queue a ready
+    segment (an iOS stream that listed it would stall)."""
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _long_segment(db, book)
+    old = _seed_audio(db, settings, segment.text)
+    old_key = cache_key(
+        settings.tts_model,
+        "ashley-en",
+        settings.tts_format,
+        normalize_speech_text(segment.text),
+        narration_prompt(db, "ashley-en", None),
+        endpoint=(settings.tts_base_url or "").rstrip("/"),
+        split="300",
+    )
+    old.cache_key = old_key  # filed under the v0.1.14 key
+    db.commit()
+    _ready_on(db, segment, old)
+    window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    assert (window[0][1].status, window[0][1].cache_key) == ("ready", old_key)
+
+
+def test_prepare_keeps_a_ready_clip_of_the_same_text_whatever_its_split(
+    db: Session, settings: Settings
+) -> None:
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _long_segment(db, book)
+    clip = _seed_audio(db, settings, segment.text)
+    clip.text_key, clip.cache_key = clip.cache_key, "f" * 64  # any future split scheme
+    db.commit()
+    _ready_on(db, segment, clip)
+    window = prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    assert (window[0][1].status, window[0][1].cache_key) == ("ready", "f" * 64)

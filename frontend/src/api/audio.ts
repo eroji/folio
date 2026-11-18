@@ -14,6 +14,9 @@ export interface PreparedSegment {
   cache_key: string | null;
   url: string | null;
   duration_s: number | null;
+  /** Where each sentence starts in the clip: [text fraction, seconds] pairs
+   * (player/marks.ts); null for a clip made as one request. */
+  marks?: [number, number][] | null;
 }
 
 export interface LeadIn {

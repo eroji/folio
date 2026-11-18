@@ -16,6 +16,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from folio.db import Base
@@ -38,6 +39,14 @@ class Audio(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     last_played_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # What was said, how and by which engine, ignoring how it was split into
+    # requests (the key without ``|req=``): a ready segment keeps its clip
+    # while this matches. Null for clips made before it existed.
+    text_key: Mapped[str | None] = mapped_column(String(64))
+    # Where each request's audio starts in the clip: ``[[text_fraction,
+    # seconds], ...]`` from ``[0, 0]``; read-along follows these. Null for a
+    # clip made as one request.
+    marks: Mapped[list[list[float]] | None] = mapped_column(JSONB)
 
 
 class SegmentAudio(Base):
