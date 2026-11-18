@@ -1,15 +1,17 @@
 /** Direction D player bar (handoff "Player bar"): 72px min, --color-surface,
  * 1px top border, a 3px accent progress line along its top edge. Shown on
  * ≥768px whenever a book is loaded — never tied to play/pause — and hidden
- * only when nothing is loaded (Close stops and unloads). No narrator voice
- * button: per-handoff it lives only in the book's ⋮ menu. */
+ * only when nothing is loaded (Close stops and unloads). Speed, narrator and
+ * sleep sit together in one segmented pill (ListeningControls, layout "bar")
+ * whose popovers open above the bar. */
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { formatTime } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
 import { Icon } from "./Icon";
-import { ChapterNavButton, PlayButton, SkipButton, SleepButton, SpeedButton, iconButton, timeAgo } from "./PlayerControls";
+import { ListeningControls } from "./ListeningControls";
+import { ChapterNavButton, PlayButton, SkipButton, iconButton, timeAgo } from "./PlayerControls";
 
 export function PlayerBar() {
   const player = usePlayer();
@@ -61,9 +63,8 @@ export function PlayerBar() {
         </span>
       </Link>
 
-      <div className="flex shrink-0 items-center gap-0.5">
-        <SpeedButton />
-        <SleepButton />
+      <div className="flex shrink-0 items-center gap-1.5">
+        <ListeningControls layout="bar" />
         <button
           type="button"
           aria-label="Stop and close player"

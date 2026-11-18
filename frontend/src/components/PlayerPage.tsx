@@ -13,8 +13,8 @@ import { usePlayer } from "../player/usePlayer";
 import { BookCover } from "./BookCard";
 import { ChapterRow } from "./ChapterRow";
 import { Icon } from "./Icon";
-import { ChapterNavButton, ChapterScrubber, PlayButton, SkipButton, SleepButton, SpeedButton, iconButton } from "./PlayerControls";
-import { VoiceButton } from "./NarratorControl";
+import { ChapterNavButton, ChapterScrubber, PlayButton, SkipButton, SpeedButton, iconButton } from "./PlayerControls";
+import { ListeningControls } from "./ListeningControls";
 import { AutoScrollToggle, ReadAlong, TextSizePicker, useReadAlongControls } from "./ReadAlong";
 import { ResumePrompt } from "./ResumePrompt";
 
@@ -314,7 +314,7 @@ function PhoneSheet({
         <section aria-label="Playback" className="flex shrink-0 flex-col gap-1.5 px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-2.5">
           <ChapterScrubber />
           <div className="flex items-center justify-between">
-            <SpeedButton className="bg-raised" placement="sheet" />
+            <SpeedButton className="bg-raised" />
             <SkipButton direction="back" />
             <PlayButton size={60} />
             <SkipButton direction="forward" />
@@ -385,11 +385,7 @@ function PhonePlayer({ book }: { book: Book }) {
           <SkipButton direction="forward" />
           <ChapterNavButton delta={1} />
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <SpeedButton className="bg-raised" placement="sheet" />
-          <VoiceButton />
-          <SleepButton />
-        </div>
+        <ListeningControls layout="card" />
         <PlayerTabs
           tab={sheet}
           onSelect={(t) => setSheet((current) => (current === t ? null : t))}

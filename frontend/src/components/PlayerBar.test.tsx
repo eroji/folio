@@ -127,10 +127,13 @@ describe("PlayerBar", () => {
     fireEvent.click(speed);
     const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
     expect(speed.getAttribute("aria-expanded")).toBe("true");
-    expect(speed.className).toContain("bg-raised"); // raised fill while open
+    expect(speed.className).toContain("ring-accent"); // amber outline while its popover is open
     expect(dialog.className).toContain("right-0"); // anchored to the bar's right edge, never clipped
+    expect(dialog.className).toContain("bottom-full"); // a popover above the bar, not a sheet
     expect(within(dialog).getByText("Playback speed")).toBeTruthy(); // title
     expect(dialog.querySelector("[data-speed-value]")?.textContent).toBe("1.0×");
+    expect(within(dialog).getByText("Normal")).toBeTruthy(); // hint under the value
+    expect(within(dialog).queryByRole("button", { name: "Done" })).toBeNull(); // popovers need no Done
 
     const slider = within(dialog).getByRole("slider", { name: "Playback speed" });
     expect(slider.getAttribute("aria-orientation")).toBe("horizontal");
@@ -236,7 +239,7 @@ describe("PlayerBar", () => {
     expect(getPlayer().rate).toBe(1.05);
   });
 
-  it("the speed card closes 3 s after the last change", async () => {
+  it("the speed popover stays open until it is dismissed", async () => {
     vi.useFakeTimers();
     const getPlayer = renderPlayer(<PlayerBar />);
     await act(async () => {
@@ -244,20 +247,44 @@ describe("PlayerBar", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
     const slider = screen.getByRole("slider", { name: "Playback speed" });
-    fireEvent.keyDown(slider, { key: "ArrowUp" }); // 1.05, restarts the timer
+    fireEvent.keyDown(slider, { key: "ArrowUp" });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(10_000);
     });
-    fireEvent.keyDown(slider, { key: "ArrowUp" }); // 1.1, restarts it again
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2900);
-    });
-    expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeTruthy();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
-    });
+    expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeTruthy(); // no auto-close
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.05 times" })); // the segment toggles it shut
     expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeNull();
-    expect(getPlayer().rate).toBe(1.1);
+    expect(getPlayer().rate).toBe(1.05);
+  });
+
+  it("the minus and plus buttons step the speed and stop at the ends", async () => {
+    const getPlayer = await loadBar();
+    fireEvent.click(screen.getByRole("button", { name: "Playback speed, 1.0 times" }));
+    const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Faster" }));
+    expect(getPlayer().rate).toBe(1.05);
+    expect(within(dialog).getByText("Faster", { selector: "span" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Slower" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Slower" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Slower" }));
+    expect(getPlayer().rate).toBe(0.9);
+    expect((within(dialog).getByRole("button", { name: "Slower" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("groups speed, narrator and sleep in one Listening pill; the narrator opens as a popover", async () => {
+    installPlayerFetch({ book: { can_edit: true } });
+    await loadBar();
+    const group = screen.getByRole("group", { name: "Listening" });
+    expect(within(group).getByRole("button", { name: "Playback speed, 1.0 times" })).toBeTruthy();
+    expect(within(group).getByRole("button", { name: "Sleep timer" })).toBeTruthy();
+    const voice = await within(group).findByRole("button", { name: "Narrator voice, Ashley" });
+    fireEvent.click(voice);
+    const dialog = await screen.findByRole("dialog", { name: "Narrator voice" });
+    expect(dialog.className).toContain("bottom-full"); // anchored above the bar, no page-dimming modal
+    expect(voice.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Narrator voice" })).toBeNull());
+    expect(document.activeElement).toBe(voice); // focus returns to the segment
   });
 
   it("the speed card positions come from the config grid", async () => {

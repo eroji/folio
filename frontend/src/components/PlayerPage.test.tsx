@@ -208,12 +208,56 @@ describe("PlayerPage (phone)", () => {
     await waitFor(() => expect(installed.prepareCalls.some((call) => call.voice === "zoe-en")).toBe(true));
   });
 
-  it("listeners who cannot edit the book see no voice button", async () => {
+  it("listeners who cannot edit the book see the narrator as display-only text", async () => {
     stubMatchMedia(false);
     installPlayerFetch({ book: { can_edit: false } });
     await renderAtPlayer();
-    await screen.findByRole("button", { name: "Playback speed, 1.0 times" });
+    const card = screen.getByRole("group", { name: "Listening" });
+    expect(await within(card).findByText("Ashley")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Narrator voice/ })).toBeNull();
+  });
+
+  it("the listening card shows speed, narrator and sleep as value over label", async () => {
+    stubMatchMedia(false);
+    installPlayerFetch({ book: { can_edit: true } });
+    await renderAtPlayer();
+    const card = screen.getByRole("group", { name: "Listening" });
+    expect(within(card).getByText("Speed")).toBeTruthy();
+    expect(within(card).getByText("Narrator")).toBeTruthy();
+    expect(within(card).getByText("Sleep")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Playback speed, 1.0 times" }).textContent).toContain("1.0×");
+    expect(within(card).getByRole("button", { name: "Sleep timer" }).textContent).toContain("Off");
+  });
+
+  it("the speed sheet has Done, never closes on its own, and lights the cell while open", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    stubMatchMedia(false);
+    await renderAtPlayer();
+    const cell = screen.getByRole("button", { name: "Playback speed, 1.0 times" });
+    fireEvent.click(cell);
+    const dialog = await screen.findByRole("dialog", { name: "Playback speed" });
+    expect(cell.className).toContain("ring-accent");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Faster" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByRole("dialog", { name: "Playback speed" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog", { name: "Playback speed" })).toBeNull();
+    const after = screen.getByRole("button", { name: "Playback speed, 1.05 times" });
+    expect(after.dataset.flash).toBe("true"); // brief glow confirming the change
+    vi.useRealTimers();
+  });
+
+  it("the sleep cell opens a sheet of timer choices", async () => {
+    stubMatchMedia(false);
+    const getPlayer = await renderAtPlayer();
+    fireEvent.click(screen.getByRole("button", { name: "Sleep timer" }));
+    const menu = await screen.findByRole("menu", { name: "Sleep timer" });
+    expect(menu.parentElement!.className).toContain("fixed"); // a bottom sheet on the phone
+    fireEvent.click(within(menu).getByRole("menuitemradio", { name: "End of chapter" }));
+    await waitFor(() => expect(getPlayer().sleep).toBe("chapter"));
+    expect(screen.getByRole("button", { name: "Sleep timer, end of chapter" }).textContent).toContain("Chapter");
   });
 
   it("the Read along tab opens the sheet with pinned controls", async () => {

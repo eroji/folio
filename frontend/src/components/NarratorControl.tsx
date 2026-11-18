@@ -1,11 +1,10 @@
 /** Where a book's narrator is seen and changed: the "Narrated by" row under
- * the book page's primary action and the voice button on the phone player.
+ * the book page's primary action; the player's Narrator control lives in
+ * ListeningControls and shares useNarrator / useChangeNarrator.
  * Both open NarratorVoiceDialog. Only listeners who may edit the book (admin
  * or uploader; PATCH /books/{id} enforces it) can change the voice — everyone
  * else sees who narrates as plain text. */
 import { useState } from "react";
-import clsx from "clsx";
-import { useBook } from "../api/books";
 import { useUpdateBook } from "../api/metadata";
 import { useListeningSettings } from "../api/settings";
 import { baseLanguage, useVoices, voiceLabel } from "../api/voices";
@@ -39,20 +38,30 @@ export function NarratorName({ book }: { book: Book }) {
   );
 }
 
-/** The voice dialog with its PATCH. The mutation lives in the caller that
- * stays mounted: the dialog closes on select, and per-call callbacks of an
- * unmounted mutation never run (a playing book must switch voice in place). */
-function useNarratorDialog(book: Book) {
+/** The PATCH behind every narrator picker; a playing book switches voice in
+ * place. Call it in a component that stays mounted while the dialog closes:
+ * per-call callbacks of an unmounted mutation never run. */
+export function useChangeNarrator(book: Book) {
   const player = usePlayer();
   const update = useUpdateBook(book.id);
+  return {
+    error: update.isError ? update.error.message : null,
+    select: (next: string | null) =>
+      update.mutate({ narrator_voice: next }, { onSuccess: () => player.reloadVoice(book.id) }),
+  };
+}
+
+/** The modal voice dialog plus its PATCH, for the book page row. */
+function useNarratorDialog(book: Book) {
+  const change = useChangeNarrator(book);
   const [open, setOpen] = useState(false);
   const dialog = open ? (
     <NarratorVoiceDialog
       value={book.narrator_voice}
       language={book.language}
-      error={update.isError ? update.error.message : null}
+      error={change.error}
       onClose={() => setOpen(false)}
-      onSelect={(next) => update.mutate({ narrator_voice: next }, { onSuccess: () => player.reloadVoice(book.id) })}
+      onSelect={change.select}
     />
   ) : null;
   return { openDialog: () => setOpen(true), dialog };
@@ -84,41 +93,6 @@ export function NarratorRow({ book, canChange }: { book: Book; canChange: boolea
         <span className="min-w-0 flex-1 truncate">{text}</span>
         <span className="shrink-0 text-base font-semibold text-fg-2">Change</span>
         <Icon name="ChevronRight" size={18} className="shrink-0 text-fg-2" />
-      </button>
-      {dialog}
-    </>
-  );
-}
-
-/** Phone player: a pill with the voice name in the speed / sleep row. Reads
- * the book through its query so a change shows at once (and so the narrator
- * reload finds the cached book). */
-export function VoiceButton({ className }: { className?: string }) {
-  const player = usePlayer();
-  const { data } = useBook(player.book?.id ?? "");
-  const book = data?.book ?? player.book;
-  if (!book || !(book.can_edit ?? false)) return null;
-  return <VoicePill book={book} className={className} />;
-}
-
-function VoicePill({ book, className }: { book: Book; className?: string }) {
-  const { label } = useNarrator(book);
-  const { openDialog, dialog } = useNarratorDialog(book);
-  return (
-    <>
-      <button
-        type="button"
-        aria-label={`Narrator voice, ${label ?? "default"}`}
-        title="Narrator voice"
-        aria-haspopup="dialog"
-        onClick={openDialog}
-        className={clsx(
-          "tap inline-flex h-10 max-w-[160px] items-center gap-2 rounded-full bg-raised px-3.5 text-base font-semibold text-fg hover:bg-border",
-          className,
-        )}
-      >
-        <Icon name="Speech" size={18} className="shrink-0" />
-        <span className="min-w-0 truncate">{label ?? "Voice"}</span>
       </button>
       {dialog}
     </>

@@ -1,5 +1,5 @@
-/** Narrator voice dialog (Direction D): opened only from the book page ⋮
- * menu — the single place a book's narrator is chosen. Lists the voices for
+/** Narrator voice dialog (Direction D): opened from the book page's
+ * "Narrated by" row, the player's Narrator control and row ⋮ menus. Lists the voices for
  * the book's language (never the engine's `tts` pseudo-voice) with a Preview
  * play/pause button each, and "Use my default for {language}" to clear the
  * per-book override. Selecting a voice PATCHes the book and closes. */
@@ -15,6 +15,7 @@ export function NarratorVoiceDialog({
   error,
   onClose,
   onSelect,
+  variant = "modal",
 }: {
   /** Saved per-book voice id, or null when the language default is used. */
   value: string | null;
@@ -22,6 +23,9 @@ export function NarratorVoiceDialog({
   error?: string | null;
   onClose: () => void;
   onSelect: (voice: string | null) => void;
+  /** "modal": centered with a scrim (book page, row menus); "sheet": content
+   * for a phone bottom sheet; "popover": anchored above the player bar. */
+  variant?: "modal" | "sheet" | "popover";
 }) {
   const { data, isPending } = useVoices();
   const [previewing, setPreviewing] = useState<string | null>(null);
@@ -79,6 +83,109 @@ export function NarratorVoiceDialog({
     }
   }
 
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-xl">Narrator voice</h2>
+        <button
+          ref={closeRef}
+          type="button"
+          aria-label="Close"
+          onClick={close}
+          className="tap grid size-11 place-items-center rounded-full text-fg-2 hover:bg-raised"
+        >
+          <Icon name="X" size={20} />
+        </button>
+      </div>
+      <p className="text-base text-fg-2">This book’s narrator. Per-language defaults live in Settings → Voices.</p>
+
+      {isPending ? (
+        <p className="py-2 text-md text-fg-2">Loading voices…</p>
+      ) : options.length === 0 ? (
+        <p className="py-2 text-md text-fg-2">No voices available for this language</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {options.map((voice) => (
+            <li key={voice.id} className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-pressed={voice.id === value}
+                disabled={!voiceOnServer(voice)}
+                onClick={() => {
+                  close();
+                  if (voice.id !== value) onSelect(voice.id);
+                }}
+                className={clsx(
+                  "tap flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left text-md hover:bg-raised disabled:opacity-50",
+                  voice.id === value && "bg-raised font-bold",
+                )}
+              >
+                <Icon
+                  name="Check"
+                  size={18}
+                  className={clsx("shrink-0", voice.id === value ? "text-accent" : "invisible")}
+                />
+                <span className="min-w-0 truncate">{voiceLabel(voice)}</span>
+                {!voiceOnServer(voice) && <span className="text-sm text-fg-2">(no longer available)</span>}
+              </button>
+              <button
+                type="button"
+                aria-label={`Preview ${voiceLabel(voice)}`}
+                onClick={() => void togglePreview(voice.id)}
+                className="tap grid size-11 shrink-0 place-items-center rounded-full border border-border text-fg hover:bg-raised"
+              >
+                <Icon name={previewing === voice.id ? "Pause" : "Play"} size={18} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <button
+        type="button"
+        onClick={() => {
+          close();
+          if (value !== null) onSelect(null);
+        }}
+        aria-pressed={value === null}
+        className={clsx(
+          "tap mt-1 flex min-h-11 items-center gap-2 rounded-lg px-3 text-left text-md font-semibold hover:bg-raised",
+          value === null && "bg-raised",
+        )}
+      >
+        {/* Same check column as the voice rows, so the current choice is always marked. */}
+        <span data-checked={value === null ? "" : undefined} className={clsx("shrink-0", value === null ? "text-accent" : "invisible")}>
+          <Icon name="Check" size={18} />
+        </span>
+        Use my default for {languageName(base)}
+      </button>
+
+      {(error || previewFailed) && (
+        <p role="alert" className="text-sm text-danger">
+          {error ?? "Preview failed."}
+        </p>
+      )}
+    </>
+  );
+
+  if (variant !== "modal") {
+    // Sheet / popover: the caller's surface owns Escape and outside clicks.
+    return (
+      <div
+        role="dialog"
+        aria-label="Narrator voice"
+        className={clsx(
+          "flex flex-col gap-2",
+          variant === "popover"
+            ? "absolute right-0 bottom-full z-20 mb-2 w-[340px] rounded-2xl border border-border bg-raised p-3 shadow-(--shadow-menu)"
+            : "w-full",
+        )}
+      >
+        {content}
+      </div>
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 z-40 grid place-items-center p-4"
@@ -102,79 +209,7 @@ export function NarratorVoiceDialog({
         aria-label="Narrator voice"
         className="relative flex w-full max-w-md flex-col gap-2 rounded-lg border border-border bg-surface p-4 shadow-(--shadow-menu)"
       >
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-display text-xl">Narrator voice</h2>
-          <button
-            ref={closeRef}
-            type="button"
-            aria-label="Close"
-            onClick={close}
-            className="tap grid size-11 place-items-center rounded-full text-fg-2 hover:bg-raised"
-          >
-            <Icon name="X" size={20} />
-          </button>
-        </div>
-        <p className="text-base text-fg-2">This book’s narrator. Per-language defaults live in Settings → Voices.</p>
-
-        {isPending ? (
-          <p className="py-2 text-md text-fg-2">Loading voices…</p>
-        ) : options.length === 0 ? (
-          <p className="py-2 text-md text-fg-2">No voices available for this language</p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {options.map((voice) => (
-              <li key={voice.id} className="flex items-center gap-2">
-                <button
-                  type="button"
-                  aria-pressed={voice.id === value}
-                  disabled={!voiceOnServer(voice)}
-                  onClick={() => {
-                    close();
-                    if (voice.id !== value) onSelect(voice.id);
-                  }}
-                  className={clsx(
-                    "tap flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-left text-md hover:bg-raised disabled:opacity-50",
-                    voice.id === value && "bg-raised font-bold",
-                  )}
-                >
-                  <Icon
-                    name="Check"
-                    size={18}
-                    className={clsx("shrink-0", voice.id === value ? "text-accent" : "invisible")}
-                  />
-                  <span className="min-w-0 truncate">{voiceLabel(voice)}</span>
-                  {!voiceOnServer(voice) && <span className="text-sm text-fg-2">(no longer available)</span>}
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Preview ${voiceLabel(voice)}`}
-                  onClick={() => void togglePreview(voice.id)}
-                  className="tap grid size-11 shrink-0 place-items-center rounded-full border border-border text-fg hover:bg-raised"
-                >
-                  <Icon name={previewing === voice.id ? "Pause" : "Play"} size={18} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <button
-          type="button"
-          onClick={() => {
-            close();
-            if (value !== null) onSelect(null);
-          }}
-          aria-pressed={value === null}
-          className="tap mt-1 flex min-h-11 items-center rounded-lg px-3 text-left text-md font-semibold hover:bg-raised"
-        >
-          Use my default for {languageName(base)}
-        </button>
-
-        {(error || previewFailed) && (
-          <p role="alert" className="text-sm text-danger">
-            {error ?? "Preview failed."}
-          </p>
-        )}
+        {content}
       </div>
     </div>
   );

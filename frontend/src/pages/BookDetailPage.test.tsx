@@ -811,6 +811,15 @@ describe("BookDetailPage", () => {
     expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
   });
 
+  it("checks Use my default when the book has no narrator of its own", async () => {
+    book = makeBook({ narrator_voice: null, can_edit: true });
+    renderDetail();
+    const dialog = await openNarratorDialog();
+    const useDefault = await within(dialog).findByRole("button", { name: "Use my default for English" });
+    expect(useDefault.getAttribute("aria-pressed")).toBe("true");
+    expect(useDefault.querySelector("[data-checked]")).toBeTruthy();
+  });
+
   it("marks the saved voice pressed and clears it with Use my default", async () => {
     book = makeBook({ narrator_voice: "ashley-en", can_edit: true });
     renderDetail();
