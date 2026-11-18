@@ -602,7 +602,7 @@ export function BookDetailPage() {
         title="Processing"
         description={`${STATUS_LABELS[book.status] ?? book.status} · ${data.chapters.length} chapters. Reprocessing rebuilds chapters and clears generated audio; everyone’s progress is kept.${
           book.status === "needs_ocr"
-            ? " This PDF is scanned: once OCR is switched on under Admin → Integrations, reprocessing reads it with the language model."
+            ? " This PDF is scanned: once OCR is switched on under Admin → AI, reprocessing reads it with the language model."
             : ""
         }`}
       >

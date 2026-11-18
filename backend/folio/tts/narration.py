@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from folio.models import AppSetting
 from folio.voice_catalog import load_voice_instructions
 
 if TYPE_CHECKING:
@@ -29,13 +30,35 @@ DEFAULT_INSTRUCTION = (
 
 _SENTENCE_END = (".", "!", "?")
 
+# Admin → Voices "Send style prompts"; unset follows TTS_INSTRUCTIONS.
+STYLE_PROMPTS_KEY = "style_prompts"
+
+
+def style_prompts_on(db: Session, settings: Settings) -> bool:
+    """Whether syntheses carry the narration prompt: the admin's switch, else
+    ``TTS_INSTRUCTIONS``. Turning it either way re-keys every clip, so audio
+    is generated again as it is played."""
+    row = db.get(AppSetting, STYLE_PROMPTS_KEY)
+    if row is not None and isinstance(row.value, bool):
+        return row.value
+    return settings.tts_instructions
+
+
+def set_style_prompts(db: Session, on: bool) -> None:
+    """Store the admin's switch (the caller commits)."""
+    row = db.get(AppSetting, STYLE_PROMPTS_KEY)
+    if row is None:
+        db.add(AppSetting(key=STYLE_PROMPTS_KEY, value=on))
+    else:
+        row.value = on
+
 
 def engine_instructions(
     db: Session, settings: Settings, voice: str, genre: str | None, note: str | None = None
 ) -> str:
     """What to send as ``instructions`` (and key the cache with): the narration
-    prompt, or nothing when ``TTS_INSTRUCTIONS`` is off for this engine."""
-    return narration_prompt(db, voice, genre, note) if settings.tts_instructions else ""
+    prompt, or nothing while style prompts are off (Admin → Voices)."""
+    return narration_prompt(db, voice, genre, note) if style_prompts_on(db, settings) else ""
 
 
 def _sentence(text: str) -> str:

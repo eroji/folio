@@ -1,7 +1,7 @@
 """Stdlib mock of an OpenAI-compatible chat completions server for tests.
 
-``serve(answer)`` runs a threaded http.server on an ephemeral port and yields
-``(base_url, requests)``. ``answer(body)`` returns ``(status, payload)`` for
+``serve(answer, models)`` runs a threaded http.server on an ephemeral port and
+yields ``(base_url, requests)``; GET /v1/models lists ``models`` when given. ``answer(body)`` returns ``(status, payload)`` for
 each POST /v1/chat/completions; every request body is appended to
 ``requests``. ``completion(text)`` builds a normal answer.
 """
@@ -43,7 +43,9 @@ def has_image(body: dict[str, Any]) -> bool:
 
 
 @contextlib.contextmanager
-def serve(answer: Answer) -> Iterator[tuple[str, list[dict[str, Any]]]]:
+def serve(
+    answer: Answer, models: list[str] | None = None
+) -> Iterator[tuple[str, list[dict[str, Any]]]]:
     requests: list[dict[str, Any]] = []
     lock = threading.Lock()
 
@@ -58,6 +60,18 @@ def serve(answer: Answer) -> Iterator[tuple[str, list[dict[str, Any]]]]:
                 status, payload = 404, {"error": {"message": "not found"}}
             else:
                 status, payload = answer(body)
+            data = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self) -> None:
+            if self.path == "/v1/models" and models is not None:
+                status, payload = 200, {"object": "list", "data": [{"id": m} for m in models]}
+            else:
+                status, payload = 404, {"error": {"message": "not found"}}
             data = json.dumps(payload).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")

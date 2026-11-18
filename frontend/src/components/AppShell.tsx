@@ -121,13 +121,8 @@ function Sidebar({
       ))}
       {!collapsed && (
         <>
+          {/* Upload is a nav item above; no second "Add books" button. */}
           <div className="mx-1 my-3 h-px shrink-0 bg-border" aria-hidden />
-          <Link
-            to="/upload"
-            className="tap mb-3 flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-raised px-3 text-base font-semibold text-fg no-underline hover:bg-border"
-          >
-            <Icon name="Plus" size={20} /> Add books
-          </Link>
           <span className="eyebrow shrink-0 px-3.5 pb-1">In progress</span>
           {inProgress.length === 0 ? (
             <p className="px-3.5 text-sm text-fg-2">Nothing in progress.</p>

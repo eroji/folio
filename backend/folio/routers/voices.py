@@ -18,6 +18,7 @@ from folio.errors import ApiError
 from folio.models import User
 from folio.security import require_csrf
 from folio.tts import TtsClient, TtsError, discover_voices, get_or_synthesize
+from folio.tts.narration import style_prompts_on
 from folio.tts.voices import last_refreshed
 from folio.voice_catalog import (
     MAX_INSTRUCTION_LENGTH,
@@ -70,6 +71,8 @@ def list_voices(
     admins as unassigned (see docs/DECISIONS.md)."""
     voices = discover_voices(settings, client, refresh=refresh)
     body = build_catalog(db, voices, include_tts=user.role == "admin")
+    # Whether voice instructions reach the engine at all (Admin → Voices switch).
+    body["style_prompts"] = style_prompts_on(db, settings)
     refreshed = last_refreshed(settings)
     body["refreshed_at"] = refreshed.isoformat() if refreshed else None
     return body
@@ -113,7 +116,8 @@ def preview_voice(
     require_csrf(request, request.state.session_row)
     language = _assigned_language(db, settings, client, body.voice)
     text = body.text or _default_sample(body.voice, settings, language)
-    instructions = (body.instructions or "").strip()
+    # A preview sounds like real narration: no prompt while style prompts are off.
+    instructions = (body.instructions or "").strip() if style_prompts_on(db, settings) else ""
     try:
         audio, _ = get_or_synthesize(
             db, settings, client, text, body.voice, instructions, language=language or "en"

@@ -17,10 +17,12 @@ import {
   voiceLanguage,
   voiceOnServer,
   type Voice,
+  useSetStylePrompts,
 } from "../api/voices";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { PillSelect } from "../components/PillSelect";
+import { Switch } from "../components/Switch";
 import { VoicePreview } from "../components/VoicePreview";
 
 const LANGUAGES = [
@@ -378,6 +380,32 @@ function GroupBlock({
   );
 }
 
+/** "Send style prompts": whether each voice's instructions (and books'
+ * delivery notes) go to the engine. Flipping it re-keys every clip. */
+function StylePrompts({ on }: { on: boolean }) {
+  const set = useSetStylePrompts();
+  return (
+    <div className="mt-4 flex flex-col gap-1 rounded-lg bg-raised p-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-md font-semibold">Send style prompts</span>
+          <span className="text-sm text-fg-2">
+            Sends each voice’s instructions and the book’s delivery note with every request. Some engines need them
+            (pauses between sentences); a cloned VoxCPM2 voice is more consistent without them.
+          </span>
+        </div>
+        <Switch label="Send style prompts" checked={on} disabled={set.isPending} onChange={(next) => set.mutate(next)} />
+      </div>
+      <span className="text-xs text-fg-2">Changing this generates the audio again as books are played.</span>
+      {set.isError && (
+        <p role="alert" className="text-sm text-danger">
+          {set.error.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AdminVoices() {
   const refresh = useRefreshVoices();
   const { data, dataUpdatedAt } = useVoices();
@@ -408,14 +436,6 @@ export function AdminVoices() {
           Friendly names for the voices on your TTS server, grouped by language. The default is used for books in that
           language unless a listener or a book picks another voice.
         </p>
-        <p>
-          Each voice’s language is detected automatically, from the language the TTS server reports or from the end of
-          the voice ID: <span className="font-mono text-fg">-en</span> English, <span className="font-mono text-fg">-ja</span>{" "}
-          Japanese, <span className="font-mono text-fg">-ko</span> or <span className="font-mono text-fg">-kr</span>{" "}
-          Korean, <span className="font-mono text-fg">-zh</span> Chinese. Voices whose language can’t be detected go to{" "}
-          <span className="font-semibold text-fg">Unassigned</span> until you pick one; listeners don’t see them until
-          then.
-        </p>
         {data && <p>{countVoices(onServer)} on the server, checked {timeAgo(Date.now() - dataUpdatedAt)}.</p>}
       </div>
       {refresh.isError && (
@@ -423,6 +443,7 @@ export function AdminVoices() {
           Couldn’t refresh the voices — {refresh.error.message}
         </p>
       )}
+      {data && <StylePrompts on={data.style_prompts !== false} />}
       {!data && (
         <div className="animate-pulse space-y-2 pt-6" aria-busy="true">
           {[0, 1, 2].map((i) => (

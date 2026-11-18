@@ -32,6 +32,10 @@ class LanguageModel:
     ocr_model: str = ""
     ocr: bool = False  # read scanned PDFs at import
     suggest: bool = False  # suggest pronunciation rules + a delivery note at import
+    # Off: every request asks the model not to think first (chat template
+    # ``enable_thinking: false``). Folio's tasks gain nothing from it, and a
+    # thinking model can spend a whole answer budget before answering.
+    thinking: bool = False
 
     @property
     def configured(self) -> bool:
@@ -73,6 +77,7 @@ def _parse(raw: Any) -> Integrations:
             ocr_model=_str(llm.get("ocr_model")),
             ocr=llm.get("ocr") is True,
             suggest=llm.get("suggest") is True,
+            thinking=llm.get("thinking") is True,
         ),
     )
 

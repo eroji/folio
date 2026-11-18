@@ -45,6 +45,7 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 | `TTS_REQUEST_CHARS` | `400` | optional | Longest single TTS request. Every sentence is its own request (sentences under 40 characters ride with the next) and the clips are joined, recording where each sentence starts for read-along; a sentence longer than this is cut at clauses. `0` sends each segment as one request. Segments already synthesized keep their clips; Reprocess a book to re-make its audio. |
 | `TTS_LOOKAHEAD` | `6` | optional | Segments generated ahead of playback. |
 | `TTS_CONCURRENCY` | `4` | optional | Most TTS requests in flight at once: a segment's sentences are synthesized this many at a time (VoxCPM2: 8 sentences took 6.0 s one by one, 2.1 s four at a time). Lower it for an engine that serves one request at a time. |
+| `TTS_INSTRUCTIONS` | `true` | optional | Whether syntheses carry the narration prompt (the voice's instructions + the book's delivery note); set `false` for VoxCPM2. Only the default: Admin → Voices → Send style prompts overrides it once switched. Changing it re-generates audio as it is played. |
 | `TTS_CHARS_PER_SECOND` | `15` | optional | Duration estimate before audio exists. |
 | `TTS_SPEED_MIN` | `0.9` | optional | Lowest playback speed the engine supports; served by `GET /me/speed-options`. |
 | `TTS_SPEED_MAX` | `1.15` | optional | Highest playback speed. |
@@ -56,7 +57,7 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 | --- | --- | --- | --- |
 | `AUDIO_CACHE_MAX_GB` | `50` | optional | Eviction threshold for `/data/audio` (LRU, never evicts active lookahead). |
 | `METADATA_ONLINE` | `true` | optional | Enable Open Library / Google Books lookups (M3). |
-| `GOOGLE_BOOKS_API_KEY` | empty | optional | Raises Google Books rate limits. A key set under Admin → Integrations wins over this one; without either, Google answers most lookups with 429. |
+| `GOOGLE_BOOKS_API_KEY` | empty | optional | Raises Google Books rate limits. A key set under Admin → Metadata wins over this one; without either, Google answers most lookups with 429. |
 
 ## Compose database (used by `compose.yaml` only)
 
@@ -73,14 +74,15 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 | `FOLIO_TEST_MODE` | `false` | never in production | Mounts `POST /api/v1/test/login` for headless tests. Only `compose.test.yaml` may set it; `compose.yaml` must never. |
 | `TEST_DATABASE_URL` | `postgresql+psycopg://folio:folio@localhost:5432/folio_test` | optional | Backend pytest target; created if missing. Never a dev or production database. |
 
-## Set in the app (Admin → Integrations)
+## Set in the app (Admin → Metadata and Admin → AI)
 
 These live in the database (`app_settings.integrations`), not the environment, so an admin can change them without a redeploy. Keys are never returned to a browser in full.
 
 | Setting | Purpose |
 |---|---|
-| Google Books API key | Overrides `GOOGLE_BOOKS_API_KEY`. |
-| Language model: base URL, API key, model | Any OpenAI-compatible `/chat/completions` endpoint (base URL ends in `/v1`). |
+| Google Books API key (Metadata) | Overrides `GOOGLE_BOOKS_API_KEY`. |
+| Send style prompts (Voices) | Overrides `TTS_INSTRUCTIONS`. |
+| Language model: base URL, API key, model | Any OpenAI-compatible `/chat/completions` endpoint (base URL ends in `/v1`); models are listed from `{base_url}/models`. Requests ask the model not to think unless "Let the model think" is on. |
 | Reading model (OCR) | A vision model for scanned pages; empty uses the model. |
 | Read scanned PDFs (OCR) | Scanned PDFs are read at import instead of stopping at `needs_ocr`. |
 | Suggest pronunciation and a delivery note | A `suggest` job after each import proposes rules (applied only once accepted) and a delivery note. |

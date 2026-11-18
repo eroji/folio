@@ -1,4 +1,4 @@
-"""Admin → Integrations: masked keys, keep/clear semantics, and the Test buttons."""
+"""Admin → Metadata and AI: masked keys, keep/clear semantics, and the Test buttons."""
 
 from __future__ import annotations
 
@@ -174,3 +174,47 @@ async def test_ocr_test_reads_an_uploaded_image_or_pdf(admin_client: httpx.Async
         headers=csrf(admin_client),
     )
     assert response.status_code == 422
+
+
+async def test_models_are_listed_from_the_draft_base_url(admin_client: httpx.AsyncClient) -> None:
+    with serve(lambda body: completion("x"), models=["utility", "uncensored"]) as (url, _):
+        response = await admin_client.post(
+            f"{URL}/language-model/models", json={"base_url": url}, headers=csrf(admin_client)
+        )
+    assert response.json() == {"ok": True, "models": ["uncensored", "utility"]}
+    response = await admin_client.post(
+        f"{URL}/language-model/models",
+        json={"base_url": "http://127.0.0.1:9/v1"},
+        headers=csrf(admin_client),
+    )
+    assert response.json()["ok"] is False and response.json()["models"] == []
+
+
+async def test_thinking_is_off_unless_switched_on_and_a_test_says_when_it_happened_anyway(
+    admin_client: httpx.AsyncClient,
+) -> None:
+    assert (await admin_client.get(URL)).json()["language_model"]["thinking"] is False
+
+    def thinks_anyway(body: dict) -> tuple[int, dict]:
+        status, payload = completion("ready", model="uncensored")
+        payload["usage"] = {"completion_tokens_details": {"reasoning_tokens": 22}}
+        return status, payload
+
+    with serve(thinks_anyway) as (url, requests):
+        result = (
+            await admin_client.post(
+                f"{URL}/language-model/test",
+                json={"base_url": url, "model": "uncensored"},
+                headers=csrf(admin_client),
+            )
+        ).json()
+    assert requests[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert result["ok"] is True and result["reasoning_tokens"] == 22
+    assert "ignores the request not to think" in result["message"]
+
+    response = await admin_client.put(
+        URL,
+        json={"language_model": {"base_url": "http://x/v1", "model": "m", "thinking": True}},
+        headers=csrf(admin_client),
+    )
+    assert response.json()["language_model"]["thinking"] is True

@@ -148,7 +148,7 @@ async def test_listing_shows_suggestions_and_what_the_model_can_do(
 
     response = await admin_client.post(f"{url}/suggest", headers=csrf(admin_client))
     assert response.status_code == 409
-    assert "Admin → Integrations" in response.json()["error"]["message"]
+    assert "Admin → AI" in response.json()["error"]["message"]
 
     _model(db, "http://llm.local/v1")
     response = await admin_client.post(f"{url}/suggest", headers=csrf(admin_client))
