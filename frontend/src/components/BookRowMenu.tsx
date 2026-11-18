@@ -43,7 +43,8 @@ export function BookRowMenu({ book, progress }: { book: Book; progress: Progress
         bookTitle={book.title}
         onToggleFinished={(value) => toggleFinished.mutate(value)}
         onReset={() => setResetOpen(true)}
-        onNarrator={() => setNarratorOpen(true)}
+        // PATCH /books/{id} is admin/uploader only: others never see an item that would 403.
+        onNarrator={book.can_edit ? () => setNarratorOpen(true) : undefined}
         onGoToAuthor={() =>
           navigate(book.authors[0] ? `/search?q=${encodeURIComponent(book.authors[0])}` : "/search")
         }

@@ -254,6 +254,13 @@ def test_apply_strips_invisible_characters_from_description(
     assert _reload(db, book.id).description == "a bcd"  # NBSP→space, junk dropped
 
 
+def test_apply_decodes_entities_in_description(db: Session, settings: Settings) -> None:
+    book = _book(db)
+    candidate = _candidate(description="<p>&ldquo;Q&rdquo; &mdash; A</p><p>B</p>")
+    metadata_service.apply_candidate(db, book, candidate, ["description"], settings)
+    assert _reload(db, book.id).description == "\u201cQ\u201d \u2014 A\n\nB"
+
+
 # --- auto_fetch --------------------------------------------------------------
 
 
@@ -413,6 +420,45 @@ async def test_metadata_search_endpoint_returns_candidates(
     assert items[0]["source"] == "openlibrary"
     assert items[0]["title"] == "Found Book"
     assert items[0]["suggested_genre"] == "Mystery"
+
+
+async def test_metadata_search_returns_descriptions_as_plain_text(
+    admin_client: httpx.AsyncClient,
+    db: Session,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Google Books descriptions carry HTML; the review drawer shows text.
+    monkeypatch.setattr(
+        metadata_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"metadata_online": True}),
+    )
+    book = _book(db, title="Query Book")
+    gb = {
+        "items": [
+            {
+                "volumeInfo": {
+                    "title": "Found Book",
+                    "authors": ["Ann"],
+                    "description": "<p>&ldquo;Q&rdquo; &mdash; A</p><p>B</p>",
+                }
+            }
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "www.googleapis.com":
+            return httpx.Response(200, json=gb)
+        return httpx.Response(200, json={"docs": []})
+
+    _override_client(admin_client, handler)
+    response = await admin_client.get(
+        f"/api/v1/books/{book.id}/metadata/search", params={"q": "Query Book"}
+    )
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert items[0]["description"] == "\u201cQ\u201d \u2014 A\n\nB"
 
 
 async def test_metadata_search_scores_candidates_against_the_book(

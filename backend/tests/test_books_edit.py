@@ -120,6 +120,31 @@ async def test_get_cleans_legacy_control_characters_in_descriptions(
     assert body["description"] == 'Galileo." Next line'
 
 
+async def test_get_decodes_entities_left_in_legacy_descriptions(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    # Rows written before entities were decoded on write still hold them.
+    book = reload_book(db, book_id)
+    book.description = "&ldquo;Galileo&rdquo; &mdash; Tom &amp; Jerry"
+    db.commit()
+    body = (await auth_client.get(f"/api/v1/books/{book_id}")).json()["book"]
+    assert body["description"] == "\u201cGalileo\u201d \u2014 Tom & Jerry"
+
+
+async def test_patch_description_decodes_entities(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    response = await auth_client.patch(
+        f"/api/v1/books/{book_id}",
+        json={"description": "<p>&ldquo;Q&rdquo; a < b</p>"},
+        headers=csrf(auth_client),
+    )
+    assert response.status_code == 200, response.text
+    assert reload_book(db, book_id).description == "\u201cQ\u201d a < b"
+
+
 async def test_metadata_fields_are_written_without_being_locked(
     auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
 ) -> None:
@@ -297,7 +322,9 @@ async def test_description_html_is_stripped(
         headers=csrf(auth_client),
     )
     assert response.status_code == 200, response.text
-    assert response.json()["book"]["description"] == "bold &amp; alert(1)text"
+    assert (
+        response.json()["book"]["description"] == "bold & alert(1)text"
+    )  # plain text: no escaped &amp;
 
 
 async def test_description_control_characters_are_stripped(

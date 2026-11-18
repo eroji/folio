@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
-import bleach  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select, text
@@ -29,7 +28,7 @@ from folio.models.book import BOOK_SEARCH_EXPR
 from folio.routers.progress import progress_dict
 from folio.security import require_csrf
 from folio.storage import book_dir, cover_dir, ensure_dirs, original_path
-from folio.text import clean_description
+from folio.text import decode_entities, description_text
 
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
@@ -87,9 +86,9 @@ class ChapterPublic(BaseModel):
 
 def _public(book: Book, user: User) -> BookPublic:
     public = BookPublic.model_validate(book)
-    # Rows written before clean_description existed still carry C1 junk that
-    # renders as empty boxes; sanitise on the way out too.
-    public.description = clean_description(book.description) if book.description else None
+    # Rows written before clean_description/description_text existed still
+    # carry C1 junk (empty boxes) and HTML entities; clean on the way out too.
+    public.description = decode_entities(book.description) if book.description else None
     public.can_edit = can_edit_book(user, book)
     public.cover_url = (
         f"/api/v1/books/{book.id}/cover?v={book.cover_key[:8]}" if book.cover_key else None
@@ -192,11 +191,7 @@ def _patch_values(patch: BookPatch) -> dict[str, object | None]:
         # Plain text for M3 (see DECISIONS): markup stripped, invisible control
         # characters dropped (they render as empty boxes in the drawer).
         raw = patch.description
-        values["description"] = (
-            clean_description(bleach.clean(raw, tags=[], strip=True).strip()) or None
-            if raw
-            else None
-        )
+        values["description"] = description_text(raw) or None if raw else None
     for name in ("authors", "tags"):
         if name in provided:
             values[name] = _clean_list(getattr(patch, name))

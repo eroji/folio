@@ -84,7 +84,19 @@ export interface InstalledFetch {
   finishedCalls: { finished: boolean }[];
   /** When true, progress PUTs answer 500 (the player must stay silent). */
   saveFails: boolean;
+  /** Every PATCH /books/{id} body received, in order (narrator changes). */
+  patchCalls: Record<string, unknown>[];
 }
+
+/** GET /voices: two English voices (one without a display name) and the
+ * server default per language. */
+export const PLAYER_VOICES = {
+  items: [
+    { id: "ashley-en", language: "en", description: null, available: true, display_name: "Ashley" },
+    { id: "zoe-en", language: "en", description: null, available: true },
+  ],
+  defaults: { en: "ashley-en" },
+};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -109,13 +121,20 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
   const prepareCalls: InstalledFetch["prepareCalls"] = [];
   const saveCalls: InstalledFetch["saveCalls"] = [];
   const finishedCalls: InstalledFetch["finishedCalls"] = [];
-  const installed: InstalledFetch = { prepareCalls, saveCalls, finishedCalls, saveFails: false };
+  const patchCalls: InstalledFetch["patchCalls"] = [];
+  const installed: InstalledFetch = { prepareCalls, saveCalls, finishedCalls, saveFails: false, patchCalls };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/me/speed-options")) {
         return jsonResponse(fixture.speedOptions ?? DEFAULT_SPEED_OPTIONS);
+      }
+      if (url.includes("/voices")) return jsonResponse(PLAYER_VOICES);
+      if (url.match(/\/books\/[^/]+$/) && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        patchCalls.push(body);
+        return jsonResponse({ book: { ...makeBook(), ...fixture.book, ...body } });
       }
       if (url.includes("/me/settings")) {
         return jsonResponse({ settings: { ...DEFAULT_SETTINGS, ...fixture.settings } });

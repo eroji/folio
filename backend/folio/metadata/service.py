@@ -13,7 +13,6 @@ from collections.abc import Iterable
 from dataclasses import asdict
 from typing import Any
 
-import bleach  # type: ignore[import-untyped]
 import httpx
 from sqlalchemy.orm import Session
 
@@ -30,7 +29,7 @@ from folio.metadata.match import (
     score_candidate,
 )
 from folio.models import Book, MetadataCandidate
-from folio.text import clean_description
+from folio.text import description_text
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +149,7 @@ def _field_value(candidate: Candidate, name: str) -> object | None:
     """Coerce one candidate field to a value safe for the ``Book`` column."""
     if name == "description":
         raw = candidate.description or ""
-        return clean_description(bleach.clean(raw, tags=[], strip=True).strip()) or None
+        return description_text(raw) or None
     if name in ("authors", "tags"):
         return _clean_list(getattr(candidate, name))
     if name == "genre":

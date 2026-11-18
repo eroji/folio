@@ -44,6 +44,7 @@ import SkipPreviousFilled from "@material-symbols/svg-400/rounded/skip_previous-
 import Speed from "@material-symbols/svg-400/rounded/speed.svg?react";
 import TextDecrease from "@material-symbols/svg-400/rounded/text_decrease.svg?react";
 import TextIncrease from "@material-symbols/svg-400/rounded/text_increase.svg?react";
+import Remove from "@material-symbols/svg-400/rounded/remove.svg?react";
 import Upload from "@material-symbols/svg-400/rounded/upload.svg?react";
 import Visibility from "@material-symbols/svg-400/rounded/visibility.svg?react";
 import VisibilityOff from "@material-symbols/svg-400/rounded/visibility_off.svg?react";
@@ -55,6 +56,7 @@ const OUTLINED = {
   LibraryBig: LibraryBooks,
   Menu,
   Plus: Add,
+  Minus: Remove,
   TextDecrease,
   TextIncrease,
   RotateCcw: Replay,

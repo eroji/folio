@@ -2,15 +2,16 @@
  * column (cover with accent progress bar, title, author link, meta, clamped
  * description, progress line, white primary pill + outlined ⋮) and pill tabs
  * on the right (Chapters / About / Manage). Under 768px it becomes one
- * centered column with a back + ⋮ header. The ⋮ menu is the only place a
- * book's narrator is chosen. Playback drives the shared player state only. */
+ * centered column with a back + ⋮ header. The narrator sits in a "Narrated
+ * by" row right under the primary action (changeable by editors only).
+ * Playback drives the shared player state only. */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Link, useLocation, useMatch, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { languageName, useBook, useDeleteBook, useReprocessBook, useSetChapterExcluded } from "../api/books";
 import { api } from "../api/client";
-import { useMetadataCandidates, useUpdateBook } from "../api/metadata";
+import { useMetadataCandidates } from "../api/metadata";
 import { fetchSegments } from "../api/audio";
 import {
   continueQueryKey,
@@ -20,8 +21,6 @@ import {
   resetProgress,
   useBookProgress,
 } from "../api/progress";
-import { useListeningSettings } from "../api/settings";
-import { baseLanguage, voiceLabel } from "../api/voices";
 import { useAuth } from "../auth/AuthProvider";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { BookCover } from "../components/BookCard";
@@ -32,7 +31,7 @@ import { CoverProgressBadge } from "../components/CoverProgressBadge";
 import { EditDetailsDrawer } from "../components/EditDetailsDrawer";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
-import { NarratorVoiceDialog } from "../components/NarratorVoiceDialog";
+import { NarratorName, NarratorRow } from "../components/NarratorControl";
 import { PronunciationRules } from "../components/PronunciationRules";
 import { StatusBadge } from "../components/StatusBadge";
 import { Switch } from "../components/Switch";
@@ -146,10 +145,8 @@ export function BookDetailPage() {
   const phone = !useMediaQuery("(min-width: 768px)", false);
   const { data, isPending, error } = useBook(id);
   const progressQuery = useBookProgress(id);
-  const { settings } = useListeningSettings();
   const reprocess = useReprocessBook(id);
   const remove = useDeleteBook(id);
-  const update = useUpdateBook(id);
   const candidates = useMetadataCandidates(id);
 
   const navState = location.state as { tab?: Tab; find?: boolean; reviewItems?: Candidate[] } | null;
@@ -158,7 +155,6 @@ export function BookDetailPage() {
   const [showAllChapters, setShowAllChapters] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [narratorOpen, setNarratorOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [toast, setToast] = useState<{ message: string; undo?: boolean } | null>(null);
 
@@ -271,7 +267,6 @@ export function BookDetailPage() {
   const notPlayable = book.status === "needs_ocr" || book.status === "failed" || !firstChapter;
   const loadedHere = player.book?.id === id;
   const playingHere = loadedHere && player.playing;
-  const voice = book.narrator_voice ?? settings.voices[baseLanguage(book.language)] ?? null;
   const secondsPerChar = book.total_chars > 0 && book.est_duration_s ? book.est_duration_s / book.total_chars : 1 / 15;
   const chapterSeconds = (chapter: Chapter) => chapter.char_count * secondsPerChar;
   const length = book.est_duration_s ? formatLength(book.est_duration_s) : null;
@@ -395,7 +390,6 @@ export function BookDetailPage() {
       pending={toggleFinished.isPending}
       onToggleFinished={(value) => toggleFinished.mutate(value)}
       onReset={() => setResetOpen(true)}
-      onNarrator={() => setNarratorOpen(true)}
       onGoToAuthor={() => void navigate(authorHref)}
     />
   );
@@ -496,12 +490,7 @@ export function BookDetailPage() {
             <dd className="text-md">{[length && `About ${length}`, `${included.length} chapters`].filter(Boolean).join(" · ")}</dd>
           </>
         )}
-        {voice && (
-          <>
-            <dt className="text-md text-fg-2">Narrator</dt>
-            <dd className="text-md">{voiceLabel({ id: voice, language: book.language, description: null, available: true })}</dd>
-          </>
-        )}
+        <NarratorName book={book} />
         {(book.isbn13 ?? book.isbn10) && (
           <>
             <dt className="text-md text-fg-2">ISBN</dt>
@@ -689,7 +678,10 @@ export function BookDetailPage() {
               <p className="text-sm text-fg-2">{metaPhone}</p>
             </div>
           </div>
-          {primaryButton(true)}
+          <div className="flex flex-col gap-2.5">
+            {primaryButton(true)}
+            <NarratorRow book={book} canChange={canManage} />
+          </div>
           <div className="flex flex-col gap-4">
             <TabList tabs={tabs} active={activeTab} onSelect={setTab} />
             {tabPanel}
@@ -730,9 +722,12 @@ export function BookDetailPage() {
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-2.5">
-              {primaryButton(false)}
-              {bookMenu("inline")}
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-center gap-2.5">
+                {primaryButton(false)}
+                {bookMenu("inline")}
+              </div>
+              <NarratorRow book={book} canChange={canManage} />
             </div>
           </div>
           <div className="flex min-w-0 flex-col gap-5">
@@ -807,20 +802,6 @@ export function BookDetailPage() {
             setTab("Manage");
             navigate(`/books/${id}`, { replace: true, state: { tab: "Manage" } });
           }}
-        />
-      )}
-      {narratorOpen && (
-        <NarratorVoiceDialog
-          value={book.narrator_voice}
-          language={book.language}
-          error={update.isError ? update.error.message : null}
-          onClose={() => setNarratorOpen(false)}
-          onSelect={(next) =>
-            update.mutate(
-              { narrator_voice: next },
-              { onSuccess: () => player.reloadVoice(book.id) },
-            )
-          }
         />
       )}
     </div>
