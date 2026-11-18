@@ -7,7 +7,9 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy.orm import Session
 
+from folio.config import Settings
 from folio.metadata import googlebooks, openlibrary
 
 
@@ -131,11 +133,7 @@ def test_googlebooks_normalizes_a_volume() -> None:
     assert "edge=curl" not in candidate.cover_url
 
 
-def test_googlebooks_searches_by_isbn_and_sends_the_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from types import SimpleNamespace
-
+def test_googlebooks_searches_by_isbn_and_sends_the_key() -> None:
     seen: dict[str, Any] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -143,10 +141,7 @@ def test_googlebooks_searches_by_isbn_and_sends_the_key(
         seen["key"] = request.url.params.get("key")
         return httpx.Response(200, json={"items": []})
 
-    monkeypatch.setattr(
-        googlebooks, "get_settings", lambda: SimpleNamespace(google_books_api_key="SECRET")
-    )
-    assert googlebooks.search("ignored", "9781111111117", _client(handler)) == []
+    assert googlebooks.search("ignored", "9781111111117", _client(handler), "SECRET") == []
     assert seen == {"q": "9781111111117", "key": "SECRET"}
 
 
@@ -184,3 +179,59 @@ def test_googlebooks_429_logs_a_warning(caplog: pytest.LogCaptureFixture) -> Non
     with caplog.at_level(logging.WARNING, logger="folio.metadata"):
         assert googlebooks.search("q", None, _client(handler)) == []
     assert any("429" in record.message for record in caplog.records)
+
+
+# --- Google Books: API key and rate-limit pause ------------------------------
+
+
+def test_google_sends_the_key_and_pauses_after_a_429() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(429, headers={"Retry-After": "120"}, json={"error": {"code": 429}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert googlebooks.search("Dune", None, client, "my-key") == []
+    assert calls[0].url.params["key"] == "my-key"
+    # Paused: the next searches do not even ask.
+    assert googlebooks.search("Emma", None, client, "my-key") == []
+    assert len(calls) == 1
+    # A successful Test clears the pause.
+    ok_client = httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"totalItems": 1}))
+    )
+    assert googlebooks.probe(ok_client, "my-key") == (True, "Google Books answered with this key.")
+    assert googlebooks._paused_until == 0.0
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "key", "message"),
+    [
+        (
+            400,
+            "API key not valid. Please pass a valid API key.",
+            "bad",
+            "Google rejected the API key.",
+        ),
+        (403, "Books API has not been used in project", "k", "does not allow the Books API"),
+        (429, "quota", "", "set an API key."),
+        (429, "quota", "k", "daily quota may be used up."),
+    ],
+)
+def test_google_probe_explains_failures(status: int, body: str, key: str, message: str) -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(status, text=body))
+    )
+    ok, text = googlebooks.probe(client, key)
+    assert not ok and message in text
+
+
+def test_the_admin_key_wins_over_the_environment(db: Session, settings: Settings) -> None:
+    from folio.integrations import Integrations, google_books_key, save_integrations
+
+    env = settings.model_copy(update={"google_books_api_key": "env-key"})
+    assert google_books_key(db, env) == "env-key"
+    save_integrations(db, Integrations(google_books_api_key="admin-key"))
+    db.commit()
+    assert google_books_key(db, env) == "admin-key"

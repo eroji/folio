@@ -63,6 +63,7 @@ class BookPublic(BaseModel):
     tags: list[str]
     genre: str | None = None
     narrator_voice: str | None
+    delivery_note: str | None = None
     cover_url: str | None = None
     cover_rgb: str | None = None
     status: str
@@ -118,6 +119,8 @@ class BookPatch(BaseModel):
     tags: list[str] | None = None
     genre: str | None = Field(default=None, max_length=80)
     narrator_voice: str | None = Field(default=None, max_length=64)
+    # Hand-edited notes lock (locked_fields), so the language model keeps off them.
+    delivery_note: str | None = Field(default=None, max_length=600)
     # Fields whose value came from a metadata suggestion (Edit details drawer).
     # They are written like any other field but stay unlocked: the provider,
     # not the user, owns the value.
@@ -185,7 +188,14 @@ def _patch_values(patch: BookPatch) -> dict[str, object | None]:
         if not title:
             _fail()
         values["title"] = title
-    for name in ("subtitle", "series", "publisher", "published_date", "narrator_voice"):
+    for name in (
+        "subtitle",
+        "series",
+        "publisher",
+        "published_date",
+        "narrator_voice",
+        "delivery_note",
+    ):
         if name in provided:
             values[name] = _clean_str(getattr(patch, name))
     if "genre" in provided:

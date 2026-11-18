@@ -28,8 +28,11 @@ from folio.ingest.clean import clean_chapters
 from folio.ingest.detect import Format, detect_format
 from folio.ingest.epub import extract_epub
 from folio.ingest.kindle import extract_kindle
+from folio.ingest.ocr import ocr_pdf
 from folio.ingest.pdf import extract_pdf
 from folio.ingest.segment import segment_chapter
+from folio.integrations import LanguageModel, load_integrations
+from folio.jobs import enqueue, notify
 from folio.metadata.service import auto_fetch, genre_from_subjects
 from folio.models import Book, BookFile, Chapter, Job, Segment
 from folio.storage import book_dir
@@ -79,20 +82,62 @@ def _ingest(session: Session, settings: Settings, book: Book) -> None:
         raise FileNotFoundError("The stored original file is missing.")
     path = Path(original.path)
     scanned = False
+    model = load_integrations(session).language_model
     try:
         extracted = _extract(settings, book, path)
     except ScannedPDF as exc:  # spec step 5: still add metadata/cover, not playable
-        scanned = True
-        extracted = ExtractedBook(
-            chapters=[], metadata=exc.metadata or EmbeddedMetadata(), cover=exc.cover
-        )
+        if model.ocr_ready:
+            extracted = _read_scanned(session, settings, book, path, model, exc)
+        else:
+            scanned = True
+            extracted = ExtractedBook(
+                chapters=[], metadata=exc.metadata or EmbeddedMetadata(), cover=exc.cover
+            )
     _apply_metadata(book, extracted.metadata)
     _store_cover(settings, book, extracted.cover)
     _persist_chapters(session, settings, book, extracted.chapters)
     book.status = "needs_ocr" if scanned else "ready"
+    if not scanned and model.suggest_ready:
+        # Pronunciation suggestions + a delivery note, after the book is
+        # playable: the listener never waits on the model.
+        enqueue(session, "suggest", book.id, priority=SUGGEST_PRIORITY)
     session.commit()
     if settings.metadata_online:
         _online_metadata(session, settings, book)
+
+
+# Behind fresh imports (100): suggestions never hold up a book becoming ready.
+SUGGEST_PRIORITY = 200
+# OCR progress reaches the book's watchers every this many pages (and at the end).
+OCR_NOTIFY_EVERY = 5
+
+
+def _read_scanned(
+    session: Session,
+    settings: Settings,
+    book: Book,
+    path: Path,
+    model: LanguageModel,
+    scanned: ScannedPDF,
+) -> ExtractedBook:
+    """OCR a scanned PDF with the language model; ``LlmError`` fails the book
+    with its message (pages already read are kept for the retry)."""
+    language = (scanned.metadata.language if scanned.metadata else None) or book.language
+
+    def progress(done: int, total: int) -> None:
+        if done == total or done % OCR_NOTIFY_EVERY == 0:
+            logger.info("OCR book %s: %d of %d pages", book.id, done, total)
+            notify(
+                session,
+                {
+                    "event": "book",
+                    "book_id": str(book.id),
+                    "status": "processing",
+                    "ocr": [done, total],
+                },
+            )
+
+    return ocr_pdf(path, model, book_dir(settings, book.id), language or None, progress)
 
 
 def _online_metadata(session: Session, settings: Settings, book: Book) -> None:

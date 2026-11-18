@@ -13,10 +13,11 @@ from folio.ingest.pipeline import process_book
 from folio.jobs import claim_next, finish, notify
 from folio.models.book import Job
 from folio.storage import ensure_dirs
+from folio.suggest import suggest_for_book
 from folio.tts.queue import claim_next_tts, run_tts_job, urgent_priority
 
 Handler = Callable[[Session, Settings, Job], None]
-HANDLERS: dict[str, Handler] = {"ingest": process_book}
+HANDLERS: dict[str, Handler] = {"ingest": process_book, "suggest": suggest_for_book}
 
 IDLE_S = 0.5
 HEARTBEAT_S = 5.0
