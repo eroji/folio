@@ -36,19 +36,28 @@ _SLOTS_LOCK = threading.Lock()
 
 
 def _slots(count: int) -> threading.BoundedSemaphore:
-    """The process-wide cap on TTS requests in flight (TTS_CONCURRENCY): the
-    worker's audio lanes and each segment's parallel sentences share it."""
+    """The process-wide cap on TTS requests in flight (the effective
+    concurrency: Admin → Voices → TTS server, else TTS_CONCURRENCY): the
+    worker's audio lanes and each segment's parallel sentences share it.
+
+    Keyed by the count, so an admin change takes a fresh semaphore on the next
+    request while those already under the old one finish: for that moment up
+    to old + new requests can be in flight. Accepted; it ends with them.
+    """
     with _SLOTS_LOCK:
         return _SLOTS.setdefault(count, threading.BoundedSemaphore(count))
 
 
 class TtsClient:
-    def __init__(self, settings: Settings) -> None:
+    """Pass the effective settings (``folio.integrations.effective_tts_settings``)
+    so the admin's TTS server, key and concurrency apply."""
+
+    def __init__(self, settings: Settings, timeout: float = _TIMEOUT_S) -> None:
         self.settings = settings
         headers = {}
         if settings.tts_api_key:
             headers["Authorization"] = f"Bearer {settings.tts_api_key}"
-        self._client = httpx.Client(timeout=_TIMEOUT_S, headers=headers)
+        self._client = httpx.Client(timeout=timeout, headers=headers)
 
     def close(self) -> None:
         self._client.close()

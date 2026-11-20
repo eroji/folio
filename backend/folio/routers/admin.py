@@ -12,14 +12,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session as DbSession
 
-from folio.config import Settings, get_settings
+from folio.config import Settings
 from folio.db import get_session
 from folio.deps import require_admin
 from folio.errors import ApiError
 from folio.jobs import notify
 from folio.models import Audio, Book, Chapter, Job, Segment, SegmentAudio, User
 from folio.routers.auth import UserPublic
-from folio.routers.voices import get_tts_client
+from folio.routers.voices import get_tts_client, get_tts_settings
 from folio.security import require_csrf
 from folio.tts import TtsClient, discover_voices
 from folio.tts.narration import set_style_prompts
@@ -108,9 +108,9 @@ def retry_job(
 @router.get("/cache")
 def cache_stats(
     db: Annotated[DbSession, Depends(get_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: Annotated[Settings, Depends(get_tts_settings)],
 ) -> dict[str, Any]:
-    """Audio-cache size plus a live TTS probe, for the admin page."""
+    """Audio-cache size plus a live TTS probe (of the server in effect), for the admin page."""
     files, total = db.execute(select(func.count(), func.coalesce(func.sum(Audio.bytes), 0))).one()
     status, latency_ms = probe_tts_timed(settings)
     return {
@@ -167,7 +167,7 @@ def _discovered_voices(settings: Settings, client: TtsClient) -> list[tuple[str,
 @router.get("/voice-names")
 def get_voice_names(
     db: Annotated[DbSession, Depends(get_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: Annotated[Settings, Depends(get_tts_settings)],
     client: Annotated[TtsClient, Depends(get_tts_client)],
 ) -> dict[str, Any]:
     """Override map plus the resolved name for every discovered voice."""
@@ -192,7 +192,7 @@ def put_voice_names(
     request: Request,
     body: VoiceNamesBody,
     db: Annotated[DbSession, Depends(get_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: Annotated[Settings, Depends(get_tts_settings)],
     client: Annotated[TtsClient, Depends(get_tts_client)],
 ) -> dict[str, Any]:
     """Replace the override map; trimmed-empty values remove an override."""
@@ -227,7 +227,7 @@ def patch_voice(
     request: Request,
     voice_id: str,
     db: Annotated[DbSession, Depends(get_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: Annotated[Settings, Depends(get_tts_settings)],
     client: Annotated[TtsClient, Depends(get_tts_client)],
     body: VoicePatch | None = None,
 ) -> dict[str, Any]:
@@ -310,7 +310,7 @@ def put_voice_defaults(
     request: Request,
     body: VoiceDefaultsBody,
     db: Annotated[DbSession, Depends(get_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: Annotated[Settings, Depends(get_tts_settings)],
     client: Annotated[TtsClient, Depends(get_tts_client)],
 ) -> dict[str, Any]:
     """Set the server-wide default for one language; it must be an on-server

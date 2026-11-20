@@ -16,6 +16,7 @@ from folio.config import get_settings
 from folio.db import get_session
 from folio.deps import get_current_user
 from folio.errors import ApiError, register_error_handlers
+from folio.integrations import effective_tts_settings
 from folio.metrics import HttpMetricsMiddleware
 from folio.metrics import router as metrics_router
 from folio.models import User
@@ -55,7 +56,12 @@ def admin_health(
         worker = "ok" if age < WORKER_HEARTBEAT_MAX_AGE_S else "stale"
     except OSError:
         worker = "missing"
-    body: dict[str, Any] = {"db": db, "worker": worker, "tts": probe_tts(settings)}
+    try:
+        tts = probe_tts(effective_tts_settings(session, settings))  # the admin's server, else env
+    except SQLAlchemyError:
+        session.rollback()
+        tts = probe_tts(settings)
+    body: dict[str, Any] = {"db": db, "worker": worker, "tts": tts}
     return JSONResponse(status_code=200 if db == "ok" else 503, content=body)
 
 
