@@ -70,8 +70,8 @@ The API also calls the TTS API for voice previews and the metadata APIs for inte
 | `FOLIO_LDAP_ADMIN_GROUP`, `FOLIO_LDAP_USER_GROUP` | none (required) | group DNs mapped to roles |
 | `LDAP_CA_FILE` | system store | internal CA bundle |
 | `LDAP_ALLOW_INSECURE` | `false` | permit plain LDAP |
-| `TTS_BASE_URL` | none (required) | OpenAI-compatible base, e.g. `http://tts.example.local/v1` |
-| `TTS_API_KEY` | empty | bearer token, if required |
+| `TTS_BASE_URL` | none (required) | OpenAI-compatible base, e.g. `http://tts.example.local/v1`; the default until Admin → Voices → TTS server sets one |
+| `TTS_API_KEY` | empty | bearer token, if required; sent only to `TTS_BASE_URL` |
 | `TTS_MODEL` | `tts` | `model` field sent to the API |
 | `TTS_FORMAT` | `opus` | `opus` or `mp3` |
 | `TTS_DEFAULT_VOICE` | none (required) | last-resort voice, e.g. ashley-en |
@@ -79,7 +79,8 @@ The API also calls the TTS API for voice previews and the metadata APIs for inte
 | `TTS_VOICES` | empty | comma-separated fallback list, used only if the engine can't list voices (cached per TTS\_VOICES\_TTL, default 600 s) |
 | `TTS_MAX_CHARS` | `800` | max characters per segment |
 | `TTS_LOOKAHEAD` | `6` | segments generated ahead of playback |
-| `TTS_CONCURRENCY` | `4` | max parallel TTS requests (a segment's sentences go out this many at a time) |
+| `TTS_CONCURRENCY` | `4` | max parallel TTS requests (a segment's sentences go out this many at a time); the default until Admin → Voices → TTS server sets one (1–16) |
+| `TTS_REQUEST_CHARS` | `0` | `0`: one TTS request per segment; above `0`: one request per sentence, at most this long; the default until Admin → Voices → TTS server picks one |
 | `TTS_CHARS_PER_SECOND` | `15` | duration estimate before audio exists |
 | `AUDIO_CACHE_MAX_GB` | `50` | cache eviction threshold |
 | `METADATA_ONLINE` | `true` | enable Open Library / Google Books lookups |
@@ -200,7 +201,8 @@ The target is the existing homelab TTS service (Qwen3-TTS behind the `qwen3-tts-
 {"model": "tts", "voice": "serena", "input": "Segment text…", "response_format": "opus", "speed": 1.0}
 ```
 
-- Auth: `Authorization: Bearer $TTS_API_KEY` when set.
+- Server: Admin → Voices → **TTS server** sets the base URL, an optional API key, how many requests go to it at once (1–16) and whether a segment is sent whole or one sentence per request. Each one left unset there falls back to the environment (`TTS_BASE_URL`, `TTS_CONCURRENCY`, `TTS_REQUEST_CHARS`). The admin values are read from the database on every request and worker job, so a change applies without a restart. "Test connection" lists the voices of the server as typed, before saving. Audio is keyed by the server and the request split, so changing either generates audio again as it is played.
+- Auth: `Authorization: Bearer <key>` when set. With an admin base URL the admin's key is sent (none if it has none); `TTS_API_KEY` is only ever sent to `TTS_BASE_URL`. Keys are never returned to the browser (only whether one is set and its last four characters).
 - Voices: listed live from the engine, never hard-coded (see Voice selection).
 - Format: `opus` (in an Ogg container) by default; fall back to `mp3` if the server rejects opus. Configurable with `TTS_FORMAT`.
 - Always synthesize at speed 1.0. Playback speed is changed in the browser (`playbackRate`), so the cache is shared across speeds.
@@ -238,7 +240,7 @@ Voice is chosen in this order: the book's narrator override, then the user's voi
 
 - **On demand with lookahead.** When playback starts, queue the current segment plus the next `TTS_LOOKAHEAD` segments (default 6). Keep the queue topped up as playback advances.
 - **Priority.** Segments needed now go first; lookahead is lower priority; an optional "Download whole book" job is lowest.
-- **Concurrency.** At most `TTS_CONCURRENCY` (default 4) requests in flight across all users, so the shared GPU is not swamped; a segment's sentences are synthesized that many at a time.
+- **Concurrency.** At most the admin's "Requests at once", else `TTS_CONCURRENCY` (default 4), requests in flight across all users, so the shared GPU is not swamped; a segment's sentences are synthesized that many at a time.
 - **Cache key** = SHA-256 of `model | voice | format | normalized text`. Files live at `audio/<key[0:2]>/<key>.<ext>` and are reused across books and users.
 - **Retries.** Retry 3 times with exponential backoff (1 s, 4 s, 16 s) on timeouts and 5xx. After that, mark the segment failed; the player shows "Couldn't generate this part" with a retry button and can skip ahead.
 - **Timeouts.** 60-second request timeout per segment.

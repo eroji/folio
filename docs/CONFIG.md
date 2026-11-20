@@ -32,8 +32,8 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 
 | Variable | Default | Required | Notes |
 | --- | --- | --- | --- |
-| `TTS_BASE_URL` | none | required from M4 | OpenAI-compatible base, e.g. `http://tts.example.local/v1`. |
-| `TTS_API_KEY` | empty | optional | Bearer token, if the engine requires one. |
+| `TTS_BASE_URL` | none | required from M4 | OpenAI-compatible base, e.g. `http://tts.example.local/v1`. The default: Admin → Voices → TTS server can set another server, which wins while it is set (clear it to come back here). |
+| `TTS_API_KEY` | empty | optional | Bearer token, if the engine requires one. Sent only to `TTS_BASE_URL`, never to a server set in Admin → Voices (that one uses the key entered there, or none). |
 | `TTS_MODEL` | `tts` | optional | `model` field sent to the API; part of the audio cache key. |
 | `TTS_FORMAT` | `opus` | optional | `opus` or `mp3`; falls back to `mp3` if the server rejects opus. |
 | `TTS_DEFAULT_VOICE` | none | required from M4 | Last-resort voice, e.g. `ashley-en`. |
@@ -42,9 +42,9 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 | `TTS_VOICES_TTL` | `600` | optional | Seconds the discovered voice list is cached. |
 | `TTS_VOICE_LANG_PATTERN` | `-(en\|ja\|kr\|ko\|zh)$` | optional | Language suffix matched from voice IDs; `kr` is treated as `ko`. |
 | `TTS_MAX_CHARS` | `800` | optional | Max characters per TTS segment. |
-| `TTS_REQUEST_CHARS` | `400` | optional | Longest single TTS request. Every sentence is its own request (sentences under 40 characters ride with the next) and the clips are joined, recording where each sentence starts for read-along; a sentence longer than this is cut at clauses. `0` sends each segment as one request. Segments already synthesized keep their clips; Reprocess a book to re-make its audio. |
+| `TTS_REQUEST_CHARS` | `0` | optional | `0` (default) sends each segment as one request; read-along then spreads the sentences over the clip by character share. Above `0`, every sentence is its own request (sentences under 40 characters ride with the next) and the clips are joined, recording where each sentence starts for read-along; this is the longest single request, a longer sentence is cut at clauses. VoxCPM2 drifts on long generations: pick "One sentence each" in Admin → Voices → TTS server (it uses this value when above `0`, else 400) or set `TTS_REQUEST_CHARS=400`. The admin choice wins while set. Segments already synthesized keep their clips; Reprocess a book to re-make its audio. |
 | `TTS_LOOKAHEAD` | `6` | optional | Segments generated ahead of playback. |
-| `TTS_CONCURRENCY` | `4` | optional | Most TTS requests in flight at once: a segment's sentences are synthesized this many at a time (VoxCPM2: 8 sentences took 6.0 s one by one, 2.1 s four at a time). Lower it for an engine that serves one request at a time. |
+| `TTS_CONCURRENCY` | `4` | optional | Most TTS requests in flight at once: a segment's sentences are synthesized this many at a time (VoxCPM2: 8 sentences took 6.0 s one by one, 2.1 s four at a time). Lower it for an engine that serves one request at a time. Admin → Voices → TTS server → "Requests at once" (1–16) wins while set. |
 | `TTS_INSTRUCTIONS` | `true` | optional | Whether syntheses carry the narration prompt (the voice's instructions + the book's delivery note); set `false` for VoxCPM2. Only the default: Admin → Voices → Send style prompts overrides it once switched. Changing it re-generates audio as it is played. |
 | `TTS_CHARS_PER_SECOND` | `15` | optional | Duration estimate before audio exists. |
 | `TTS_SPEED_MIN` | `0.9` | optional | Lowest playback speed the engine supports; served by `GET /me/speed-options`. |
