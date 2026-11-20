@@ -228,7 +228,7 @@ function Settings({ data }: { data: Integrations }) {
           </p>
         </div>
         {field("base_url", "Base URL", "https://api.openai.com/v1")}
-        {field("api_key", "API key", llm.key_set ? "...." : "Optional for local servers", "password")}
+        {field("api_key", "API key", llm.key_set ? "••••••••" : "Optional for local servers", "password")}
         <ModelPicker
           id="llm-model"
           label="Model"

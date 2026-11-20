@@ -137,7 +137,7 @@ describe("AdminAI", () => {
 
     const key = screen.getByLabelText("API key") as HTMLInputElement;
     expect(key.value).toBe("");
-    expect(key.placeholder).toBe("....");
+    expect(key.placeholder).toBe("••••••••");
     expect(screen.queryByText(/Saved \(/)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
@@ -150,7 +150,7 @@ describe("AdminAI", () => {
     await waitFor(() =>
       expect(lastPut()).toEqual({ language_model: { base_url: "https://litellm.local/v1", model: "uncensored" } }),
     );
-    await waitFor(() => expect(key.placeholder).toBe("...."));
+    await waitFor(() => expect(key.placeholder).toBe("••••••••"));
     expect(key.value).toBe("");
   });
 
@@ -166,7 +166,7 @@ describe("AdminAI", () => {
         language_model: { base_url: "https://llm/v1", model: "uncensored", api_key: "sk-secret-9025" },
       }),
     );
-    await waitFor(() => expect(key.placeholder).toBe("...."));
+    await waitFor(() => expect(key.placeholder).toBe("••••••••"));
     expect(key.value).toBe("");
     expect(screen.queryByText(/Saved \(/)).toBeNull();
     expect(screen.getByRole("button", { name: "Remove key" })).toBeTruthy();
