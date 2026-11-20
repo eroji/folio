@@ -1,6 +1,6 @@
-"""Untitled chapters are numbered among the chapters set to narrate, not by
-their position in the source file (an EPUB's front matter used to push the
-first real chapter to "Chapter 7")."""
+"""Untitled chapters are named by their opening words, never by a made-up
+"Chapter N" (an EPUB's untitled dedication read "Chapter 1" next to the row
+number 1, and the next real chapter was "Chapter One")."""
 
 from __future__ import annotations
 
@@ -14,11 +14,11 @@ import psycopg
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from folio.chapters import display_titles
+from folio.chapters import display_titles, opening_words
 from folio.config import Settings
 from folio.ingest import ExtractedChapter
 from folio.ingest.pipeline import _persist_chapters
-from folio.models import Book, Chapter
+from folio.models import Book, Chapter, Segment
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -31,24 +31,37 @@ def _chapter(idx: int, title: str = "", excluded: bool = False) -> Chapter:
     return Chapter(id=uuid4(), idx=idx, title=title, excluded=excluded, char_count=10)
 
 
-def test_untitled_chapters_count_among_the_narrated_ones() -> None:
+def test_untitled_chapters_are_named_by_their_opening_words() -> None:
     chapters = [
         _chapter(0, "Copyright", excluded=True),
         _chapter(1, excluded=True),  # an untitled dedication page, turned off
         _chapter(2),
-        _chapter(3),
-        _chapter(4, "II. Bear"),
-        _chapter(5),
+        _chapter(3, "II. Bear"),
+        _chapter(4),  # no text at all
     ]
-    titles = display_titles(chapters)
+    openings = {
+        chapters[1].id: "For my sister, who read every draft.",
+        chapters[2].id: "The bed is empty.\n\nNobody has slept in it.",
+    }
+    titles = display_titles(chapters, openings)
     assert [titles[c.id] for c in chapters] == [
         "Copyright",
+        "For my sister, who read every draft.",
+        "The bed is empty.",  # the first paragraph only
+        "II. Bear",  # a real title is kept
         "Untitled section",
-        "Chapter 1",
-        "Chapter 2",
-        "II. Bear",  # a real title is kept, and still counts as position 3
-        "Chapter 4",  # matches the book page's row number
     ]
+
+
+def test_opening_words_stop_on_a_word_boundary() -> None:
+    assert opening_words("This book is dedicated to everyone who stayed up far too late.") == (
+        "This book is dedicated to everyone who…"
+    )
+    assert opening_words("  Short   and\nsweet.  ") == "Short and sweet."
+    assert opening_words("Well, then, here we are, all of us, together again; at last.") == (
+        "Well, then, here we are, all of us…"  # no comma left before the ellipsis
+    )
+    assert opening_words("") == ""
 
 
 def test_ingest_stores_no_made_up_title(db: Session, settings: Settings) -> None:
@@ -69,29 +82,32 @@ def test_ingest_stores_no_made_up_title(db: Session, settings: Settings) -> None
     assert [c.title for c in stored] == ["", "Prologue"]
 
 
-async def test_book_and_chapter_endpoints_renumber_after_an_exclusion(
+async def test_book_and_chapter_endpoints_name_untitled_chapters_by_their_text(
     admin_client: httpx.AsyncClient, db: Session
 ) -> None:
-    book = Book(title="Numbered", language="en", status="ready", total_chars=30)
+    book = Book(title="Openings", language="en", status="ready", total_chars=30)
     db.add(book)
     db.flush()
     rows = [_chapter(i) for i in range(3)]
-    for row in rows:
+    for i, row in enumerate(rows):
         row.book_id = book.id
         db.add(row)
+        db.flush()
+        for seg_idx, text in enumerate([f"Opening {i}.", "Later text."]):
+            db.add(Segment(chapter_id=row.id, idx=seg_idx, text=text, char_start=0, char_end=5))
     db.commit()
     url = f"/api/v1/books/{book.id}"
 
     body = (await admin_client.get(url)).json()
-    assert [c["title"] for c in body["chapters"]] == ["Chapter 1", "Chapter 2", "Chapter 3"]
+    assert [c["title"] for c in body["chapters"]] == ["Opening 0.", "Opening 1.", "Opening 2."]
 
     response = await admin_client.patch(
         f"{url}/chapters/{rows[0].id}", json={"excluded": True}, headers=csrf(admin_client)
     )
     assert response.status_code == 200, response.text
-    assert response.json()["chapter"]["title"] == "Untitled section"
+    assert response.json()["chapter"]["title"] == "Opening 0."  # off, still named
     body = (await admin_client.get(url)).json()
-    assert [c["title"] for c in body["chapters"]] == ["Untitled section", "Chapter 1", "Chapter 2"]
+    assert [c["title"] for c in body["chapters"]] == ["Opening 0.", "Opening 1.", "Opening 2."]
 
 
 def _titles(dsn: str) -> list[str]:

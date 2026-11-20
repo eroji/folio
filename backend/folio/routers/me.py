@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
-from folio.chapters import display_titles
+from folio.chapters import chapter_openings, display_titles
 from folio.config import Settings, get_settings
 from folio.db import get_session
 from folio.deps import get_current_user
@@ -224,7 +224,8 @@ def home(
     continue_items: list[dict[str, Any]] = []
     for row, book in rows:
         chapter = db.get(Chapter, row.chapter_id)
-        titles = display_titles(db.scalars(select(Chapter).where(Chapter.book_id == book.id)).all())
+        all_chapters = db.scalars(select(Chapter).where(Chapter.book_id == book.id)).all()
+        titles = display_titles(all_chapters, chapter_openings(db, all_chapters))
         continue_items.append(
             {
                 "book": _public(book, user),
