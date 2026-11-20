@@ -1,4 +1,4 @@
-/** Admin → Integrations: provider keys and the language model.
+/** Admin → Integrations: provider keys, the language model and the TTS server.
  * GET    /admin/integrations                         → Integrations (keys masked)
  * PUT    /admin/integrations                         → Integrations (partial; a key
  *        left out stays, an empty one is removed)
@@ -6,6 +6,7 @@
  * POST   /admin/integrations/language-model/test     → TestResult  (draft fields)
  * POST   /admin/integrations/language-model/test-ocr → OcrResult   (multipart: file?, draft fields)
  * POST   /admin/integrations/language-model/models   → ModelList   (draft base_url/api_key)
+ * POST   /admin/integrations/tts/test                → TtsTestResult (draft base_url/api_key)
  * A test never saves; fields it is not given fall back to the saved ones. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
@@ -25,6 +26,36 @@ export interface Integrations {
   };
   /** Voice and book delivery notes reach the speech engine only when on. */
   style_prompts: boolean;
+  tts: TtsServer;
+}
+
+/** Admin → Voices → TTS server. Empty base_url: TTS_BASE_URL from the server
+ * (with TTS_API_KEY, which is never sent to a URL set here). */
+export interface TtsServer {
+  base_url: string;
+  env_base_url: string;
+  key_set: boolean;
+  key_hint: string | null;
+  /** null: TTS_CONCURRENCY (env_concurrency). */
+  concurrency: number | null;
+  env_concurrency: number;
+  /** true: one request per sentence; false: whole segment; null: TTS_REQUEST_CHARS. */
+  sentence_requests: boolean | null;
+  /** 0: whole segment; above 0: one sentence each. */
+  env_request_chars: number;
+  /** Which base URL is in effect. */
+  source: "admin" | "env" | "none";
+}
+
+export interface TtsServerDraft {
+  /** "" goes back to TTS_BASE_URL. */
+  base_url?: string;
+  /** null removes the saved key; leave it out to keep it. */
+  api_key?: string | null;
+  /** null goes back to TTS_CONCURRENCY. */
+  concurrency?: number | null;
+  /** null goes back to TTS_REQUEST_CHARS. */
+  sentence_requests?: boolean | null;
 }
 
 export interface LanguageModelDraft {
@@ -41,12 +72,18 @@ export interface LanguageModelDraft {
 export interface IntegrationsUpdate {
   google_books_api_key?: string | null;
   language_model?: LanguageModelDraft;
+  tts?: TtsServerDraft;
 }
 
 export interface TestResult {
   ok: boolean;
   message: string;
   reply?: string;
+}
+
+export interface TtsTestResult extends TestResult {
+  voices?: number;
+  latency_ms?: number;
 }
 
 export interface ModelList {
@@ -99,4 +136,9 @@ export function testOcr(draft: LanguageModelDraft, file?: File): Promise<OcrResu
 /** The models the endpoint offers (GET {base_url}/models, asked by the server). */
 export function listModels(draft: LanguageModelDraft): Promise<ModelList> {
   return api.post<ModelList>("/admin/integrations/language-model/models", draft);
+}
+
+/** List the draft server's voices (fields left out: the saved ones). */
+export function testTtsServer(draft: Pick<TtsServerDraft, "base_url" | "api_key">): Promise<TtsTestResult> {
+  return api.post<TtsTestResult>("/admin/integrations/tts/test", draft);
 }

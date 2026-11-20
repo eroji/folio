@@ -55,11 +55,12 @@ class Settings(BaseSettings):
     # far less consistently (pitch, loudness and pace vary between segments).
     tts_instructions: bool = True
     tts_max_chars: int = 800
-    # Every sentence is its own TTS request (cloned voices lose likeness and
-    # pick up artifacts late in one long generation); the clips are joined.
-    # This is the longest single request: a longer sentence is cut at clauses.
-    # 0 = one request per segment.
-    tts_request_chars: int = Field(default=400, ge=0)
+    # 0 (default): one request per segment. Above 0: every sentence is its own
+    # TTS request (VoxCPM2's cloned voices lose likeness and pick up artifacts
+    # late in one long generation) and the clips are joined; this is the
+    # longest single request, a longer sentence is cut at clauses. Admin →
+    # Voices → TTS server overrides it (folio.integrations.apply_tts).
+    tts_request_chars: int = Field(default=0, ge=0)
     tts_lookahead: int = 6
     # Most TTS requests in flight at once (a segment's sentences go out in parallel).
     tts_concurrency: int = Field(default=4, ge=1)

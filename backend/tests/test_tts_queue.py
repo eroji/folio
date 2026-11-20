@@ -640,6 +640,7 @@ def test_a_split_segment_is_found_in_the_cache_by_the_next_prepare(
 ) -> None:
     """prepare and the worker must agree on the key of a segment synthesized
     as several requests, or every play would re-synthesize it."""
+    settings = settings.model_copy(update={"tts_request_chars": 400})  # one sentence each
     book = _book(db, chapters=1, per_chapter=1)
     segment = _segments(db, book)[0]
     segment.text = " ".join(
@@ -769,6 +770,7 @@ def test_prepare_keeps_a_ready_clip_of_the_same_text_whatever_its_split(
 def test_run_tts_job_announces_sentence_progress(
     db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    settings = settings.model_copy(update={"tts_request_chars": 400})  # one sentence each
     book = _book(db, chapters=1, per_chapter=1)
     segment = _long_segment(db, book)
     prepare(db, settings, book, segment.id, count=0, voice="ashley-en")

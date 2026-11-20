@@ -19,6 +19,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from folio.config import Settings
 from folio.errors import ApiError
+from folio.integrations import effective_tts_settings
 from folio.jobs import notify
 from folio.models import (
     Audio,
@@ -159,6 +160,8 @@ def prepare(
     ``generating`` row is preserved, a ``queued`` row only gains priority (a
     seek raises it), and ``failed`` waits for the retry button.
     """
+    # The admin's TTS server (else the env): discovery and the cache keys use it.
+    settings = effective_tts_settings(session, settings)
     voice = _resolve_voice(session, settings, book, user_settings, requested=voice)
     if count is None:
         count = settings.tts_lookahead
@@ -266,7 +269,10 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
     """Synthesize one claimed row to ready, or fail it with a readable error.
 
     Always releases the row: after this returns it is never ``generating``.
+    The TTS server, key and concurrency are read from the database per job,
+    so the worker follows an admin change without a restart.
     """
+    settings = effective_tts_settings(session, settings)
     row_id = row.id
     segment = session.get(Segment, row.segment_id)
     chapter = session.get(Chapter, segment.chapter_id) if segment else None

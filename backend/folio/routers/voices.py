@@ -15,6 +15,7 @@ from folio.config import Settings, get_settings
 from folio.db import get_session
 from folio.deps import get_current_user
 from folio.errors import ApiError
+from folio.integrations import effective_tts_settings
 from folio.models import User
 from folio.security import require_csrf
 from folio.tts import TtsClient, TtsError, discover_voices, get_or_synthesize
@@ -43,9 +44,20 @@ _SAMPLES = {
 }
 
 
-def get_tts_client() -> Iterator[TtsClient]:
+def get_tts_settings(
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Settings:
+    """The settings with the admin's TTS server, key and concurrency (else the
+    env's), for every route that talks to the engine or keys its audio."""
+    return effective_tts_settings(db, settings)
+
+
+def get_tts_client(
+    settings: Annotated[Settings, Depends(get_tts_settings)],
+) -> Iterator[TtsClient]:
     """TTS client for voice discovery and previews; tests override the transport."""
-    with TtsClient(get_settings()) as client:
+    with TtsClient(settings) as client:
         yield client
 
 
@@ -60,7 +72,7 @@ class PreviewBody(BaseModel):
 @router.get("")
 def list_voices(
     user: Annotated[User, Depends(get_current_user)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: Annotated[Settings, Depends(get_tts_settings)],
     client: Annotated[TtsClient, Depends(get_tts_client)],
     db: Annotated[DbSession, Depends(get_session)],
     refresh: bool = False,
@@ -109,7 +121,7 @@ def preview_voice(
     body: PreviewBody,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[DbSession, Depends(get_session)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: Annotated[Settings, Depends(get_tts_settings)],
     client: Annotated[TtsClient, Depends(get_tts_client)],
 ) -> FileResponse:
     """Speak a short sample in ``voice``; cached like any other clip."""

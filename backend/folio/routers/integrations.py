@@ -1,4 +1,5 @@
-"""Admin → Metadata (provider API keys) and Admin → AI (the language model).
+"""Admin → Metadata (provider API keys), Admin → AI (the language model) and
+Admin → Voices → TTS server.
 
 GET shows the settings with keys masked (set or not, last four characters);
 PUT changes what it is given (a key left out stays, an empty one is removed).
@@ -8,6 +9,7 @@ to the saved values, so "Test" works on the form as typed.
 
 from __future__ import annotations
 
+import time
 from io import BytesIO
 from typing import Annotated, Any
 
@@ -23,22 +25,30 @@ from folio.deps import require_admin
 from folio.errors import ApiError
 from folio.ingest.ocr import first_page_jpeg
 from folio.integrations import (
+    TTS_CONCURRENCY_MAX,
+    TTS_CONCURRENCY_MIN,
     Integrations,
     LanguageModel,
+    TtsServer,
+    apply_tts,
     key_hint,
     load_integrations,
     save_integrations,
+    valid_concurrency,
 )
 from folio.llm import LlmError, chat, list_models, read_page
 from folio.metadata import googlebooks
 from folio.security import require_csrf
+from folio.tts import TtsClient, TtsError
 from folio.tts.narration import style_prompts_on
+from folio.tts.voices import reset_voice_cache
 
 router = APIRouter(
     prefix="/api/v1/admin/integrations", tags=["admin"], dependencies=[Depends(require_admin)]
 )
 
 MAX_TEST_BYTES = 15 * 1024 * 1024
+TTS_TEST_TIMEOUT_S = 10.0
 SAMPLE_TEXT = (
     "It was the best of times, it was the worst of times,\n"
     "it was the age of wisdom, it was the age of foolishness,\n"
@@ -63,9 +73,21 @@ class LanguageModelBody(BaseModel):
     thinking: bool | None = None
 
 
+class TtsServerBody(BaseModel):
+    # "" goes back to TTS_BASE_URL; leave the field out to keep it.
+    base_url: str | None = Field(default=None, max_length=500)
+    # None removes the key; leave the field out to keep it.
+    api_key: str | None = Field(default=None, max_length=500)
+    # None goes back to TTS_CONCURRENCY; checked in _merged_tts for the message.
+    concurrency: int | None = None
+    # True: one request per sentence; False: whole segment; None: TTS_REQUEST_CHARS.
+    sentence_requests: bool | None = None
+
+
 class IntegrationsBody(BaseModel):
     google_books_api_key: str | None = Field(default=None, max_length=500)
     language_model: LanguageModelBody | None = None
+    tts: TtsServerBody | None = None
 
 
 class GoogleTestBody(BaseModel):
@@ -90,6 +112,19 @@ def _public(value: Integrations, settings: Settings, db: DbSession) -> dict[str,
             "thinking": llm.thinking,
             "key_set": bool(llm.api_key),
             "key_hint": key_hint(llm.api_key),
+        },
+        "tts": {
+            "base_url": value.tts.base_url,
+            # Used while no base URL is set here (with TTS_API_KEY, never shown).
+            "env_base_url": settings.tts_base_url or "",
+            "key_set": bool(value.tts.api_key),
+            "key_hint": key_hint(value.tts.api_key),
+            "concurrency": value.tts.concurrency,
+            "env_concurrency": settings.tts_concurrency,
+            "sentence_requests": value.tts.sentence_requests,
+            # 0: one request per segment; above 0: one sentence each, at most this long.
+            "env_request_chars": settings.tts_request_chars,
+            "source": "admin" if value.tts.base_url else "env" if settings.tts_base_url else "none",
         },
         # Voice and book delivery notes reach the engine only when this is on.
         "style_prompts": style_prompts_on(db, settings),
@@ -116,6 +151,36 @@ def _merged(saved: LanguageModel, draft: LanguageModelBody) -> LanguageModel:
         ocr=draft.ocr if draft.ocr is not None else saved.ocr,
         suggest=draft.suggest if draft.suggest is not None else saved.suggest,
         thinking=draft.thinking if draft.thinking is not None else saved.thinking,
+    )
+
+
+def _merged_tts(saved: TtsServer, draft: TtsServerBody) -> TtsServer:
+    """The saved TTS server with the draft's provided fields on top."""
+    given = draft.model_fields_set
+    concurrency = draft.concurrency if "concurrency" in given else saved.concurrency
+    if concurrency is not None and not valid_concurrency(concurrency):
+        raise ApiError(
+            "validation_failed",
+            f"TTS concurrency must be a whole number from {TTS_CONCURRENCY_MIN}"
+            f" to {TTS_CONCURRENCY_MAX}.",
+            422,
+        )
+    base_url = _check_url(draft.base_url or "") if "base_url" in given else saved.base_url
+    if "api_key" in given:
+        api_key = (draft.api_key or "").strip()
+    elif base_url != saved.base_url:
+        # A key belongs to the server it was entered for: a new URL (or the env's)
+        # without a key of its own never inherits it.
+        api_key = ""
+    else:
+        api_key = saved.api_key
+    return TtsServer(
+        base_url=base_url,
+        api_key=api_key,
+        concurrency=concurrency,
+        sentence_requests=(
+            draft.sentence_requests if "sentence_requests" in given else saved.sentence_requests
+        ),
     )
 
 
@@ -146,9 +211,15 @@ def put_integrations(
             raise ApiError(
                 "validation_failed", "Set the base URL and model before switching features on.", 422
             )
-    updated = Integrations(google_books_api_key=google, language_model=llm)
+    tts = current.tts
+    if body.tts is not None:
+        tts = _merged_tts(tts, body.tts)
+    updated = Integrations(google_books_api_key=google, language_model=llm, tts=tts)
     save_integrations(db, updated)
     db.commit()
+    if tts != current.tts:
+        # A new key on the same URL must not serve the old answer for a TTL.
+        reset_voice_cache()
     return _public(updated, settings, db)
 
 
@@ -167,6 +238,41 @@ def test_google_books(
     with httpx.Client(timeout=10.0) as client:
         ok, message = googlebooks.probe(client, key)
     return {"ok": ok, "message": message}
+
+
+@router.post("/tts/test")
+def test_tts(
+    request: Request,
+    body: TtsServerBody,
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """List the voices of the draft server (fields left out: the saved ones; no
+    base URL: the env's), with the key that server would get."""
+    require_csrf(request, request.state.session_row)
+    cfg = apply_tts(_merged_tts(load_integrations(db).tts, body), settings)
+    if not cfg.tts_base_url:
+        return {"ok": False, "message": "Enter the TTS server's base URL."}
+    start = time.perf_counter()
+    try:
+        with TtsClient(cfg, timeout=TTS_TEST_TIMEOUT_S) as client:
+            voices = client.list_voices()
+    except TtsError:
+        return {
+            "ok": False,
+            "message": f"{cfg.tts_base_url} did not list its voices: check the URL and key.",
+        }
+    except (httpx.HTTPError, ValueError):  # not JSON, or a broken connection mid-read
+        return {"ok": False, "message": f"{cfg.tts_base_url} did not answer like a TTS server."}
+    latency_ms = round((time.perf_counter() - start) * 1000)
+    count = len(voices)
+    listed = f"{count} voice" if count == 1 else f"{count} voices"
+    return {
+        "ok": True,
+        "message": f"Reached the TTS server in {latency_ms} ms: {listed}.",
+        "voices": count,
+        "latency_ms": latency_ms,
+    }
 
 
 @router.post("/language-model/test")

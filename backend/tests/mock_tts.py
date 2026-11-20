@@ -3,7 +3,8 @@
 ``serve()`` runs a threaded http.server on an ephemeral port and yields its
 base URL. ``POST /v1/audio/speech`` returns a 1-second silent Ogg/Opus file
 (generated once with ffmpeg and embedded below — see docs/DECISIONS.md);
-``GET /v1/audio/voices`` returns the pinned voice list.
+``GET /v1/audio/voices`` returns the pinned voice list. Every request is
+recorded in ``REQUESTS`` as ``(method, path, authorization header)``.
 """
 
 from __future__ import annotations
@@ -28,16 +29,25 @@ SILENT_OPUS = base64.b64decode(
 )
 
 VOICES = {"voices": [{"id": "ashley-en", "language": "en"}]}
+REQUESTS: list[tuple[str, str, str | None]] = []
 
 
 class _Handler(BaseHTTPRequestHandler):
+    def _record(self) -> None:
+        REQUESTS.append((self.command, self.path, self.headers.get("Authorization")))
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            self.rfile.read(length)
+
     def do_POST(self) -> None:
+        self._record()
         if self.path == "/v1/audio/speech":
             self._send(200, "audio/ogg", SILENT_OPUS)
         else:
             self._send(404, "application/json", b'{"error": "not found"}')
 
     def do_GET(self) -> None:
+        self._record()
         if self.path == "/v1/audio/voices":
             self._send(200, "application/json", json.dumps(VOICES).encode())
         else:
@@ -57,6 +67,7 @@ class _Handler(BaseHTTPRequestHandler):
 @contextlib.contextmanager
 def serve() -> Iterator[str]:
     """Start the mock on an ephemeral port; yield its base URL."""
+    REQUESTS.clear()
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
