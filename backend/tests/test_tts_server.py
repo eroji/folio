@@ -221,6 +221,48 @@ async def test_put_keeps_omitted_fields_and_clears_back_to_env(
     assert response.json()["tts"]["source"] in ("env", "none")
 
 
+async def test_a_new_url_never_inherits_the_old_servers_key(
+    admin_client: httpx.AsyncClient, db: Session, mock_tts: str
+) -> None:
+    """A key belongs to the server it was entered for: moving to another URL (or back to
+    the env) without a key in the same save drops it, so it is never sent elsewhere."""
+    _save_tts(db, base_url="http://old.test:8880/v1", api_key="old-server-key")
+
+    # Same URL re-sent (the pane always sends it): the key stays.
+    await admin_client.put(
+        URL, json={"tts": {"base_url": "http://old.test:8880/v1"}}, headers=csrf(admin_client)
+    )
+    db.expire_all()
+    assert load_integrations(db).tts.api_key == "old-server-key"
+
+    # A draft test against another URL is not sent the saved key.
+    await admin_client.post(
+        f"{URL}/tts/test", json={"base_url": f"{mock_tts}/v1"}, headers=csrf(admin_client)
+    )
+    assert mock_tts_requests()[-1][2] is None
+
+    # A new URL without a key: the old key is dropped.
+    await admin_client.put(
+        URL, json={"tts": {"base_url": "http://new.test:8880/v1"}}, headers=csrf(admin_client)
+    )
+    db.expire_all()
+    assert load_integrations(db).tts == TtsServer("http://new.test:8880/v1", "")
+
+    # A new URL with its own key in the same save keeps that key.
+    await admin_client.put(
+        URL,
+        json={"tts": {"base_url": "http://third.test/v1", "api_key": "third-key"}},
+        headers=csrf(admin_client),
+    )
+    db.expire_all()
+    assert load_integrations(db).tts == TtsServer("http://third.test/v1", "third-key")
+
+    # Back to the env: the admin key goes too.
+    await admin_client.put(URL, json={"tts": {"base_url": ""}}, headers=csrf(admin_client))
+    db.expire_all()
+    assert load_integrations(db).tts.api_key == ""
+
+
 @pytest.mark.parametrize(
     "tts",
     [

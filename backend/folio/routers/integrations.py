@@ -165,9 +165,18 @@ def _merged_tts(saved: TtsServer, draft: TtsServerBody) -> TtsServer:
             f" to {TTS_CONCURRENCY_MAX}.",
             422,
         )
+    base_url = _check_url(draft.base_url or "") if "base_url" in given else saved.base_url
+    if "api_key" in given:
+        api_key = (draft.api_key or "").strip()
+    elif base_url != saved.base_url:
+        # A key belongs to the server it was entered for: a new URL (or the env's)
+        # without a key of its own never inherits it.
+        api_key = ""
+    else:
+        api_key = saved.api_key
     return TtsServer(
-        base_url=_check_url(draft.base_url or "") if "base_url" in given else saved.base_url,
-        api_key=(draft.api_key or "").strip() if "api_key" in given else saved.api_key,
+        base_url=base_url,
+        api_key=api_key,
         concurrency=concurrency,
         sentence_requests=(
             draft.sentence_requests if "sentence_requests" in given else saved.sentence_requests

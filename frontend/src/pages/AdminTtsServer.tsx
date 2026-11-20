@@ -144,7 +144,7 @@ function Settings({ tts }: { tts: TtsServer }) {
           onChange={(event) => setForm((current) => ({ ...current, api_key: event.target.value }))}
           className={input}
         />
-        <p className={hint}>Sent only to the base URL above; the server’s TTS_API_KEY stays with TTS_BASE_URL.</p>
+        <p className={hint}>Sent only to the base URL above; the server’s TTS_API_KEY stays with TTS_BASE_URL. Changing the URL drops a saved key, so enter it again with the new URL.</p>
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="tts-concurrency" className={fieldLabel}>
