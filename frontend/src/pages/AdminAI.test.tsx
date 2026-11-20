@@ -88,6 +88,17 @@ function renderIt(node: React.ReactNode) {
 
 const lastPut = () => [...calls].reverse().find((c) => c.method === "PUT")?.body as Record<string, unknown>;
 
+/** A model control is 280px wide, not the whole column, and its native arrow is
+ * replaced by a chevron 20px from the right edge. */
+function expectPicker(control: HTMLElement, chevron = true) {
+  const wrapper = control.parentElement as HTMLElement;
+  expect(wrapper.className).toContain("w-[280px]");
+  expect(wrapper.className).toContain("max-w-full");
+  expect(wrapper.className).not.toMatch(/(^|\s)(w-full|flex-1|min-w-0)(\s|$)/);
+  const arrow = wrapper.querySelector("svg");
+  expect(Boolean(arrow && (arrow.getAttribute("class") ?? "").includes("right-5"))).toBe(chevron);
+}
+
 describe("AdminMetadata", () => {
   it("saves and tests the Google Books key without ever showing it", async () => {
     renderIt(<AdminMetadata />);
@@ -118,8 +129,16 @@ describe("AdminAI", () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/language-model/models"))).toBe(true));
     expect(calls.find((c) => c.url.endsWith("/language-model/models"))?.body).toEqual({ base_url: "https://litellm.local/v1" });
     const picker = await screen.findByRole("combobox", { name: "Model" });
+    expectPicker(picker);
+    expect(picker.className).toContain("appearance-none");
+    expect(picker.className).toContain("pr-12");
     expect(within(picker).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a model", "uncensored", "utility"]);
     fireEvent.change(picker, { target: { value: "uncensored" } });
+
+    const key = screen.getByLabelText("API key") as HTMLInputElement;
+    expect(key.value).toBe("");
+    expect(key.placeholder).toBe("....");
+    expect(screen.queryByText(/Saved \(/)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
     expect(await screen.findByText("uncensored answered in 120 ms.")).toBeTruthy();
@@ -131,6 +150,26 @@ describe("AdminAI", () => {
     await waitFor(() =>
       expect(lastPut()).toEqual({ language_model: { base_url: "https://litellm.local/v1", model: "uncensored" } }),
     );
+    await waitFor(() => expect(key.placeholder).toBe("...."));
+    expect(key.value).toBe("");
+  });
+
+  it("masks the key with a placeholder once it is saved", async () => {
+    state.language_model = { ...state.language_model, base_url: "https://llm/v1", model: "uncensored" };
+    renderIt(<AdminAI />);
+    const key = (await screen.findByLabelText("API key")) as HTMLInputElement;
+    expect(key.placeholder).toBe("Optional for local servers");
+    fireEvent.change(key, { target: { value: "sk-secret-9025" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(lastPut()).toEqual({
+        language_model: { base_url: "https://llm/v1", model: "uncensored", api_key: "sk-secret-9025" },
+      }),
+    );
+    await waitFor(() => expect(key.placeholder).toBe("...."));
+    expect(key.value).toBe("");
+    expect(screen.queryByText(/Saved \(/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove key" })).toBeTruthy();
   });
 
   it("falls back to typing the model when the list can't be read", async () => {
@@ -138,7 +177,9 @@ describe("AdminAI", () => {
     state.language_model = { ...state.language_model, base_url: "https://llm/v1", model: "gpt-x" };
     renderIt(<AdminAI />);
     expect(await screen.findByText("Listing models returned HTTP 404.")).toBeTruthy();
-    expect((screen.getByRole("textbox", { name: "Model" }) as HTMLInputElement).value).toBe("gpt-x");
+    const typed = screen.getByRole("textbox", { name: "Model" });
+    expect((typed as HTMLInputElement).value).toBe("gpt-x");
+    expectPicker(typed, false);
   });
 
   it("keeps a saved model that the endpoint no longer lists", async () => {
@@ -156,6 +197,8 @@ describe("AdminAI", () => {
     expect(groups.map((h) => h.textContent)).toEqual(["Language model", "OCR", "Pronunciation and delivery notes"]);
     const ocr = screen.getByRole("region", { name: "OCR" });
     const reading = await within(ocr).findByRole("combobox", { name: "Reading model" });
+    expectPicker(reading);
+    expect(reading.className).toContain("appearance-none");
     expect((reading as HTMLSelectElement).value).toBe("");
     expect(within(reading).getAllByRole("option")[0]!.textContent).toBe("Same as the model");
     fireEvent.change(reading, { target: { value: "utility" } });

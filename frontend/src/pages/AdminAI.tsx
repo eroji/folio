@@ -30,6 +30,10 @@ import {
 
 const group = "flex flex-col gap-3 border-t border-border py-5";
 const groupTitle = "font-display text-[18px]";
+/** The model controls are a fixed 280px, not the whole column; the native arrow is
+ * replaced by a chevron 20px from the edge so it does not sit against the border. */
+const pickerWidth = "relative inline-flex w-[280px] max-w-full";
+const pickerChevron = "pointer-events-none absolute top-1/2 right-5 -translate-y-1/2 text-fg-2";
 
 interface Models {
   loading: boolean;
@@ -68,33 +72,38 @@ function ModelPicker({
         {label}
       </label>
       <div className="flex items-center gap-2">
-        {listed ? (
-          <select
-            id={id}
-            value={value}
-            disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
-            className={clsx(input, "min-w-0 flex-1 disabled:opacity-50")}
-          >
-            {sameAsModel ? <option value="">Same as the model</option> : !value && <option value="">Choose a model</option>}
-            {value && !listed.includes(value) && <option value={value}>{value} (not listed)</option>}
-            {listed.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            id={id}
-            value={value}
-            disabled={disabled}
-            autoComplete="off"
-            placeholder={sameAsModel ? "Same as the model" : "Model name"}
-            onChange={(event) => onChange(event.target.value)}
-            className={clsx(input, "min-w-0 flex-1 disabled:opacity-50")}
-          />
-        )}
+        <span className={pickerWidth}>
+          {listed ? (
+            <>
+              <select
+                id={id}
+                value={value}
+                disabled={disabled}
+                onChange={(event) => onChange(event.target.value)}
+                className={clsx(input, "appearance-none pr-12 disabled:opacity-50")}
+              >
+                {sameAsModel ? <option value="">Same as the model</option> : !value && <option value="">Choose a model</option>}
+                {value && !listed.includes(value) && <option value={value}>{value} (not listed)</option>}
+                {listed.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <Icon name="ChevronDown" size={18} className={pickerChevron} />
+            </>
+          ) : (
+            <input
+              id={id}
+              value={value}
+              disabled={disabled}
+              autoComplete="off"
+              placeholder={sameAsModel ? "Same as the model" : "Model name"}
+              onChange={(event) => onChange(event.target.value)}
+              className={clsx(input, "disabled:opacity-50")}
+            />
+          )}
+        </span>
         <button
           type="button"
           aria-label={`Refresh the ${label.toLowerCase()} list`}
@@ -219,7 +228,7 @@ function Settings({ data }: { data: Integrations }) {
           </p>
         </div>
         {field("base_url", "Base URL", "https://api.openai.com/v1")}
-        {field("api_key", "API key", llm.key_set ? `Saved (${llm.key_hint}). Leave empty to keep it` : "Optional for local servers", "password")}
+        {field("api_key", "API key", llm.key_set ? "...." : "Optional for local servers", "password")}
         <ModelPicker
           id="llm-model"
           label="Model"
