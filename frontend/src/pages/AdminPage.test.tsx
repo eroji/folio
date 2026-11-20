@@ -95,6 +95,24 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
+      if (url.includes("/admin/integrations")) {
+        return jsonResponse(200, {
+          google_books: { key_set: false, key_hint: null, env_key: false },
+          language_model: { base_url: "", model: "", ocr_model: "", ocr: false, suggest: false, thinking: false, key_set: false, key_hint: null },
+          style_prompts: true,
+          tts: {
+            base_url: "",
+            env_base_url: "http://tts.example.local/v1",
+            key_set: false,
+            key_hint: null,
+            concurrency: null,
+            env_concurrency: 4,
+            sentence_requests: null,
+            env_request_chars: 0,
+            source: "env",
+          },
+        });
+      }
       if (url.includes("/voices/preview")) {
         return { ok: true, status: 200, blob: async () => new Blob(["opus-bytes"]) } as Response;
       }
@@ -349,10 +367,12 @@ describe("AdminPage voices section", () => {
   it("groups voices: languages with books first, then alphabetical, Unassigned, No longer", async () => {
     renderAdmin();
     const panel = await openVoices();
+    await within(panel).findByRole("heading", { name: "TTS server" }); // the pane comes first
     const headings = within(panel)
       .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent ?? "");
     expect(headings.map((h) => h.replace(/(en|ja|ko|zh)$/, ""))).toEqual([
+      "TTS server",
       "English",
       "Japanese",
       "Korean",

@@ -4,7 +4,8 @@
  * No longer on the server. Names save on blur/Enter, defaults on click,
  * language assignment moves the row at once. Speaking instructions stay
  * compact: one truncated italic line per row plus an "Instructions" pill that
- * expands an editor under that row only (one open at a time). */
+ * expands an editor under that row only (one open at a time). The TTS server
+ * pane (which server, its key, requests at once) comes first. */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
@@ -24,6 +25,7 @@ import { Icon } from "../components/Icon";
 import { PillSelect } from "../components/PillSelect";
 import { Switch } from "../components/Switch";
 import { VoicePreview } from "../components/VoicePreview";
+import { TtsServerPane } from "./AdminTtsServer";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -443,6 +445,7 @@ export function AdminVoices() {
           Couldn’t refresh the voices — {refresh.error.message}
         </p>
       )}
+      <TtsServerPane />
       {data && <StylePrompts on={data.style_prompts !== false} />}
       {!data && (
         <div className="animate-pulse space-y-2 pt-6" aria-busy="true">

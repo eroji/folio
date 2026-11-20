@@ -29,6 +29,17 @@ beforeEach(() => {
       key_hint: null,
     },
     style_prompts: false,
+    tts: {
+      base_url: "",
+      env_base_url: "",
+      key_set: false,
+      key_hint: null,
+      concurrency: null,
+      env_concurrency: 4,
+      sentence_requests: null,
+      env_request_chars: 0,
+      source: "none",
+    },
   };
   vi.stubGlobal(
     "fetch",
