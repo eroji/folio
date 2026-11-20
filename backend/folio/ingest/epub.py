@@ -27,18 +27,54 @@ def extract_epub(path: Path) -> ExtractedBook:
         for ref in getattr(book, "guide", None) or []
     }
     chapters: list[ExtractedChapter] = []
+    previous_stem: str | None = None
     for item_id, linear in book.spine:
         if linear == "no":
             continue
         item = book.get_item_with_id(item_id)
         if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
             continue
+        name = basename(item.get_name())
+        stem = _split_stem(name)
         soup = _parse(item)
         title, text = _title_and_text(item, soup, titles)
-        if text.strip():  # nav pages and empty shells are not chapters
-            excluded = _is_matter(title, soup, guide.get(basename(item.get_name()), ""))
+        if stem is not None and stem == previous_stem and name not in titles and chapters:
+            # Calibre cut one source file in two; the TOC names only the first.
+            chapters[-1].text = "\n".join(part for part in (chapters[-1].text, text) if part)
+        else:
+            # Kept even when empty for now: an image-only chapter heading
+            # Calibre split from its body still carries the chapter's title.
+            excluded = _is_matter(title, text, soup, guide.get(name, ""))
             chapters.append(ExtractedChapter(title=title, text=text, excluded=excluded))
+        previous_stem = stem
+    # nav pages and empty shells are not chapters
+    chapters = _switch_off_after_back_matter([c for c in chapters if c.text.strip()])
     return ExtractedBook(chapters=chapters, metadata=_metadata(book), cover=_cover(book))
+
+
+# Calibre splits large files as name_split_000.html, name_split_001.html...
+_CALIBRE_SPLIT = re.compile(r"^(.+)_split_\d+\.x?html?$", re.IGNORECASE)
+
+
+def _split_stem(name: str) -> str | None:
+    match = _CALIBRE_SPLIT.match(name)
+    return match.group(1) if match else None
+
+
+def _switch_off_after_back_matter(chapters: list[ExtractedChapter]) -> list[ExtractedChapter]:
+    """Once back matter starts in the second half of the book, everything
+    after it (contact pages, sample chapters of other books) is back matter
+    too. Matter in the first half (a title page after an opening teaser)
+    says nothing about what follows."""
+    total = sum(len(c.text) for c in chapters)
+    seen = 0
+    for idx, chapter in enumerate(chapters):
+        if chapter.excluded and seen * 2 >= total:
+            for later in chapters[idx + 1 :]:
+                later.excluded = True
+            break
+        seen += len(chapter.text)
+    return chapters
 
 
 def _toc_titles(book: epub.EpubBook) -> dict[str, str]:
@@ -113,9 +149,17 @@ def _root_types(soup: Any) -> set[str]:
     return {token.lower() for node in nodes for token in str(node.get("epub:type") or "").split()}
 
 
-def _is_matter(title: str, soup: Any, guide_type: str) -> bool:
-    """Front/back matter: the OPF guide or epub:type says so, or it is titled like it."""
+# An untagged, untitled copyright page still says so.
+_COPYRIGHT_TEXT = re.compile(r"\ball rights reserved\b", re.IGNORECASE)
+_MAX_COPYRIGHT_PAGE = 3000
+
+
+def _is_matter(title: str, text: str, soup: Any, guide_type: str) -> bool:
+    """Front/back matter: the OPF guide or epub:type says so, it is titled
+    like it, or it is a short page that reserves all rights."""
     if guide_type in _MATTER_TYPES or _root_types(soup) & _MATTER_TYPES:
+        return True
+    if len(text) <= _MAX_COPYRIGHT_PAGE and _COPYRIGHT_TEXT.search(text):
         return True
     return bool(_MATTER_TITLE.match(" ".join(title.split()).rstrip(".")))
 
