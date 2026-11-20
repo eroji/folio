@@ -104,6 +104,7 @@ def test_each_sentence_is_a_request_and_the_clip_knows_where_each_starts(
     """Cloned voices degrade late in a long generation, so every sentence is
     its own request; the joined clip records where each sentence starts, which
     is what read-along follows."""
+    settings = settings.model_copy(update={"tts_request_chars": 400})  # one sentence each
     client = _CountingClient()
     row, cached = get_or_synthesize(db, settings, client, _LONG, "tess", language="en")
     assert cached is False
@@ -137,6 +138,7 @@ def test_a_single_sentence_keeps_its_old_key_and_needs_no_marks(
 
 
 def test_split_segments_have_their_own_key(settings: Settings) -> None:
+    settings = settings.model_copy(update={"tts_request_chars": 400})  # one sentence each
     endpoint = (settings.tts_base_url or "").rstrip("/")
     single = cache_key(settings.tts_model, "tess", settings.tts_format, _LONG, endpoint=endpoint)
     v014 = cache_key(
@@ -154,6 +156,7 @@ def test_sentences_are_synthesized_in_parallel_up_to_the_cap_and_kept_in_order(
     """VoxCPM2 serves concurrent requests (8 sentences: 6.0 s one at a time,
     2.1 s four at a time), so a segment's sentences go out TTS_CONCURRENCY at
     a time; whatever order they finish in, the clip keeps reading order."""
+    settings = settings.model_copy(update={"tts_request_chars": 400})  # one sentence each
     import random
     import re
     import threading
@@ -207,6 +210,7 @@ def test_sentences_are_synthesized_in_parallel_up_to_the_cap_and_kept_in_order(
 
 def test_progress_is_reported_as_sentences_finish(db: Session, settings: Settings) -> None:
     """The player shows "4 of 12 sentences" while a segment is prepared."""
+    settings = settings.model_copy(update={"tts_request_chars": 400})  # one sentence each
     import threading
 
     seen: list[tuple[int, int, str]] = []
@@ -239,6 +243,7 @@ def test_a_cache_hit_or_single_request_reports_no_progress(db: Session, settings
 
 
 def test_mixed_formats_across_requests_fail_the_segment(db: Session, settings: Settings) -> None:
+    settings = settings.model_copy(update={"tts_request_chars": 400})  # one sentence each
     from folio.tts import TtsError
 
     class _Flaky(_CountingClient):
