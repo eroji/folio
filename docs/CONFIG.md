@@ -34,7 +34,7 @@ Optional until **M4** (see `docs/DECISIONS.md`): the M1–M2 stack boots without
 | --- | --- | --- | --- |
 | `TTS_BASE_URL` | none | required from M4 | OpenAI-compatible base, e.g. `http://tts.example.local/v1`. The default: Admin → Voices → TTS server can set another server, which wins while it is set (clear it to come back here). |
 | `TTS_API_KEY` | empty | optional | Bearer token, if the engine requires one. Sent only to `TTS_BASE_URL`, never to a server set in Admin → Voices (that one uses the key entered there, or none). |
-| `TTS_MODEL` | `tts` | optional | `model` field sent to the API; part of the audio cache key. |
+| `TTS_MODEL` | `tts` | optional | `model` field sent to the API; part of the audio cache key. Editable in Admin → Voices → TTS server; a value there applies to whichever server is in effect (clear it to come back here). |
 | `TTS_FORMAT` | `opus` | optional | `opus` or `mp3`; falls back to `mp3` if the server rejects opus. |
 | `TTS_DEFAULT_VOICE` | none | required from M4 | Last-resort voice, e.g. `ashley-en`. |
 | `TTS_VOICE_MAP` | `{"en":"ashley-en","ja":"ashley-ja","ko":"ashley-kr","zh":"ashley-zh"}` | optional | Admin language → voice defaults; editable on the Admin page (M5). |

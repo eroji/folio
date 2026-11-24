@@ -67,15 +67,16 @@ class TtsServer:
     """The OpenAI-compatible TTS server (``base_url`` ends in /v1).
 
     Empty ``base_url``: ``TTS_BASE_URL`` + ``TTS_API_KEY`` from the environment.
-    ``concurrency`` None: ``TTS_CONCURRENCY``. ``sentence_requests`` None:
-    ``TTS_REQUEST_CHARS``; True: one request per sentence; False: one request
-    per segment. See ``apply_tts``.
+    ``model`` empty: ``TTS_MODEL``. ``concurrency`` None: ``TTS_CONCURRENCY``.
+    ``sentence_requests`` None: ``TTS_REQUEST_CHARS``; True: one request per
+    sentence; False: one request per segment. See ``apply_tts``.
     """
 
     base_url: str = ""
     api_key: str = ""
     concurrency: int | None = None
     sentence_requests: bool | None = None
+    model: str = ""
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ def _parse(raw: Any) -> Integrations:
             sentence_requests=(
                 tts["sentence_requests"] if isinstance(tts.get("sentence_requests"), bool) else None
             ),
+            model=_str(tts.get("model")),
         ),
     )
 
@@ -156,15 +158,19 @@ def apply_tts(tts: TtsServer, settings: Settings) -> Settings:
     An admin base URL replaces ``TTS_BASE_URL`` together with the admin key,
     even an empty one: the environment's ``TTS_API_KEY`` is never sent to a
     server the admin typed in. Without an admin URL the environment's URL and
-    key stand (an admin key alone is unused). The admin concurrency replaces
-    ``TTS_CONCURRENCY`` whichever server is in effect. The admin's request
-    choice replaces ``TTS_REQUEST_CHARS``: one sentence each uses it when it is
-    above 0, else ``SENTENCE_REQUEST_CHARS``; whole segment is 0.
+    key stand (an admin key alone is unused). The admin model replaces
+    ``TTS_MODEL`` whichever server is in effect; an empty one keeps the
+    environment's. The admin concurrency replaces ``TTS_CONCURRENCY`` whichever
+    server is in effect. The admin's request choice replaces
+    ``TTS_REQUEST_CHARS``: one sentence each uses it when it is above 0, else
+    ``SENTENCE_REQUEST_CHARS``; whole segment is 0.
     """
     update: dict[str, Any] = {}
     if tts.base_url:
         update["tts_base_url"] = tts.base_url
         update["tts_api_key"] = tts.api_key
+    if tts.model:
+        update["tts_model"] = tts.model
     if tts.concurrency is not None:
         update["tts_concurrency"] = tts.concurrency
     if tts.sentence_requests is True:

@@ -78,6 +78,8 @@ class TtsServerBody(BaseModel):
     base_url: str | None = Field(default=None, max_length=500)
     # None removes the key; leave the field out to keep it.
     api_key: str | None = Field(default=None, max_length=500)
+    # "" goes back to TTS_MODEL; leave the field out to keep it.
+    model: str | None = Field(default=None, max_length=200)
     # None goes back to TTS_CONCURRENCY; checked in _merged_tts for the message.
     concurrency: int | None = None
     # True: one request per sentence; False: whole segment; None: TTS_REQUEST_CHARS.
@@ -117,6 +119,9 @@ def _public(value: Integrations, settings: Settings, db: DbSession) -> dict[str,
             "base_url": value.tts.base_url,
             # Used while no base URL is set here (with TTS_API_KEY, never shown).
             "env_base_url": settings.tts_base_url or "",
+            "model": value.tts.model,
+            # Used while no model is set here.
+            "env_model": settings.tts_model,
             "key_set": bool(value.tts.api_key),
             "key_hint": key_hint(value.tts.api_key),
             "concurrency": value.tts.concurrency,
@@ -181,6 +186,7 @@ def _merged_tts(saved: TtsServer, draft: TtsServerBody) -> TtsServer:
         sentence_requests=(
             draft.sentence_requests if "sentence_requests" in given else saved.sentence_requests
         ),
+        model=(draft.model or "").strip() if "model" in given else saved.model,
     )
 
 

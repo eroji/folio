@@ -36,6 +36,9 @@ export interface TtsServer {
   env_base_url: string;
   key_set: boolean;
   key_hint: string | null;
+  /** "" : TTS_MODEL (env_model). */
+  model: string;
+  env_model: string;
   /** null: TTS_CONCURRENCY (env_concurrency). */
   concurrency: number | null;
   env_concurrency: number;
@@ -52,6 +55,8 @@ export interface TtsServerDraft {
   base_url?: string;
   /** null removes the saved key; leave it out to keep it. */
   api_key?: string | null;
+  /** "" goes back to TTS_MODEL. */
+  model?: string;
   /** null goes back to TTS_CONCURRENCY. */
   concurrency?: number | null;
   /** null goes back to TTS_REQUEST_CHARS. */

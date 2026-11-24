@@ -84,6 +84,22 @@ def test_admin_concurrency_wins_and_none_falls_back(env: Settings) -> None:
     assert (alone.tts_base_url, alone.tts_api_key) == (ENV_URL, "env-secret")
 
 
+def test_admin_model_wins_over_the_env_whichever_server_is_in_effect(env: Settings) -> None:
+    # No admin URL: the env server with the admin's model.
+    out = apply_tts(TtsServer(model="s2-pro"), env)
+    assert out.tts_model == "s2-pro"
+    assert (out.tts_base_url, out.tts_api_key) == (ENV_URL, "env-secret")
+    # With an admin URL too.
+    admin = apply_tts(TtsServer(base_url="http://vllm.test:8880/v1", model="s2-pro"), env)
+    assert (admin.tts_base_url, admin.tts_api_key, admin.tts_model) == (
+        "http://vllm.test:8880/v1",
+        "",
+        "s2-pro",
+    )
+    # Empty: TTS_MODEL stands.
+    assert apply_tts(TtsServer(), env).tts_model == env.tts_model
+
+
 def test_the_code_default_is_one_request_per_segment() -> None:
     assert Settings.model_fields["tts_request_chars"].default == 0
 
@@ -137,6 +153,8 @@ def test_effective_settings_read_the_saved_block(db: Session, env: Settings) -> 
         ({"tts": {"base_url": 5, "api_key": None}}, TtsServer()),
         ({"tts": {"sentence_requests": False}}, TtsServer(sentence_requests=False)),
         ({"tts": {"sentence_requests": "yes"}}, TtsServer()),
+        ({"tts": {"model": " s2-pro "}}, TtsServer(model="s2-pro")),
+        ({"tts": {"model": 5}}, TtsServer()),
     ],
 )
 def test_parsing_is_defensive(db: Session, raw: Any, expected: TtsServer) -> None:
@@ -158,6 +176,8 @@ async def test_get_shows_the_env_fallback_and_masks_the_key(
     assert shown == {
         "base_url": "",
         "env_base_url": settings.tts_base_url or "",
+        "model": "",
+        "env_model": settings.tts_model,
         "key_set": False,
         "key_hint": None,
         "concurrency": None,
@@ -289,6 +309,47 @@ async def test_put_accepts_the_concurrency_bounds(admin_client: httpx.AsyncClien
             URL, json={"tts": {"concurrency": value}}, headers=csrf(admin_client)
         )
         assert response.json()["tts"]["concurrency"] == value
+
+
+async def test_put_saves_the_model_and_get_shows_both(
+    admin_client: httpx.AsyncClient, db: Session, settings: Settings
+) -> None:
+    response = await admin_client.put(
+        URL, json={"tts": {"model": "s2-pro"}}, headers=csrf(admin_client)
+    )
+    assert response.status_code == 200, response.text
+    shown = response.json()["tts"]
+    assert (shown["model"], shown["env_model"]) == ("s2-pro", settings.tts_model)
+    assert load_integrations(db).tts.model == "s2-pro"
+
+    # Trimmed, and another block of the form never touches it.
+    await admin_client.put(URL, json={"tts": {"model": "  s2-max  "}}, headers=csrf(admin_client))
+    db.expire_all()
+    assert load_integrations(db).tts.model == "s2-max"
+    await admin_client.put(
+        URL, json={"language_model": {"model": "llm"}}, headers=csrf(admin_client)
+    )
+    db.expire_all()
+    assert load_integrations(db).tts.model == "s2-max"
+
+    # A field left out keeps the saved value; the other TTS fields still work.
+    shown = (
+        await admin_client.put(URL, json={"tts": {"concurrency": 2}}, headers=csrf(admin_client))
+    ).json()["tts"]
+    assert (shown["model"], shown["env_model"]) == ("s2-max", settings.tts_model)
+
+
+async def test_an_empty_model_clears_back_to_the_env_model(
+    admin_client: httpx.AsyncClient, db: Session, settings: Settings
+) -> None:
+    await admin_client.put(URL, json={"tts": {"model": "s2-pro"}}, headers=csrf(admin_client))
+    assert effective_tts_settings(db, settings).tts_model == "s2-pro"
+
+    response = await admin_client.put(URL, json={"tts": {"model": ""}}, headers=csrf(admin_client))
+    assert response.json()["tts"]["model"] == ""
+    db.expire_all()
+    assert load_integrations(db).tts.model == ""
+    assert effective_tts_settings(db, settings).tts_model == settings.tts_model
 
 
 async def test_state_changes_need_csrf_and_an_admin(
@@ -511,3 +572,34 @@ def test_synthesis_follows_the_admin_request_choice(
     audio = db.get(Audio, row.cache_key)
     assert audio is not None
     assert (audio.marks is None) is (not sentences)  # read-along marks only when split
+
+
+def test_synthesis_sends_the_admin_model_and_no_seed(
+    db: Session, env: Settings, mock_tts: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bodies: list[dict[str, Any]] = []
+    real_post = httpx.Client.post
+
+    def spy(self: Any, url: str, **kwargs: Any) -> Any:
+        body = kwargs.get("json")
+        if url.endswith("/audio/speech") and isinstance(body, dict):
+            bodies.append(body)
+        return real_post(self, url, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "post", spy)
+    _save_tts(db, base_url=f"{mock_tts}/v1", model="s2-pro")
+    book, segment = _one_segment_book(db)
+    prepare(db, env, book, segment.id, count=0, voice="ashley-en")
+    row = claim_next_tts(db)
+    assert row is not None
+    run_tts_job(db, env, row)
+
+    assert row.status == "ready", row.error
+    assert bodies and all(body["model"] == "s2-pro" for body in bodies)
+    assert all("seed" not in body for body in bodies)
+    # The clip is keyed by the model that made it.
+    keyed = env.model_copy(update={"tts_base_url": f"{mock_tts}/v1", "tts_model": "s2-pro"})
+    prompt = engine_instructions(db, env, "ashley-en", book.genre, book.delivery_note)
+    assert row.cache_key == speech_cache_key(
+        keyed, "ashley-en", normalize_speech_text(segment.text), prompt, "en"
+    )

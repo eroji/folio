@@ -1,9 +1,9 @@
 /** Admin → Voices → TTS server: the OpenAI-compatible speech server, its key,
- * how many requests go to it at once, and whether a segment is sent whole or
- * one sentence per request. Each falls back to the server's environment
- * (TTS_BASE_URL, TTS_CONCURRENCY, TTS_REQUEST_CHARS) while unset here. Test
- * runs on the form as typed, before saving (an empty key field uses the saved
- * key). */
+ * the model to ask it for, how many requests go to it at once, and whether a
+ * segment is sent whole or one sentence per request. Each falls back to the
+ * server's environment (TTS_BASE_URL, TTS_MODEL, TTS_CONCURRENCY,
+ * TTS_REQUEST_CHARS) while unset here. Test runs on the form as typed, before
+ * saving (an empty key field uses the saved key). */
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
@@ -31,6 +31,7 @@ const CONCURRENCY_MAX = 16;
 interface Form {
   base_url: string;
   api_key: string;
+  model: string;
   concurrency: string;
   /** null: the server's TTS_REQUEST_CHARS decides. */
   sentence_requests: boolean | null;
@@ -40,6 +41,7 @@ function fromSaved(tts: TtsServer): Form {
   return {
     base_url: tts.base_url,
     api_key: "",
+    model: tts.model,
     concurrency: tts.concurrency === null ? "" : String(tts.concurrency),
     sentence_requests: tts.sentence_requests,
   };
@@ -62,10 +64,11 @@ function Settings({ tts }: { tts: TtsServer }) {
     setForm((current) => ({
       ...current,
       base_url: tts.base_url,
+      model: tts.model,
       concurrency: tts.concurrency === null ? "" : String(tts.concurrency),
       sentence_requests: tts.sentence_requests,
     }));
-  }, [tts.base_url, tts.concurrency, tts.sentence_requests]);
+  }, [tts.base_url, tts.model, tts.concurrency, tts.sentence_requests]);
 
   const concurrency = parseConcurrency(form.concurrency);
   const concurrencyBad = Number.isNaN(concurrency);
@@ -73,11 +76,12 @@ function Settings({ tts }: { tts: TtsServer }) {
   const dirty =
     form.base_url.trim() !== tts.base_url ||
     form.api_key.trim() !== "" ||
+    form.model.trim() !== tts.model ||
     concurrency !== tts.concurrency ||
     form.sentence_requests !== tts.sentence_requests;
 
   function draft(): TtsServerDraft {
-    const out: TtsServerDraft = { base_url: form.base_url.trim() };
+    const out: TtsServerDraft = { base_url: form.base_url.trim(), model: form.model.trim() };
     if (form.api_key.trim()) out.api_key = form.api_key.trim();
     out.concurrency = concurrency;
     if (form.sentence_requests !== tts.sentence_requests) out.sentence_requests = form.sentence_requests;
@@ -145,6 +149,24 @@ function Settings({ tts }: { tts: TtsServer }) {
           className={input}
         />
         <p className={hint}>Sent only to the base URL above; the server’s TTS_API_KEY stays with TTS_BASE_URL. Changing the URL drops a saved key, so enter it again with the new URL.</p>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="tts-model" className={fieldLabel}>
+          Model
+        </label>
+        <input
+          id="tts-model"
+          type="text"
+          autoComplete="off"
+          placeholder={tts.env_model || "tts"}
+          value={form.model}
+          onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
+          className={input}
+        />
+        <p className={hint}>
+          The model sent to /v1/audio/speech (for example s2-pro). Leave empty to use TTS_MODEL from the server
+          {tts.env_model ? ` (${tts.env_model})` : ""}.
+        </p>
       </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="tts-concurrency" className={fieldLabel}>

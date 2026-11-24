@@ -36,6 +36,8 @@ beforeEach(() => {
     env_base_url: "http://tts.example.local/v1",
     key_set: false,
     key_hint: null,
+    model: "",
+    env_model: "kokoro",
     concurrency: null,
     env_concurrency: 4,
     sentence_requests: null,
@@ -86,6 +88,10 @@ describe("TtsServerPane", () => {
     expect(base.getAttribute("placeholder")).toBe("http://tts.example.local/v1");
     expect(screen.getByText("Using TTS_BASE_URL from the server: http://tts.example.local/v1")).toBeTruthy();
     expect(screen.getByLabelText("API key").getAttribute("type")).toBe("password");
+    const model = screen.getByLabelText("Model");
+    expect((model as HTMLInputElement).value).toBe("");
+    expect(model.getAttribute("placeholder")).toBe("kokoro");
+    expect(screen.getByText(/The model sent to \/v1\/audio\/speech \(for example s2-pro\).*TTS_MODEL from the server \(kokoro\)/)).toBeTruthy();
     expect(screen.getByLabelText("Requests at once").getAttribute("placeholder")).toBe("4 (server default)");
     expect(screen.getByText(/A single-GPU server like IndexTTS runs one at a time/)).toBeTruthy();
     expect(screen.getByText(/Changing the server generates the audio again/)).toBeTruthy();
@@ -100,6 +106,7 @@ describe("TtsServerPane", () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
     fireEvent.change(await screen.findByLabelText("Base URL"), { target: { value: " http://vllm.dotslash.io:8880/v1 " } });
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "sk-tts-5678" } });
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: " s2-pro " } });
     fireEvent.change(screen.getByLabelText("Requests at once"), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("radio", { name: "One sentence each" }));
 
@@ -116,12 +123,14 @@ describe("TtsServerPane", () => {
         tts: {
           base_url: "http://vllm.dotslash.io:8880/v1",
           api_key: "sk-tts-5678",
+          model: "s2-pro",
           concurrency: 1,
           sentence_requests: true,
         },
       }),
     );
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["voices"] }));
+    expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("s2-pro");
     expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe("");
     expect(screen.getByLabelText("API key").getAttribute("placeholder")).toBe("Saved (…5678). Leave empty to keep it");
     expect(screen.getByText(/Leave the base URL empty to use TTS_BASE_URL/)).toBeTruthy();
@@ -133,6 +142,7 @@ describe("TtsServerPane", () => {
       base_url: "http://vllm/v1",
       key_set: true,
       key_hint: "…1234",
+      model: "s2-pro",
       concurrency: 2,
       sentence_requests: true,
       source: "admin",
@@ -140,11 +150,13 @@ describe("TtsServerPane", () => {
     renderIt();
     const base = await screen.findByLabelText("Base URL");
     expect((base as HTMLInputElement).value).toBe("http://vllm/v1");
+    expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("s2-pro");
     expect((screen.getByLabelText("Requests at once") as HTMLInputElement).value).toBe("2");
     fireEvent.change(base, { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "" } });
     fireEvent.change(screen.getByLabelText("Requests at once"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save TTS server" }));
-    await waitFor(() => expect(lastPut()).toEqual({ tts: { base_url: "", concurrency: null } }));
+    await waitFor(() => expect(lastPut()).toEqual({ tts: { base_url: "", model: "", concurrency: null } }));
     fireEvent.click(await screen.findByRole("button", { name: "Remove TTS key" }));
     await waitFor(() => expect(lastPut()).toEqual({ tts: { api_key: null } }));
   });

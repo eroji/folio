@@ -34,6 +34,8 @@ beforeEach(() => {
       env_base_url: "",
       key_set: false,
       key_hint: null,
+      model: "",
+      env_model: "",
       concurrency: null,
       env_concurrency: 4,
       sentence_requests: null,
