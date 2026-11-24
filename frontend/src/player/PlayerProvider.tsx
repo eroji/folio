@@ -614,9 +614,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   /** prepare for the current segment + lookahead, merge statuses; the trailing
-   * pump can only start audio when nothing is playing, never mid-playback. */
+   * pump can only start audio when nothing is playing, never mid-playback.
+   * `retryFailed` re-queues failed rows in the window — only from an explicit
+   * user action (play, seek, Retry); the poll and every automatic top-up omit it. */
   const toppingUp = useRef(false);
-  async function topUp() {
+  async function topUp(retryFailed = false) {
     const segment = s.segments[s.index];
     if (!s.book || !segment) return;
     // Polling and SSE frames can ask for the same window at the same time;
@@ -626,7 +628,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const voice = effectiveVoice(s.book);
     let stale = false;
     try {
-      const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, voice);
+      const res = await prepareAudio(s.book.id, segment.id, TTS_LOOKAHEAD, voice, retryFailed);
       // The voice changed while this was in flight: its statuses and stream
       // are the old voice's. Ask again instead of playing them.
       stale = !s.book || effectiveVoice(s.book) !== voice;
@@ -642,7 +644,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toppingUp.current = false;
     }
     if (stale) {
-      void topUp();
+      void topUp(retryFailed);
       return;
     }
     pump();
@@ -926,10 +928,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       pump();
     } else {
       // Resuming onto a segment that is still generating must ask immediately;
-      // waiting for the poll made pause/resume look stuck.
+      // waiting for the poll made pause/resume look stuck. A failed one is
+      // re-queued too: nothing automatic will ever retry it.
       s.preparing = true;
       bump();
-      await topUp();
+      await topUp(true);
     }
     bump();
   }
@@ -1047,7 +1050,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     silence(); // stop the running element (and the preloaded one) before restarting
     // Prepare the target first so the UI shows "Preparing audio…" instead of silence.
     if (currentItem()?.status === "ready") pump();
-    else void topUp();
+    else void topUp(true); // a jump to a failed segment re-queues it
     saveNow(); // segment change from scrubbing/jumping (quiet during resume)
     bump();
   }
@@ -1114,7 +1117,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   function retry() {
     s.error = null;
-    void topUp();
+    void topUp(true); // the poll alone is a no-op for failed rows
   }
 
   /** Mirror the player into the lock screen. Called synchronously from media

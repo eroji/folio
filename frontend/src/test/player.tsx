@@ -79,7 +79,8 @@ export interface PlayerFixture {
 }
 
 export interface InstalledFetch {
-  prepareCalls: { segment_id: string; count: number; voice?: string }[];
+  /** `retry` is only present when the player asked to re-queue failed rows. */
+  prepareCalls: { segment_id: string; count: number; voice?: string; retry?: boolean }[];
   /** Every PUT /progress body received, in order. */
   saveCalls: Record<string, unknown>[];
   /** Every PUT /progress/finished body received, in order. */
@@ -166,7 +167,12 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
         return new Response("clip", { headers: { "Content-Type": "audio/mpeg" } });
       }
       if (url.includes("/audio/prepare")) {
-        const body = JSON.parse(String(init?.body)) as { segment_id: string; count: number; voice?: string };
+        const body = JSON.parse(String(init?.body)) as {
+          segment_id: string;
+          count: number;
+          voice?: string;
+          retry?: boolean;
+        };
         prepareCalls.push(body);
         const from = Math.max(0, all.findIndex((segment) => segment.id === body.segment_id));
         return jsonResponse({

@@ -242,7 +242,7 @@ Voice is chosen in this order: the book's narrator override, then the user's voi
 - **Priority.** Segments needed now go first; lookahead is lower priority; an optional "Download whole book" job is lowest.
 - **Concurrency.** At most the admin's "Requests at once", else `TTS_CONCURRENCY` (default 4), requests in flight across all users, so the shared GPU is not swamped; a segment's sentences are synthesized that many at a time.
 - **Cache key** = SHA-256 of `model | voice | format | normalized text`. Files live at `audio/<key[0:2]>/<key>.<ext>` and are reused across books and users.
-- **Retries.** Retry 3 times with exponential backoff (1 s, 4 s, 16 s) on timeouts and 5xx. After that, mark the segment failed; the player shows "Couldn't generate this part" with a retry button and can skip ahead.
+- **Retries.** Retry 3 times with exponential backoff (1 s, 4 s, 16 s) on timeouts and 5xx. After that, mark the segment failed; the player shows "Couldn't generate this part" with a retry button and can skip ahead. An explicit Play/Resume, a seek, or Retry sends `retry: true` with the prepare call and re-queues the failed segments in that window; the 1 s poll never re-queues (a broken engine must not be hammered).
 - **Timeouts.** 60-second request timeout per segment.
 - **Cache limits.** `AUDIO_CACHE_MAX_GB` (default 50); when exceeded, evict least-recently-played files, never those within the lookahead window of an active session. Admins can clear the cache per book or entirely.
 - **Duration.** After each file is written, read its exact duration (`mutagen`) and store it on the audio record so the scrubber and time-remaining are accurate for generated parts.
@@ -320,7 +320,7 @@ Use SQLAlchemy 2.x models and Alembic migrations. Index `segments(chapter_id, id
 | `POST /books/{id}/metadata/apply` | apply a candidate, chosen fields only |
 | `POST /books/{id}/reprocess` | retry ingestion |
 | `GET /books/{id}/chapters/{chapterId}/segments` | segment list with text and audio status |
-| `POST /books/{id}/audio/prepare` | body: segment id + count; queues generation and returns statuses |
+| `POST /books/{id}/audio/prepare` | body: segment id + count (+ `retry: true` from an explicit user action, to re-queue the window's failed rows); queues generation and returns statuses |
 | `GET /audio/{cacheKey}` | stream audio (supports HTTP `Range`) |
 | `GET /books/{id}/progress`, `PUT /books/{id}/progress` | read/save progress |
 | `GET /me/continue` | in-progress books, most recent first |

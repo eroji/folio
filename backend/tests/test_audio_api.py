@@ -265,6 +265,56 @@ async def test_retry_resets_failed_segment(auth_client: httpx.AsyncClient, db: S
     assert db.scalar(select(SegmentAudio)).status == "queued"
 
 
+async def test_prepare_retry_requeues_failed_rows_in_the_window(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    """The player's retry action re-queues failed rows through the same prepare
+    call; the 1 s poll (no ``retry``) must never retry a broken engine."""
+    book, segments = _book_with_segments(db, count=3)
+    db.add_all(
+        [
+            SegmentAudio(
+                segment_id=segments[0].id,
+                voice="ashley-en",
+                status="failed",
+                error="TTS down",
+                priority=500,
+            ),
+            SegmentAudio(segment_id=segments[1].id, voice="ashley-en", status="generating"),
+            SegmentAudio(
+                segment_id=segments[2].id,
+                voice="ashley-en",
+                status="failed",
+                error="TTS down",
+                priority=40,
+            ),
+        ]
+    )
+    db.commit()
+    url = f"/api/v1/books/{book.id}/audio/prepare"
+    body: dict[str, Any] = {"segment_id": str(segments[0].id), "count": 2}
+
+    polled = await auth_client.post(url, json=body, headers=csrf(auth_client))
+    assert polled.status_code == 200, polled.text
+    assert [item["status"] for item in polled.json()["items"]] == ["failed", "generating", "failed"]
+
+    body["retry"] = True
+    retried = await auth_client.post(url, json=body, headers=csrf(auth_client))
+    assert retried.status_code == 200, retried.text
+    assert [item["status"] for item in retried.json()["items"]] == [
+        "queued",
+        "generating",
+        "queued",
+    ]
+
+    rows = {row.segment_id: row for row in db.scalars(select(SegmentAudio)).all()}
+    assert len(rows) == 3  # the failed rows were requeued, no duplicates inserted
+    assert (rows[segments[0].id].status, rows[segments[0].id].error) == ("queued", None)
+    assert rows[segments[0].id].priority == PRIORITY_NOW  # needed now: raised
+    assert rows[segments[2].id].priority == 40  # priority only ever rises
+    assert rows[segments[1].id].status == "generating"  # a live claim is untouched
+
+
 async def test_admin_cache_clear_per_book_and_entire(
     admin_client: httpx.AsyncClient, db: Session, settings: Settings
 ) -> None:

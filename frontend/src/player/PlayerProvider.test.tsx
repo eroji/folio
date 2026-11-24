@@ -11,7 +11,7 @@ import type { AudioStatus } from "../api/audio";
 import type { BookDetailResponse } from "../api/types";
 import { closedBook } from "./closed";
 
-let prepareCalls: { segment_id: string; count: number; voice?: string }[] = [];
+let prepareCalls: { segment_id: string; count: number; voice?: string; retry?: boolean }[] = [];
 let played: HTMLMediaElement[] = [];
 let paused: HTMLMediaElement[] = [];
 
@@ -197,6 +197,79 @@ describe("PlayerProvider", () => {
         before,
       ),
     );
+  });
+
+  it("plays a failed segment by re-queueing it with retry, then starts once a prepare returns ready", async () => {
+    const fixture: { statuses: Record<string, AudioStatus> } = { statuses: { [`${CH1}-seg0`]: "failed" } };
+    prepareCalls = installPlayerFetch(fixture).prepareCalls;
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    expect(prepareCalls.every((call) => call.retry === undefined)).toBe(true); // loading never retries
+
+    await act(async () => {
+      await getPlayer().play();
+    });
+    expect(getPlayer().error).toBe("Couldn't generate this part");
+    const retries = prepareCalls.filter((call) => call.retry === true);
+    expect(retries).toHaveLength(1); // one gesture, one retry prepare
+    expect(retries[0]?.segment_id).toBe(`${CH1}-seg0`);
+
+    fixture.statuses[`${CH1}-seg0`] = "ready";
+    await act(async () => {
+      await getPlayer().play();
+    });
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+  });
+
+  it("seeking to a failed segment re-queues it with retry", async () => {
+    prepareCalls = installPlayerFetch({ statuses: { [`${CH1}-seg1`]: "failed" } }).prepareCalls;
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    prepareCalls.length = 0;
+
+    act(() => getPlayer().seekSegment(1, 0));
+    await waitFor(() => expect(prepareCalls.length).toBeGreaterThan(0));
+    expect(prepareCalls.every((call) => call.retry === true)).toBe(true);
+  });
+
+  it("the error line's Retry re-queues the failed window", async () => {
+    prepareCalls = installPlayerFetch({ statuses: { [`${CH1}-seg0`]: "failed" } }).prepareCalls;
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+    });
+    await act(async () => {
+      await getPlayer().play();
+    });
+    expect(getPlayer().error).toBe("Couldn't generate this part");
+    const before = prepareCalls.length;
+
+    await act(async () => {
+      getPlayer().retry();
+    });
+    await waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
+    expect(getPlayer().error).toBe(null);
+    expect(prepareCalls[prepareCalls.length - 1]?.retry).toBe(true);
+  });
+
+  it("the poll and the other automatic top-ups never ask for a retry", async () => {
+    vi.useFakeTimers();
+    const getPlayer = renderPlayer();
+    await act(async () => {
+      await getPlayer().load(BOOK_ID);
+      getPlayer().toggle();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(getPlayer().playing).toBe(true);
+    const before = prepareCalls.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000); // two playing polls
+    });
+    expect(prepareCalls.length).toBeGreaterThan(before);
+    expect(prepareCalls.every((call) => call.retry === undefined)).toBe(true);
   });
 
   it("ended moves to the next segment and starts it exactly once", async () => {

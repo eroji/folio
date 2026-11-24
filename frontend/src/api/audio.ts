@@ -79,6 +79,8 @@ export function prepareAudio(
   segmentId: string,
   count: number,
   voice?: string,
+  /** Re-queue failed rows in this window (an explicit user action only). */
+  retry?: boolean,
 ): Promise<PrepareResponse> {
   // A request that never settles would block every later prepare (the player
   // keeps one in flight). Fail it, show Retry, and let the poll try again.
@@ -93,6 +95,7 @@ export function prepareAudio(
       segment_id: segmentId,
       count,
       ...(voice ? { voice } : {}),
+      ...(retry ? { retry: true } : {}),
     }),
     timeout,
   ]);

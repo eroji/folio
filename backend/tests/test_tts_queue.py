@@ -499,6 +499,68 @@ def test_prepare_notifies_only_when_the_window_changes(
     assert frames == []  # nothing changed, nothing announced
 
 
+def test_prepare_retry_failed_requeues_only_failed_rows(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``retry_failed`` is the player's explicit action: a poll (default false)
+    leaves every failed row failed, and a generating claim or a ready clip is
+    never disturbed by either."""
+    book = _book(db, chapters=1, per_chapter=4)
+    segments = _segments(db, book)
+    ready = _seed_audio(db, settings, segments[2].text)
+    db.add_all(
+        [
+            SegmentAudio(
+                segment_id=segments[0].id,
+                voice="ashley-en",
+                status="failed",
+                error="TTS down",
+                cache_key=ready.cache_key,
+                priority=500,
+            ),
+            SegmentAudio(segment_id=segments[1].id, voice="ashley-en", status="generating"),
+            SegmentAudio(
+                segment_id=segments[2].id,
+                voice="ashley-en",
+                status="ready",
+                cache_key=ready.cache_key,
+            ),
+            SegmentAudio(
+                segment_id=segments[3].id,
+                voice="ashley-en",
+                status="failed",
+                error="TTS down",
+                priority=40,
+            ),
+        ]
+    )
+    db.commit()
+    frames: list[dict[str, Any]] = []
+    monkeypatch.setattr(queue_module, "notify", lambda _db, payload: frames.append(payload))
+
+    window = prepare(db, settings, book, segments[0].id, count=3, voice="ashley-en")
+    assert [row.status for _, row in window] == ["failed", "generating", "ready", "failed"]
+    assert frames == []  # the poll changes nothing, so it announces nothing
+
+    window = prepare(
+        db, settings, book, segments[0].id, count=3, voice="ashley-en", retry_failed=True
+    )
+    assert [row.status for _, row in window] == ["queued", "generating", "ready", "queued"]
+    assert (window[0][1].error, window[0][1].cache_key) == (None, None)
+    assert window[0][1].priority == 10  # a far-down row is pulled to now
+    assert window[3][1].priority == 40  # a nearer priority is never lowered
+    assert (window[2][1].status, window[2][1].cache_key) == ("ready", ready.cache_key)
+    assert frames == [
+        {
+            "event": "audio",
+            "book_id": str(book.id),
+            "segment_id": str(segments[i].id),
+            "status": "queued",
+        }
+        for i in (0, 3)
+    ]
+
+
 def test_prepare_requeues_when_the_voice_instruction_changes(
     db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:

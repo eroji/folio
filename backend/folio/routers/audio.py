@@ -42,6 +42,9 @@ class PrepareBody(BaseModel):
     # well under this, so the cap only rejects junk (see PlayerProvider).
     count: int | None = Field(default=None, ge=0, le=2000)
     voice: str | None = Field(default=None, min_length=1, max_length=64)
+    # The player's retry action: re-queue the window's failed rows. Never set by
+    # the 1 s poll, which must not retry a broken engine.
+    retry: bool = False
 
 
 class RetryBody(BaseModel):
@@ -68,7 +71,16 @@ def prepare_audio(
     """Queue the current segment plus ``count`` lookahead ones; any listener may call it."""
     require_csrf(request, request.state.session_row)
     book = _get_book(db, book_id)
-    rows = prepare(db, settings, book, body.segment_id, body.count, body.voice, user.settings)
+    rows = prepare(
+        db,
+        settings,
+        book,
+        body.segment_id,
+        body.count,
+        body.voice,
+        user.settings,
+        retry_failed=body.retry,
+    )
     items = []
     for segment, row in rows:
         audio = db.get(Audio, row.cache_key) if row.cache_key else None

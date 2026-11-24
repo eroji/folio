@@ -364,7 +364,7 @@ describe("ReadAlong", () => {
     await play(getPlayer);
     fireEvent.click(screen.getByText(new RegExp(`Two ${CH1}-seg8 here`)));
     await waitFor(() => expect(getPlayer().index).toBe(8));
-    expect(prepareCalls.at(-1)).toEqual({ segment_id: `${CH1}-seg8`, count: 6 });
+    expect(prepareCalls.at(-1)).toEqual({ segment_id: `${CH1}-seg8`, count: 6, retry: true });
     await waitFor(() => expect(getPlayer().playing).toBe(true));
   });
 });

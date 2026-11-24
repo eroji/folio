@@ -153,12 +153,15 @@ def prepare(
     count: int | None = None,
     voice: str | None = None,
     user_settings: dict[str, Any] | None = None,
+    retry_failed: bool = False,
 ) -> list[tuple[Segment, SegmentAudio]]:
     """Queue ``count + 1`` segments from ``segment_id``; cache hits go straight to ready.
 
     ``count`` defaults to ``settings.tts_lookahead``. Idempotent: an existing
     ``generating`` row is preserved, a ``queued`` row only gains priority (a
-    seek raises it), and ``failed`` waits for the retry button.
+    seek raises it), and ``failed`` waits for the retry button. Only an explicit
+    ``retry_failed`` (the player's action, never the 1 s poll) re-queues failed
+    rows: retrying a broken engine every second would flood it.
     """
     # The admin's TTS server (else the env): discovery and the cache keys use it.
     settings = effective_tts_settings(session, settings)
@@ -214,7 +217,11 @@ def prepare(
             row.priority = min(row.priority, priority)
         elif row.status == "ready":
             row.cache_key, row.status, row.error = None, "queued", None  # file was cleared
-        # generating keeps its claim; failed waits for retry()
+        elif row.status == "failed" and retry_failed:
+            row.cache_key, row.error = None, None
+            row.status = "queued"
+            row.priority = min(row.priority, priority)
+        # generating keeps its claim; failed waits for retry() without retry_failed
         window.append((segment, row))
         after = row.status if not created else "queued"
         changed.append((segment, row, created or after != before))
