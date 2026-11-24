@@ -56,10 +56,10 @@ const POLL_MS = 1000;
  * that lands during an in-flight topUp is dropped by the in-flight guard, and
  * a stale "queued" for the next segment stalls playback at the boundary. */
 const PLAYING_POLL_MS = 5000;
-/** Segments after the current one that must be ready before a voice-change
- * reload, or a resume after playback ran into a segment still generating,
- * starts: starting on the first one alone made playback stall a few seconds
- * later while the queued lookahead caught up. */
+/** Segments after the current one that must be ready before a resume after
+ * playback ran into a segment still generating starts: starting on the first
+ * one alone made playback stall a few seconds later while the queued lookahead
+ * caught up. A voice change does not wait on this (DECISIONS.md). */
 const BUFFER_AHEAD = 2;
 /** Spec "Progress model": save every 10 s while playing. */
 const SAVE_MS = 10_000;
@@ -162,7 +162,7 @@ interface Machine {
   intent: boolean; // the user wants audio playing
   playing: boolean;
   preparing: boolean;
-  prebuffering: boolean; // a voice reload or a generation stall is filling its lookahead before (re)starting
+  prebuffering: boolean; // a resume after a generation stall is filling its lookahead before starting
   progress: Record<string, { done: number; total: number }>; // segment id → sentences synthesized
   error: string | null;
   time: number;
@@ -297,7 +297,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const elapsed = () => s.segments.slice(0, s.index).reduce((total, seg) => total + estimateOf(seg), 0) + s.time;
 
   /** The current segment plus the next BUFFER_AHEAD (or the rest of the chapter)
-   * are all playable. Only consulted while a voice reload is prebuffering. */
+   * are all playable. Only consulted while prebuffering after a generation
+   * stall. */
   const buffered = () =>
     s.segments
       .slice(s.index, s.index + 1 + BUFFER_AHEAD)
@@ -390,8 +391,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       fail("Couldn't generate this part");
       return;
     }
-    // A voice reload waits for a small buffer so it does not start and then
-    // stall while the queued lookahead catches up. The poll keeps topping up.
+    // A resume after a generation stall waits for a small buffer so it does not
+    // start and then stall while the queued lookahead catches up. The poll keeps
+    // topping up. (A voice change starts on the first ready segment instead.)
     if (s.prebuffering) {
       if (!buffered()) {
         s.preparing = true;
@@ -987,7 +989,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   /** A narrator changed: drop the prepared audio for the current position and
    * ask for it again with the new voice, keeping the exact offset and whether
-   * the listener was playing (paused players reload paused). */
+   * the listener was playing (paused players reload paused). A playing player
+   * restarts on the first ready segment; the rest keeps buffering behind it. */
   function reloadVoice(bookId?: string) {
     if (!s.book || (bookId && s.book.id !== bookId)) return;
     const wasPlaying = s.intent || s.playing; // read before silence() clears the flag
@@ -1014,9 +1017,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     s.status = {};
     prefetchedChapter.current = null; // the new voice has to be synthesized for the whole chapter
-    // A playing listener buffers the lookahead before resuming; a paused one
-    // reloads paused and starts normally when the user presses play.
-    s.prebuffering = wasPlaying;
+    // Start like a fresh play: the current segment alone is enough, and the
+    // lookahead and the rest of the chapter keep synthesizing behind it (a
+    // playing listener's poll and prefetch, an iOS stream's growing playlist).
+    // Waiting for BUFFER_AHEAD whole clips in the new voice left the player
+    // silent in "Preparing audio…" for as long as those took.
+    s.prebuffering = false;
     s.preparing = wasPlaying;
     void topUp();
     bump();

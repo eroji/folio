@@ -526,32 +526,26 @@ describe("PlayerProvider", () => {
     expect(prepareCalls[prepareCalls.length - 1]?.segment_id).toBe(`${CH1}-seg0`);
   });
 
-  it("reloadVoice waits for the lookahead buffer before resuming", async () => {
-    // The stall bug: the current segment alone was enough to start, so playback
-    // began and then paused while the queued next segments caught up.
+  it("a voice change resumes on the first ready segment, like a fresh play", async () => {
+    // The new voice has to synthesize every segment again. Waiting for the
+    // lookahead buffer (three whole clips) left the player silent in
+    // "Preparing audio…" for as long as that took; the current segment alone is
+    // enough to start, and the lookahead and the rest of the chapter keep
+    // buffering behind it.
     const statuses: Record<string, AudioStatus> = { [`${CH1}-seg1`]: "queued" };
     prepareCalls = installPlayerFetch({ statuses }).prepareCalls;
     const getPlayer = renderPlayer();
-    await loadAndPlay(getPlayer); // the first start is not gated
-    expect(played).toHaveLength(1);
+    await loadAndPlay(getPlayer);
+    played.length = 0;
 
     const before = prepareCalls.length;
     await act(async () => {
       getPlayer().reloadVoice(BOOK_ID);
     });
     await waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
-    expect(getPlayer().playing).toBe(false);
-    expect(getPlayer().preparing).toBe(true);
-    expect(played).toHaveLength(1); // nothing started while the buffer is incomplete
-
-    statuses[`${CH1}-seg1`] = "ready";
-    await act(async () => {
-      MockEventSource.instances[0]!.emit("audio", { book_id: BOOK_ID, segment_id: `${CH1}-seg1` });
-      await new Promise((resolve) => setTimeout(resolve, 0)); // let the top-up settle
-    });
     await waitFor(() => expect(getPlayer().playing).toBe(true));
     expect(getPlayer().preparing).toBe(false);
-    expect(played).toHaveLength(2); // and it started exactly once, on the full buffer
+    expect(played).toHaveLength(1); // started on the first ready clip, not the lookahead
   });
 
   it("reloadVoice keeps a paused player paused without prebuffering", async () => {
@@ -1396,6 +1390,27 @@ describe("PlayerProvider HLS stream (Safari / iOS)", () => {
     expect(getPlayer().chapter?.id).toBe(CH1);
     expect(getPlayer().index).toBe(1);
     expect(el.currentTime).toBeCloseTo(3); // the new stream starts at seg1
+  });
+
+  it("a voice change starts the new stream on the current segment while the rest generates", async () => {
+    // The stream grows server-side: the first ready clip is enough to start it,
+    // no page JavaScript has to wait for the lookahead to be synthesized.
+    installPlayerFetch({ stream: true, statuses: { [`${CH1}-seg1`]: "queued" } });
+    const getPlayer = renderPlayer();
+    await loadAndPlay(getPlayer);
+    await timelineLoaded();
+    const el = getPlayer().element;
+    const key = ["book", BOOK_ID];
+    const detail = getPlayer.client.getQueryData<BookDetailResponse>(key)!;
+    getPlayer.client.setQueryData(key, { ...detail, book: { ...detail.book, narrator_voice: "brian-en" } });
+    act(() => getPlayer().reloadVoice(BOOK_ID));
+    await waitFor(() =>
+      expect(el.getAttribute("src")).toBe(
+        `/api/v1/books/${BOOK_ID}/stream.m3u8?voice=brian-en&from=${CH1}-seg0`,
+      ),
+    );
+    await waitFor(() => expect(getPlayer().playing).toBe(true));
+    expect(getPlayer().preparing).toBe(false);
   });
 
   it("an answer for the old voice that lands after a voice change is not played", async () => {
