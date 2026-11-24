@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
@@ -63,12 +63,15 @@ def _resolve_voice(
     the engine still lists it: an id left over from a previous TTS server (or a
     stale pin) would otherwise be synthesized by whatever that engine substitutes
     for an unknown voice, and cached under the wrong id. An unreachable engine
-    (no voice list) still trusts the request.
+    (no voice list) still trusts the request. A book with a narrator override
+    ignores the request entirely: the override is the first rule in the spec's
+    order, and honouring a stale in-flight request would keep synthesizing the
+    voice the listener just switched away from.
     """
     with TtsClient(settings) as client:
         voices = discover_voices(settings, client)
     known = {v.id for v in voices}
-    if requested is not None:
+    if requested is not None and book.narrator_voice is None:
         if not known or requested in known:
             return requested
         logger.warning("voice %r is not offered by the TTS engine; falling back", requested)
@@ -240,11 +243,61 @@ def _notify(session: Session, book_id: str | None, segment_id: UUID, status: str
     )
 
 
+def cancel_pending(session: Session, book_id: UUID, keep_voice: str | None) -> int:
+    """Drop a book's not-yet-started audio for every voice but ``keep_voice``.
+
+    A narrator change switches the book to a new voice; the old voice's queued
+    lookahead (an entire prefetched chapter) would otherwise keep the engine
+    busy synthesizing audio nobody will hear before the new voice's first
+    segments. Ready clips and another voice's ready cache stay (switching back
+    is instant), ``failed`` rows stay (a broken engine is still retried only by
+    the Retry button, not by the next prepare), and a claim already generating
+    cannot be aborted and is left to finish. Without a keep voice (the override
+    was cleared) every pending row goes — the next prepare re-queues the
+    listener's voice within a second.
+    """
+    segment_ids = (
+        select(Segment.id)
+        .join(Chapter, Segment.chapter_id == Chapter.id)
+        .where(Chapter.book_id == book_id)
+        .scalar_subquery()
+    )
+    statement = delete(SegmentAudio).where(
+        SegmentAudio.segment_id.in_(segment_ids),
+        SegmentAudio.status == "queued",
+    )
+    if keep_voice is not None:
+        statement = statement.where(SegmentAudio.voice != keep_voice)
+    dropped = session.execute(statement.returning(SegmentAudio.id)).all()
+    session.commit()
+    return len(dropped)
+
+
 def urgent_priority(settings: Settings) -> int:
     """The lowest-urgency priority someone is waiting on: the playing segment
     and its lookahead window. Rows past it are background prefetch (the rest of
     a chapter) and wait behind imports."""
     return PRIORITY_LOOKAHEAD + settings.tts_lookahead
+
+
+def requeue_generating(session: Session) -> int:
+    """Re-queue every row a previous worker claimed and died on.
+
+    A deploy recreates the worker mid-synthesis, and ``prepare`` deliberately
+    preserves a ``generating`` claim, so nothing would ever finish those rows:
+    the listener waits in "Preparing audio…" forever, and a later prepare for
+    the same voice stalls on the same row. Run once before the lanes start.
+    ponytail: one worker per stack (compose); with several live workers this
+    would re-queue their in-flight rows too — a claim heartbeat would be needed.
+    """
+    changed = session.execute(
+        update(SegmentAudio)
+        .where(SegmentAudio.status == "generating")
+        .values(status="queued")
+        .returning(SegmentAudio.id)
+    ).all()
+    session.commit()
+    return len(changed)
 
 
 def claim_next_tts(session: Session, max_priority: int | None = None) -> SegmentAudio | None:

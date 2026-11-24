@@ -7,12 +7,13 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from folio import worker
 from folio.config import Settings
 from folio.db import SessionLocal
-from folio.models import Book
+from folio.models import Book, Chapter, Segment, SegmentAudio
 
 ALL_FIELDS: dict[str, Any] = {
     "title": "Edited Title",
@@ -86,6 +87,44 @@ async def test_patch_every_field_roundtrips_through_get(
     assert body["narrator_voice"] == "serena"
     assert set(body["locked_fields"]) == set(ALL_FIELDS)  # exposed for the lock icons
     assert set(reload_book(db, book_id).locked_fields) == set(ALL_FIELDS)
+
+
+async def test_changing_the_narrator_cancels_the_old_voices_pending_audio(
+    admin_client: httpx.AsyncClient, db: Session
+) -> None:
+    """Switching the narrator stopped the old voice's queued chapter: the
+    engine kept synthesizing the voice the listener had just left."""
+    book = Book(title="Voice Book", language="en", status="ready")
+    db.add(book)
+    db.flush()
+    chapter = Chapter(book_id=book.id, idx=0, title="One", char_count=10)
+    db.add(chapter)
+    db.flush()
+    first = Segment(chapter_id=chapter.id, idx=0, text="Hello there.", char_start=0, char_end=12)
+    second = Segment(chapter_id=chapter.id, idx=1, text="And again.", char_start=12, char_end=22)
+    db.add_all([first, second])
+    db.flush()
+    db.add_all(
+        [
+            SegmentAudio(segment_id=first.id, voice="bennett", status="queued"),
+            SegmentAudio(segment_id=second.id, voice="bennett", status="ready"),
+            SegmentAudio(segment_id=first.id, voice="sarah", status="queued"),
+        ]
+    )
+    db.commit()
+
+    response = await admin_client.patch(
+        f"/api/v1/books/{book.id}",
+        json={"narrator_voice": "sarah"},
+        headers=csrf(admin_client),
+    )
+    assert response.status_code == 200, response.text
+    db.expire_all()
+    rows = {(row.voice, row.segment_id): row.status for row in db.scalars(select(SegmentAudio))}
+    assert rows == {
+        ("bennett", second.id): "ready",
+        ("sarah", first.id): "queued",
+    }
 
 
 async def test_partial_patch_leaves_other_fields_untouched(

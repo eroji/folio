@@ -30,6 +30,7 @@ from folio.routers.progress import chapter_progress_dict, progress_dict
 from folio.security import require_csrf
 from folio.storage import book_dir, cover_dir, ensure_dirs, original_path
 from folio.text import decode_entities, description_text
+from folio.tts.queue import cancel_pending
 
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
@@ -475,6 +476,7 @@ def patch_book(
     if not metadata_fields <= set(BookPatch.model_fields):
         _fail()
     values = _patch_values(patch)
+    before_voice = book.narrator_voice
     for name, value in values.items():
         setattr(book, name, value)
     changed = patch.model_fields_set - {"metadata_fields"}
@@ -484,6 +486,10 @@ def patch_book(
             locked.append(name)
     book.locked_fields = locked
     db.commit()
+    # A narrator change abandons the old voice's queued lookahead: the listener
+    # wanted the new voice, not a chapter of the one they left (DECISIONS.md).
+    if "narrator_voice" in values and values["narrator_voice"] != before_voice:
+        cancel_pending(db, book.id, book.narrator_voice)
     return {"book": _public(book, user)}
 
 

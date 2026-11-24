@@ -20,7 +20,14 @@ from folio.tts import TtsClient, Voice
 from folio.tts import queue as queue_module
 from folio.tts.cache import cache_key, cache_path
 from folio.tts.narration import narration_prompt
-from folio.tts.queue import claim_next_tts, prepare, retry, run_tts_job
+from folio.tts.queue import (
+    cancel_pending,
+    claim_next_tts,
+    prepare,
+    requeue_generating,
+    retry,
+    run_tts_job,
+)
 from folio.tts.text import normalize_speech_text
 from folio.voice_catalog import save_voice_instructions
 
@@ -254,6 +261,26 @@ def test_prepare_honours_a_requested_voice_the_engine_lists(
     assert {row.voice for _, row in window} == {"tess"}
 
 
+def test_a_book_narrator_wins_over_a_requested_voice(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A voice switch leaves stale prepares in flight for the voice the listener
+    left; the book override is the spec's first rule and must win, or the engine
+    keeps synthesizing the abandoned voice."""
+    monkeypatch.setattr(
+        queue_module,
+        "discover_voices",
+        lambda _s, _c, refresh=False: [
+            Voice(id="tess", language="en"),
+            Voice(id="zoe", language="en"),
+        ],
+    )
+    book = _book(db)
+    book.narrator_voice = "zoe"
+    window = prepare(db, settings, book, _segments(db, book)[0].id, count=0, voice="tess")
+    assert {row.voice for _, row in window} == {"zoe"}
+
+
 def test_prepare_raises_priority_of_an_already_queued_segment(
     db: Session, settings: Settings
 ) -> None:
@@ -330,6 +357,93 @@ def test_concurrent_claims_never_return_the_same_row(db: Session, settings: Sett
         assert claimed is not None and claimed.status == "generating"
     finally:
         other.close()
+
+
+def test_requeue_generating_recovers_rows_a_dead_worker_claimed(
+    db: Session, settings: Settings
+) -> None:
+    """A deploy restarts the worker mid-synthesis; the claimed row kept its
+    "generating" status and prepare never re-queues it, so its listener waited
+    in "Preparing audio…" forever. Startup must hand it back to the queue."""
+    book = _book(db)
+    prepare(db, settings, book, _segments(db, book)[0].id, count=3, voice="ashley-en")
+    rows = list(db.scalars(select(SegmentAudio).order_by(SegmentAudio.priority)))
+    assert [row.status for row in rows] == ["queued"] * 4
+    rows[0].status = "generating"  # the claim the dead worker left behind
+    rows[1].status = "ready"
+    rows[2].status = "failed"
+    rows[2].error = "TTS rejected the request"
+    db.commit()
+
+    assert requeue_generating(db) == 1
+
+    for row in rows:
+        db.refresh(row)
+    assert (rows[0].status, rows[0].priority) == ("queued", 10)
+    assert [row.status for row in rows[1:]] == ["ready", "failed", "queued"]
+    claimed = claim_next_tts(db)  # the listener's next poll gets it moving again
+    assert claimed is not None and claimed.id == rows[0].id
+
+
+def test_cancel_pending_drops_other_voices_but_keeps_the_new_one(db: Session) -> None:
+    """A voice change abandoned the old voice's queued lookahead; the engine
+    kept synthesizing it while the listener heard the new voice."""
+    book = _book(db, chapters=1, per_chapter=4)
+    segments = _segments(db, book)
+
+    def row(segment: Segment, voice: str, status: str = "queued") -> None:
+        audio = SegmentAudio(segment_id=segment.id, voice=voice, status=status, priority=101)
+        if status == "failed":
+            audio.error = "TTS rejected the request"
+        db.add(audio)
+
+    row(segments[0], "bennett")  # queued: dropped
+    row(segments[1], "bennett", "failed")  # broken engine: kept for Retry
+    row(segments[2], "bennett", "ready")  # cached clip: kept
+    row(segments[3], "bennett", "generating")  # claimed, cannot abort: kept
+    row(segments[0], "sarah")  # the voice the listener switched to: kept
+    db.commit()
+
+    assert cancel_pending(db, book.id, "sarah") == 1
+    rows = {(r.voice, r.segment_id): r.status for r in db.scalars(select(SegmentAudio))}
+    assert rows == {
+        ("bennett", segments[1].id): "failed",
+        ("bennett", segments[2].id): "ready",
+        ("bennett", segments[3].id): "generating",
+        ("sarah", segments[0].id): "queued",
+    }
+
+    # Clearing the override keeps no voice: every queued row goes.
+    assert cancel_pending(db, book.id, None) == 1
+    assert {r.status for r in db.scalars(select(SegmentAudio))} == {
+        "failed",
+        "ready",
+        "generating",
+    }
+
+
+def test_worker_startup_requeues_orphaned_rows(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sweep only helps if main() runs it: deleting the call once left the
+    suite green while production kept stalling on the orphaned claim."""
+    book = _book(db, chapters=1, per_chapter=1)
+    db.add(
+        SegmentAudio(segment_id=_segments(db, book)[0].id, voice="ashley-en", status="generating")
+    )
+    db.commit()
+
+    def lanes_started(*_args: object) -> None:
+        raise RuntimeError("lanes started")
+
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    monkeypatch.setattr(worker, "start_lanes", lanes_started)
+    monkeypatch.setattr(worker.signal, "signal", lambda *_args: None)
+    with pytest.raises(RuntimeError):
+        worker.main()
+
+    db.expire_all()
+    assert {row.status for row in db.scalars(select(SegmentAudio))} == {"queued"}
 
 
 def test_run_tts_job_success_writes_file_audio_row_and_ready(

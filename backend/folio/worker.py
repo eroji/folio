@@ -14,7 +14,7 @@ from folio.jobs import claim_next, finish, notify
 from folio.models.book import Job
 from folio.storage import ensure_dirs
 from folio.suggest import suggest_for_book
-from folio.tts.queue import claim_next_tts, run_tts_job, urgent_priority
+from folio.tts.queue import claim_next_tts, requeue_generating, run_tts_job, urgent_priority
 
 Handler = Callable[[Session, Settings, Job], None]
 HANDLERS: dict[str, Handler] = {"ingest": process_book, "suggest": suggest_for_book}
@@ -126,6 +126,12 @@ def main() -> None:
     )
     heartbeat = settings.data_dir / ".worker-heartbeat"
     ensure_dirs(heartbeat.parent)
+    # A deploy or crash kills the worker mid-synthesis; without this the claimed
+    # rows stay "generating" and their listeners wait forever (DECISIONS.md).
+    with SessionLocal() as session:
+        requeued = requeue_generating(session)
+    if requeued:
+        logger.info("requeued %d segment(s) a previous worker left generating", requeued)
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda _signum, _frame: stop.set())
     signal.signal(signal.SIGINT, lambda _signum, _frame: stop.set())
