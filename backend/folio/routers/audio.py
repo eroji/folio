@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
@@ -18,6 +18,7 @@ from folio.deps import get_current_user
 from folio.errors import ApiError
 from folio.models import Audio, Book, Chapter, Segment, User
 from folio.security import require_csrf
+from folio.tts.live import live_stream, start_live
 from folio.tts.queue import prepare, retry
 from folio.tts.stream import (
     STREAM_FORMAT,
@@ -45,6 +46,14 @@ class PrepareBody(BaseModel):
     # The player's retry action: re-queue the window's failed rows. Never set by
     # the 1 s poll, which must not retry a broken engine.
     retry: bool = False
+
+
+class LiveBody(BaseModel):
+    segment_id: UUID
+    # Share of the segment's text the listener is at; the stream starts at the
+    # beginning of that sentence.
+    at: float = Field(default=0.0, ge=0.0, le=1.0)
+    voice: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class RetryBody(BaseModel):
@@ -102,6 +111,43 @@ def prepare_audio(
         # The book can be played as one HLS stream (iOS lock screen) in this voice.
         "stream": settings.tts_format == STREAM_FORMAT,
     }
+
+
+@router.post("/api/v1/books/{book_id}/audio/live")
+def live_start(
+    request: Request,
+    book_id: UUID,
+    body: LiveBody,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[DbSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, Any]:
+    """Play a segment with no clip yet while it is made (a mid-play narrator
+    change): answers once audio flows, with the URL to play (folio.tts.live)."""
+    require_csrf(request, request.state.session_row)
+    book = _get_book(db, book_id)
+    return start_live(db, settings, book, body.segment_id, body.at, body.voice, user.settings)
+
+
+_LIVE_ID_RE = re.compile(r"[0-9a-f]{32}")
+
+
+@router.get("/api/v1/audio/live/{live_id}")
+def live_audio(
+    live_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    """A live start's audio from its first byte, as it is made."""
+    found = live_stream(live_id) if _LIVE_ID_RE.fullmatch(live_id) else None
+    if found is None:
+        raise ApiError("not_found", "Audio not found.", 404)
+    chunks, media_type = found
+    return StreamingResponse(
+        chunks,
+        media_type=media_type,
+        # nginx would otherwise buffer it; a replay must never come from a cache.
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 _StreamVoice = Annotated[str, Query(alias="voice", min_length=1, max_length=64)]
