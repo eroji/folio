@@ -130,6 +130,67 @@ async def test_changing_the_narrator_cancels_the_old_voices_pending_audio(
     }
 
 
+async def test_any_listener_may_set_the_narrator_voice(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    """Choosing who reads a book is a listening choice, not book management
+    (DECISIONS.md): a non-uploader may patch the narrator and nothing else."""
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    url = f"/api/v1/books/{book_id}"
+    await auth_client.post("/api/v1/test/login", json={"username": "someoneelse", "role": "user"})
+    response = await auth_client.patch(
+        url, json={"narrator_voice": "zoe-en"}, headers=csrf(auth_client)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["book"]["narrator_voice"] == "zoe-en"
+    book = reload_book(db, book_id)
+    assert book.narrator_voice == "zoe-en"
+    assert "narrator_voice" in book.locked_fields  # metadata refresh keeps off it
+    # metadata_fields is a helper field, not a book field: still a narrator-only PATCH.
+    again = await auth_client.patch(
+        url,
+        json={"narrator_voice": "bennett", "metadata_fields": ["genre"]},
+        headers=csrf(auth_client),
+    )
+    assert again.status_code == 200, again.text
+
+
+async def test_other_fields_stay_limited_to_the_editor(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    url = f"/api/v1/books/{book_id}"
+    await auth_client.post("/api/v1/test/login", json={"username": "someoneelse", "role": "user"})
+    response = await auth_client.patch(url, json={"title": "Nope"}, headers=csrf(auth_client))
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+    # A narrator plus anything else is refused whole: the narrator is not moved.
+    mixed = await auth_client.patch(
+        url,
+        json={"narrator_voice": "zoe-en", "title": "Nope"},
+        headers=csrf(auth_client),
+    )
+    assert mixed.status_code == 403
+    assert mixed.json()["error"]["code"] == "forbidden"
+    book = reload_book(db, book_id)
+    assert book.title != "Nope"
+    assert book.narrator_voice is None
+    assert book.locked_fields == []
+
+
+async def test_narrator_only_patch_still_requires_csrf(
+    auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
+) -> None:
+    book_id = await upload(auth_client, fixture_books["epub3"])
+    await auth_client.post("/api/v1/test/login", json={"username": "someoneelse", "role": "user"})
+    response = await auth_client.patch(
+        f"/api/v1/books/{book_id}", json={"narrator_voice": "zoe-en"}
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "csrf_failed"
+    assert reload_book(db, book_id).narrator_voice is None
+
+
 async def test_partial_patch_leaves_other_fields_untouched(
     auth_client: httpx.AsyncClient, db: Session, fixture_books: dict[str, Path]
 ) -> None:

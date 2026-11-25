@@ -71,6 +71,11 @@ function mockApi(books: Book[], options: MockOptions = {}) {
           user: { id: "u1", username: "browser", display_name: "Browser User", email: null, role: "user" },
           csrf_token: "t",
         };
+      } else if (url.pathname.includes("/voices")) {
+        body = {
+          items: [{ id: "zoe-en", language: "en", display_name: "Zoe", on_server: true }],
+          defaults: { en: "zoe-en" },
+        };
       } else if (url.pathname.includes("/me/continue")) {
         body = { items: options.continueItems ?? [] };
       } else if (url.pathname.includes("/me/finished")) {
@@ -291,6 +296,20 @@ describe("LibraryPage", () => {
     expect(
       within(row).getByRole("button", { name: "More options for Dune" }),
     ).toBeTruthy();
+  });
+
+  it("offers the row menu's Narrator voice item to listeners who cannot edit", async () => {
+    mockApi([makeBook({ can_edit: false })]);
+    renderLibrary("/library?group=none&view=list");
+    const row = await screen.findByRole("listitem");
+    fireEvent.click(within(row).getByRole("button", { name: "More options for Dune" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Narrator voice" }));
+    const dialog = await screen.findByRole("dialog", { name: "Narrator voice" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Zoe" }));
+    await waitFor(() => {
+      const call = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(JSON.parse(String(call?.[1]?.body ?? "null"))).toEqual({ narrator_voice: "zoe-en" });
+    });
   });
 
   it("serves the flat genre listing from See-all links", async () => {

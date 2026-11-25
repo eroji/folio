@@ -210,13 +210,16 @@ describe("PlayerPage (phone)", () => {
     await waitFor(() => expect(installed.prepareCalls.some((call) => call.voice === "zoe-en")).toBe(true));
   });
 
-  it("listeners who cannot edit the book see the narrator as display-only text", async () => {
+  it("listeners who cannot edit the book still get the narrator button and the picker", async () => {
     stubMatchMedia(false);
-    installPlayerFetch({ book: { can_edit: false } });
+    const installed = installPlayerFetch({ book: { can_edit: false } });
     await renderAtPlayer();
     const card = screen.getByRole("group", { name: "Listening" });
-    expect(await within(card).findByText("Ashley")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Narrator voice/ })).toBeNull();
+    const voice = await within(card).findByRole("button", { name: "Narrator voice, Ashley" });
+    fireEvent.click(voice);
+    const dialog = await screen.findByRole("dialog", { name: "Narrator voice" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Zoe" }));
+    await waitFor(() => expect(installed.patchCalls).toEqual([{ narrator_voice: "zoe-en" }]));
   });
 
   it("the listening card shows speed, narrator and sleep as value over label", async () => {

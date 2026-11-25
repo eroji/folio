@@ -5,8 +5,8 @@
  * centered column with a back + ⋮ header. The narrator: on the phone a
  * "Narrated by" row right under the primary action; on desktop an entry in
  * the ⋮ beside it (the player bar already has a Narrator control for the
- * playing book). Changeable by editors only. Playback drives the shared
- * player state only. */
+ * playing book). Every listener may pick it; only editors get Manage.
+ * Playback drives the shared player state only. */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Link, useLocation, useMatch, useNavigate, useParams } from "react-router-dom";
 import { cameFromPlayer } from "../player/fromPlayer";
@@ -401,7 +401,7 @@ export function BookDetailPage() {
       onReset={() => setResetOpen(true)}
       onGoToAuthor={() => void navigate(authorHref)}
       // Desktop only: the phone has its "Narrated by" row instead.
-      onNarrator={variant === "inline" && canManage ? () => setNarratorOpen(true) : undefined}
+      onNarrator={variant === "inline" ? () => setNarratorOpen(true) : undefined}
     />
   );
 
@@ -702,7 +702,7 @@ export function BookDetailPage() {
           </div>
           <div className="flex flex-col gap-2.5">
             {primaryButton(true)}
-            <NarratorRow book={book} canChange={canManage} />
+            <NarratorRow book={book} />
           </div>
           <div className="flex flex-col gap-4">
             <TabList tabs={tabs} active={activeTab} onSelect={setTab} />
@@ -748,7 +748,7 @@ export function BookDetailPage() {
               {primaryButton(false)}
               {bookMenu("inline")}
             </div>
-            {canManage && <NarratorPicker book={book} open={narratorOpen} onClose={() => setNarratorOpen(false)} />}
+            <NarratorPicker book={book} open={narratorOpen} onClose={() => setNarratorOpen(false)} />
           </div>
           <div className="flex min-w-0 flex-col gap-5">
             <TabList tabs={tabs} active={activeTab} onSelect={setTab} />

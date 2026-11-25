@@ -4,9 +4,9 @@ import { Icon } from "./Icon";
 
 /** ⋮ book menu (Direction D "Book page" item 6), visible to every listener:
  * Mark as finished/unfinished, Reset progress, Narrator voice (only when
- * the caller passes onNarrator: row menus and the desktop book page, for
- * editors; the phone book page has a "Narrated by" row instead) and Go to
- * author. Raised fill, 12px
+ * the caller passes onNarrator: row menus and the desktop book page; the
+ * phone book page has a "Narrated by" row instead) and Go to author. Raised
+ * fill, 12px
  * radius, 40px rows. variant "inline": 44px outlined pill trigger next to the
  * primary action (desktop); variant "header": borderless 44px trigger for the
  * phone header. Keyboard: arrows open/cycle, Escape closes and refocuses. */
@@ -24,7 +24,7 @@ export function BookMenu({
   pending: boolean;
   onToggleFinished: (finished: boolean) => void;
   onReset: () => void;
-  /** Omitted: no Narrator voice item (book page, or a book the listener can't edit). */
+  /** Omitted: no Narrator voice item (the phone book page, which has its row). */
   onNarrator?: () => void;
   onGoToAuthor: () => void;
   variant?: "inline" | "header";

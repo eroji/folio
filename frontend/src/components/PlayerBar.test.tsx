@@ -377,8 +377,8 @@ describe("PlayerBar", () => {
     await screen.findByText(/Paused · last played on Kitchen speaker/);
   });
 
-  it("has no narrator voice button", async () => {
+  it("offers the narrator control even without can_edit", async () => {
     await loadBar();
-    expect(screen.queryByRole("button", { name: /voice|narrator/i })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Narrator voice, Ashley" })).toBeTruthy();
   });
 });

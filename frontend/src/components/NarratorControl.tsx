@@ -1,9 +1,9 @@
 /** Where a book's narrator is seen and changed: the "Narrated by" row under
  * the book page's primary action; the player's Narrator control lives in
  * ListeningControls and shares useNarrator / useChangeNarrator.
- * Both open NarratorVoiceDialog. Only listeners who may edit the book (admin
- * or uploader; PATCH /books/{id} enforces it) can change the voice — everyone
- * else sees who narrates as plain text. */
+ * Both open NarratorVoiceDialog. Every signed-in listener picks the voice they
+ * hear for this book (PATCH /books/{id} accepts it from anyone); the narrator
+ * is never display-only. */
 import { useState } from "react";
 import { useUpdateBook } from "../api/metadata";
 import { useListeningSettings } from "../api/settings";
@@ -85,18 +85,10 @@ export function NarratorPicker({ book, open, onClose }: { book: Book; open: bool
 }
 
 /** Phone book page: a full-width row directly under Play / Resume. */
-export function NarratorRow({ book, canChange }: { book: Book; canChange: boolean }) {
+export function NarratorRow({ book }: { book: Book }) {
   const { label } = useNarrator(book);
   const { openDialog, dialog } = useNarratorDialog(book);
   const text = label ? `Narrated by ${label}` : "Default narrator";
-  if (!canChange) {
-    return label ? (
-      <p className="flex min-h-11 items-center justify-center gap-2 text-base text-fg-2">
-        <Icon name="Speech" size={18} />
-        <span>{text}</span>
-      </p>
-    ) : null;
-  }
   return (
     <>
       <button

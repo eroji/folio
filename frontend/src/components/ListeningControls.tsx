@@ -5,8 +5,8 @@
  *   a popover above the bar, right-aligned.
  * The open control keeps an amber outline; after its panel closes it glows
  * briefly with the new value. Panels never close by themselves: Done (phone
- * speed), Escape, an outside click, or the control again. Listeners who can't
- * edit the book see the narrator as display-only text. */
+ * speed), Escape, an outside click, or the control again. Every listener may
+ * change the narrator — the voice cell is a normal control. */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { useBook } from "../api/books";
@@ -54,7 +54,6 @@ function Controls({ book, layout }: { book: Book; layout: Layout }) {
   const { label: voiceName } = useNarrator(book);
   const narrator = useChangeNarrator(book);
   const remaining = useSleepCountdown();
-  const canChangeVoice = book.can_edit ?? false;
 
   useEffect(
     () => () => {
@@ -93,7 +92,7 @@ function Controls({ book, layout }: { book: Book; layout: Layout }) {
   const voiceValue = voiceName ?? "Default";
   const sleepValue = sleepShort(player.sleep, remaining);
 
-  const cells: { key: Panel; label: string; value: ReactNode; aria: string; title: string; popup: "dialog" | "menu"; static?: boolean }[] = [
+  const cells: { key: Panel; label: string; value: ReactNode; aria: string; title: string; popup: "dialog" | "menu" }[] = [
     { key: "speed", label: "Speed", value: speedValue, aria: `Playback speed, ${formatSpeed(player.rate)} times`, title: "Playback speed", popup: "dialog" },
     {
       key: "voice",
@@ -107,7 +106,6 @@ function Controls({ book, layout }: { book: Book; layout: Layout }) {
       aria: `Narrator voice, ${voiceValue}`,
       title: "Narrator voice",
       popup: "dialog",
-      static: !canChangeVoice,
     },
     {
       key: "sleep",
@@ -124,13 +122,13 @@ function Controls({ book, layout }: { book: Book; layout: Layout }) {
     },
   ];
 
-  const cellClass = (which: Panel, isStatic: boolean) =>
+  const cellClass = (which: Panel) =>
     clsx(
       "flex min-w-0 items-center text-fg transition-colors duration-500",
       layout === "card"
         ? "h-16 flex-col justify-center gap-0.5 rounded-2xl px-2"
         : clsx("h-11 gap-1.5 rounded-full text-base font-semibold", which === "speed" ? "w-14 justify-center text-center tabular" : "max-w-[160px] px-3.5"),
-      !isStatic && "tap hover:bg-border",
+      "tap hover:bg-border",
       panelTriggerState(open === which, flash === which),
     );
 
@@ -159,23 +157,16 @@ function Controls({ book, layout }: { book: Book; layout: Layout }) {
         {cells.map((cell, index) => (
           <div key={cell.key} className={clsx("flex min-w-0 items-center", layout === "card" ? "justify-center" : "contents")}>
             {layout === "bar" && index > 0 && <span aria-hidden className="h-5 w-px shrink-0 bg-border" />}
-            {cell.static ? (
-              <span title={cell.title} className={clsx(cellClass(cell.key, true), layout === "card" && "w-full")}>
-                <span className="sr-only">Narrator: </span>
-                {cellContent(cell)}
-              </span>
-            ) : (
-              <button
-                type="button"
-                aria-label={cell.aria}
-                title={cell.title}
-                aria-haspopup={cell.popup}
-                {...trigger(cell.key)}
-                className={clsx(cellClass(cell.key, false), layout === "card" && "w-full")}
-              >
-                {cellContent(cell)}
-              </button>
-            )}
+            <button
+              type="button"
+              aria-label={cell.aria}
+              title={cell.title}
+              aria-haspopup={cell.popup}
+              {...trigger(cell.key)}
+              className={clsx(cellClass(cell.key), layout === "card" && "w-full")}
+            >
+              {cellContent(cell)}
+            </button>
           </div>
         ))}
       </div>

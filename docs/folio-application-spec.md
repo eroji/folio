@@ -233,7 +233,7 @@ Voice is chosen in this order: the book's narrator override, then the user's voi
 **Choosing voices in the UI**
 
 - Settings: for each language, a dropdown of the engine's voices for that language (a "Show all voices" toggle lists every voice), each with a Preview button that speaks a short sample in that language.
-- Book page: the same picker as the narrator override for that book.
+- Book page: the same picker as the narrator override for that book. Any signed-in listener may set it — it is the book's narrator for everyone; the voice defaults, voice instructions and the TTS server stay admin-only (Admin → Voices).
 - Full player: a Voice button to switch mid-book. Switching regenerates audio from the current segment onward; the previous voice's cached audio is kept. A switch while playing never waits for the new voice's whole segment, and neither does Play, a seek, a clip boundary or a chapter change: when the segment the listener waits on has no clip yet, the server streams it from the sentence the listener is on while the engine makes it (the engine's raw PCM stream, encoded to `TTS_FORMAT` by ffmpeg as it arrives; first audio in about half a second on fish-s2), makes the start of the segment after, and stores both as the segment's one clip; the following segments are queued behind it as usual. The old voice's queued and in-progress audio for the book is cancelled. Engines that cannot stream PCM, and `opus`, fall back to waiting for the clip.
 
 ### Generation strategy

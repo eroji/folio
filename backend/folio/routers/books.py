@@ -470,12 +470,15 @@ def patch_book(
     that came from a suggestion and stay unlocked (spec: Metadata → Editing)."""
     require_csrf(request, request.state.session_row)
     book = _get_book(db, book_id)
-    if not can_edit_book(user, book):
-        raise ApiError("forbidden", "You can only edit books you uploaded.", 403)
     metadata_fields = set(patch.metadata_fields or [])
     if not metadata_fields <= set(BookPatch.model_fields):
         _fail()
     values = _patch_values(patch)
+    # Choosing the narrator is a listening choice, so any signed-in listener may
+    # set it (DECISIONS.md); every other field belongs to the uploader/admin and
+    # a mixed PATCH is refused whole. metadata_fields is a helper, not a field.
+    if not can_edit_book(user, book) and set(values) != {"narrator_voice"}:
+        raise ApiError("forbidden", "You can only edit books you uploaded.", 403)
     before_voice = book.narrator_voice
     for name, value in values.items():
         setattr(book, name, value)

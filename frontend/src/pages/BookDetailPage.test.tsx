@@ -817,13 +817,17 @@ describe("BookDetailPage", () => {
     expect(prepareCalls.some((call) => call.voice === "zoe-en")).toBe(true);
   });
 
-  it("on desktop listeners who cannot edit get no Narrator voice menu item", async () => {
+  it("on desktop listeners who cannot edit still get the Narrator voice menu item", async () => {
     stubViewport(true);
     book = makeBook({ can_edit: false });
     renderDetail();
     await openMore();
-    await screen.findByRole("menuitem", { name: "Go to author" });
-    expect(screen.queryByRole("menuitem", { name: "Narrator voice" })).toBeNull();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Narrator voice" }));
+    const dialog = await screen.findByRole("dialog", { name: "Narrator voice" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Zoe" }));
+    await vi.waitFor(() => expect(lastPatchBody()).toEqual({ narrator_voice: "zoe-en" }));
+    // Managing stays restricted; choosing the voice does not.
+    expect(screen.queryByRole("tab", { name: "Manage" })).toBeNull();
   });
 
   it("falls back to the server default voice for the book's language", async () => {
@@ -833,11 +837,17 @@ describe("BookDetailPage", () => {
     expect(row.textContent).toContain("Narrated by Zoe");
   });
 
-  it("shows the narrator as plain text to listeners who cannot change it", async () => {
+  it("shows listeners who cannot edit the narrator row and saves their choice", async () => {
     book = makeBook({ narrator_voice: "ashley-en", can_edit: false });
     renderDetail();
-    expect(await screen.findByText("Narrated by Ashley")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Narrator voice/ })).toBeNull();
+    const row = await screen.findByRole("button", { name: "Narrator voice, Ashley" });
+    expect(row.textContent).toContain("Narrated by Ashley");
+    // Managing stays restricted; choosing the voice does not.
+    expect(screen.queryByRole("tab", { name: "Manage" })).toBeNull();
+    fireEvent.click(row);
+    const dialog = await screen.findByRole("dialog", { name: "Narrator voice" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Zoe" }));
+    await vi.waitFor(() => expect(lastPatchBody()).toEqual({ narrator_voice: "zoe-en" }));
   });
 
   it("opens the narrator dialog from the row under Play and saves the choice with a PATCH", async () => {
