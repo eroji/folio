@@ -656,6 +656,74 @@ describe("PlayerProvider", () => {
       expect(getPlayer().element.src).not.toContain("/audio/live/");
     });
 
+    /** URLs fetched so far, in order (the live start must beat the queue). */
+    function fetched(): string[] {
+      return vi.mocked(fetch).mock.calls.map(([input]) => String(input));
+    }
+
+    it("Play on a segment with no clip streams it at once, before queueing anything", async () => {
+      // A Chinese segment is ~3 minutes of speech: its whole clip took ~2.5 min,
+      // and Play sat in "Preparing audio…" for all of it.
+      const statuses: Record<string, AudioStatus> = { [`${CH1}-seg0`]: "queued" };
+      const installed = installPlayerFetch({ statuses, live: { status: "streaming", url: LIVE_URL, from: 0 } });
+      const getPlayer = renderPlayer();
+      await act(async () => {
+        await getPlayer().load(BOOK_ID);
+      });
+      const before = fetched().length;
+      await act(async () => {
+        getPlayer().toggle();
+      });
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      expect(getPlayer().element.src).toContain(LIVE_URL);
+      expect(installed.liveCalls).toEqual([{ segment_id: `${CH1}-seg0`, at: 0 }]);
+      const after = fetched().slice(before);
+      const live = after.findIndex((url) => url.includes("/audio/live"));
+      const prepare = after.findIndex((url) => url.includes("/audio/prepare"));
+      expect(live).toBeGreaterThanOrEqual(0);
+      await waitFor(() => expect(fetched().slice(before).some((url) => url.includes("/audio/prepare"))).toBe(true));
+      expect(prepare === -1 || live < prepare).toBe(true);
+    });
+
+    it("a seek to a segment with no clip streams it from there", async () => {
+      const statuses: Record<string, AudioStatus> = { [`${CH1}-seg1`]: "queued" };
+      const installed = installPlayerFetch({ statuses, live: { status: "streaming", url: LIVE_URL, from: 0.25 } });
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      act(() => getPlayer().seekSegment(1, 0));
+      await waitFor(() => expect(installed.liveCalls).toHaveLength(1));
+      expect(installed.liveCalls[0]!.segment_id).toBe(`${CH1}-seg1`);
+      await waitFor(() => expect(getPlayer().element.src).toContain(LIVE_URL));
+      expect(getPlayer().playing).toBe(true);
+      expect(getPlayer().index).toBe(1);
+    });
+
+    it("running into a segment with no clip streams it instead of waiting", async () => {
+      const statuses: Record<string, AudioStatus> = { [`${CH1}-seg1`]: "queued" };
+      const installed = installPlayerFetch({ statuses, live: { status: "streaming", url: LIVE_URL, from: 0 } });
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      act(() => {
+        getPlayer().element.dispatchEvent(new Event("ended"));
+      });
+      await waitFor(() => expect(installed.liveCalls).toHaveLength(1));
+      expect(installed.liveCalls[0]).toEqual({ segment_id: `${CH1}-seg1`, at: 0 });
+      await waitFor(() => expect(getPlayer().element.src).toContain(LIVE_URL));
+      expect(getPlayer().playing).toBe(true);
+    });
+
+    it("a segment that is ready plays its clip without asking for a stream", async () => {
+      const installed = installPlayerFetch({ live: { status: "streaming", url: LIVE_URL, from: 0 } });
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      act(() => {
+        getPlayer().element.dispatchEvent(new Event("ended"));
+      });
+      await waitFor(() => expect(getPlayer().index).toBe(1));
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      expect(installed.liveCalls).toHaveLength(0);
+    });
+
     it("a paused player's voice change starts no stream", async () => {
       const installed = installPlayerFetch({ live: { status: "streaming", url: LIVE_URL, from: 0 } });
       const getPlayer = renderPlayer();

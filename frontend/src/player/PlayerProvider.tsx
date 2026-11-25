@@ -795,7 +795,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.time = s.offset;
     }
     if (autoplay) s.intent = true;
-    await topUp();
+    const first = s.segments[s.index];
+    if (autoplay && first) await startLiveAt(first);
+    else await topUp();
   }
 
   /** Must start the next clip synchronously: with the screen locked, iOS only
@@ -824,11 +826,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       saveNow(); // segment change
       if (currentItem()?.status === "ready") pump();
       else {
-        // Ran into generation: stop the lock-screen clock now, and resume only
-        // once a few segments are ready rather than stall again right after.
+        // Ran into generation: stream it while it is made. Without a live
+        // start, stop the lock-screen clock and resume only once a few
+        // segments are ready rather than stall again right after.
         s.preparing = true;
         s.prebuffering = true;
-        void topUp();
+        void startLiveAt(s.segments[s.index]!);
       }
     } else {
       if (s.sleep === "chapter") s.intent = false;
@@ -987,15 +990,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       await load(id);
     }
     const item = currentItem();
+    const segment = s.segments[s.index];
     if (item?.status === "ready") {
       pump();
     } else {
-      // Resuming onto a segment that is still generating must ask immediately;
-      // waiting for the poll made pause/resume look stuck. A failed one is
-      // re-queued too: nothing automatic will ever retry it.
+      // A segment with no clip streams at once while it is made (live start);
+      // the queue (and the retry of a failed one) follows behind it.
       s.preparing = true;
       bump();
-      await topUp(true);
+      // A paused live start resumes (or moves to its clip, once stored): pump.
+      if (segment && s.live?.segment !== segment.id) await startLiveAt(segment, true);
+      else await topUp(true);
     }
     bump();
   }
@@ -1093,14 +1098,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     s.preparing = wasPlaying;
     // A playing listener hears the new voice at once: the server streams the
     // segment from their sentence while it makes it. Paused, prepare as usual.
-    if (wasPlaying && segment) void startLiveVoice(segment);
+    if (wasPlaying && segment) void startLiveAt(segment);
     else void topUp();
     bump();
   }
 
   /** Each live request, voice change or move; a stale answer is dropped. */
   const liveRequest = useRef(0);
-  async function startLiveVoice(segment: Segment) {
+  /** The listener is waiting on `segment` (play, seek, a boundary, a chapter
+   * or voice change): ask the server to stream it while it is made, before
+   * anything queues it (else the worker takes it first, and the live start
+   * takes it over and leaves the engine finishing an abandoned request). Then
+   * top up as usual: the lookahead, or the whole clip when it cannot stream.
+   * `retry` re-queues failed rows (an explicit action). */
+  async function startLiveAt(segment: Segment, retry = false) {
     const book = s.book;
     if (!book) return;
     const request = ++liveRequest.current;
@@ -1118,7 +1129,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.offset = 0;
       pump();
     }
-    if (current) void topUp(); // the lookahead, and the clip of a segment already made
+    if (current) await topUp(retry); // the lookahead, and the clip of a segment already made
     bump();
   }
 
@@ -1163,6 +1174,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     silence(); // stop the running element (and the preloaded one) before restarting
     // Prepare the target first so the UI shows "Preparing audio…" instead of silence.
     if (currentItem()?.status === "ready") pump();
+    else if (s.intent) void startLiveAt(s.segments[index]!, true); // streams while it is made
     else void topUp(true); // a jump to a failed segment re-queues it
     saveNow(); // segment change from scrubbing/jumping (quiet during resume)
     bump();
