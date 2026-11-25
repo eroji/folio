@@ -36,8 +36,9 @@ function spokenChars(p: PlayerContextValue): number {
   if (!current) return 0;
   const status = p.status[current.id];
   const t = p.playing ? p.liveTime() : p.time;
-  // The clip's sentence marks when it has them, else an even spread.
-  const share = spokenFraction(t, status?.duration_s ?? 0, status?.marks);
+  // The clip's sentence marks when it has them, else an even spread. While a
+  // new narrator's clip is prepared, hold where the switch happened.
+  const share = p.swapShare ?? spokenFraction(t, status?.duration_s ?? 0, status?.marks);
   return current.char_start + share * Math.max(0, current.char_end - current.char_start);
 }
 
