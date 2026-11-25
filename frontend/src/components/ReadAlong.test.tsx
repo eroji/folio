@@ -75,6 +75,32 @@ describe("ReadAlong", () => {
     );
   });
 
+  it("holds the highlight where the listener was while a new narrator's clip is prepared", async () => {
+    // The new voice's clip is unknown until it is synthesized (~35 s on a slow
+    // engine). Reading 0 % of a clip with no length flipped the highlight back
+    // to the segment's first sentence, then forward again once it landed.
+    const statuses: Record<string, "queued"> = {};
+    const installed = installPlayerFetch({ statuses });
+    const getPlayer = renderPlayer(<ReadAlong />);
+    await play(getPlayer);
+    act(() => {
+      const el = getPlayer().element;
+      el.currentTime = 8; // 80 % of the 10 s clip: sentence three
+      el.dispatchEvent(new Event("timeupdate"));
+    });
+    const current = () => document.querySelector('[aria-current="true"]')?.textContent;
+    await waitFor(() => expect(current()).toContain(`Three ${CH1}-seg0 here`));
+
+    statuses[`${CH1}-seg0`] = "queued"; // the new voice has nothing ready yet
+    const before = installed.prepareCalls.length;
+    await act(async () => {
+      getPlayer().reloadVoice(BOOK_ID);
+    });
+    await waitFor(() => expect(installed.prepareCalls.length).toBeGreaterThan(before));
+    await waitFor(() => expect(getPlayer().preparing).toBe(true));
+    expect(current()).toContain(`Three ${CH1}-seg0 here`);
+  });
+
   it("marks the current sentence bright and 4px larger, past dimmer, upcoming mid", async () => {
     const getPlayer = renderPlayer(<ReadAlong />);
     await play(getPlayer);

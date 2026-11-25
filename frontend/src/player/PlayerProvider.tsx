@@ -105,6 +105,10 @@ export interface PlayerContextValue {
   error: string | null;
   /** Seconds played within the current segment. */
   time: number;
+  /** While a voice change waits on the new voice's clip for the current
+   * segment: the share of its text playback restarts at. Read-along holds the
+   * highlight there (with no clip length, `time` cannot be placed). */
+  swapShare: number | null;
   rate: number;
   sleep: SleepChoice;
   /** The user's synced listening settings (speed drives `rate`). */
@@ -1433,6 +1437,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     preparingProgress: (s.preparing && s.progress[s.segments[s.index]?.id ?? ""]) || null,
     error: s.error,
     time: s.time,
+    swapShare: s.voiceSwap?.segment === s.segments[s.index]?.id ? s.voiceSwap?.fraction ?? null : null,
     rate: s.rate,
     sleep: s.sleep,
     settings,

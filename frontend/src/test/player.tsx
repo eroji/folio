@@ -177,14 +177,19 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
         const from = Math.max(0, all.findIndex((segment) => segment.id === body.segment_id));
         return jsonResponse({
           // Like the backend: the requested segment plus the next `count` ones.
-          items: all.slice(from, from + body.count).map((segment) => ({
-            segment_id: segment.id,
-            status: fixture.statuses?.[segment.id] ?? "ready",
-            cache_key: segment.id,
-            url: `/api/v1/audio/${segment.id}`,
-            duration_s: fixture.duration_s ?? 10,
-            marks: fixture.marks?.[segment.id] ?? null,
-          })),
+          // Like the backend: url, duration and marks only once the clip exists.
+          items: all.slice(from, from + body.count).map((segment) => {
+            const status = fixture.statuses?.[segment.id] ?? "ready";
+            const ready = status === "ready";
+            return {
+              segment_id: segment.id,
+              status,
+              cache_key: ready ? segment.id : null,
+              url: ready ? `/api/v1/audio/${segment.id}` : null,
+              duration_s: ready ? fixture.duration_s ?? 10 : null,
+              marks: ready ? fixture.marks?.[segment.id] ?? null : null,
+            };
+          }),
           voice: body.voice ?? "ashley-en",
           stream: fixture.stream ?? false,
         });
