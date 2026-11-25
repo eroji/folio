@@ -19,6 +19,8 @@ import httpx
 from folio.config import Settings
 from folio.metrics import TTS_REQUEST_SECONDS, TTS_REQUESTS_TOTAL
 from folio.tts import SynthesisCancelled, TtsError, Voice
+from folio.tts.encode import can_encode, encode_pcm
+from folio.tts.hangup import hang_up_client
 from folio.tts.voices import parse_voices_payload
 
 # 1 initial try + 3 retries, backing off 1 s, 4 s, 16 s (spec: Retries).
@@ -85,6 +87,16 @@ class _Slots:
                 self._cond.notify_all()
 
 
+# Engine base URL -> whether it streams raw PCM (fish-s2-openai does). Unknown
+# is tried; an engine that refuses is asked the usual way from then on.
+_PCM_STREAMING: dict[str, bool] = {}
+
+
+def reset_pcm_streaming() -> None:
+    """Forget which engines stream PCM (tests; a restart does the same)."""
+    _PCM_STREAMING.clear()
+
+
 _SLOTS: dict[int, _Slots] = {}
 _SLOTS_LOCK = threading.Lock()
 
@@ -125,7 +137,7 @@ class TtsClient:
         headers = {}
         if settings.tts_api_key:
             headers["Authorization"] = f"Bearer {settings.tts_api_key}"
-        self._client = httpx.Client(timeout=timeout, headers=headers)
+        self._client, self._hang_up = hang_up_client(timeout, headers)
 
     def close(self) -> None:
         self._client.close()
@@ -167,6 +179,13 @@ class TtsClient:
         self, text: str, voice: str, instructions: str | None = None
     ) -> tuple[bytes, str]:
         fmt = self.settings.tts_format
+        base = self._base()
+        if can_encode(fmt) and _PCM_STREAMING.get(base, True):
+            streamed = self._streamed(base, text, voice, instructions)
+            if streamed is not None:
+                return encode_pcm(*streamed, fmt), fmt
+        if self.cancel is not None and self.cancel.is_set():
+            raise SynthesisCancelled
         try:
             return self._speech(text, voice, fmt, instructions), fmt
         except _Rejected:
@@ -177,6 +196,77 @@ class TtsClient:
                 return self._speech(text, voice, "mp3", instructions), "mp3"
             except _Rejected:
                 raise TtsError("TTS rejected the request", code="tts_rejected") from None
+
+    def _streamed(
+        self, base: str, text: str, voice: str, instructions: str | None
+    ) -> tuple[bytes, int] | None:
+        """``(pcm, sample_rate)`` of the text as the engine's raw PCM stream.
+
+        A streamed request is the only kind fish-s2-openai stops when the
+        client hangs up: a cancelled job (``cancel``) stops reading, the
+        connection closes, and the engine frees its slot instead of finishing
+        audio nobody wants. None when this engine does not stream PCM (it is
+        remembered and asked the usual way) or the stream failed (the usual
+        request, with its retries, follows).
+        """
+        body: dict[str, Any] = {
+            "model": self.settings.tts_model,
+            "voice": voice,
+            "input": text,
+            "response_format": "pcm",
+            "stream": True,
+            "speed": 1.0,
+        }
+        if instructions:
+            body["instructions"] = instructions
+        try:
+            with (
+                self._hang_up_on_cancel(),
+                self._client.stream("POST", f"{base}/audio/speech", json=body) as response,
+            ):
+                rate = response.headers.get("x-sample-rate")
+                if response.status_code >= 500:
+                    return None
+                if response.status_code != 200 or not rate:
+                    _PCM_STREAMING[base] = False
+                    return None
+                _PCM_STREAMING[base] = True
+                pcm = bytearray()
+                for chunk in response.iter_bytes():
+                    if self.cancel is not None and self.cancel.is_set():
+                        raise SynthesisCancelled  # leaving the block hangs up
+                    pcm += chunk
+                return bytes(pcm), int(rate)
+        except httpx.HTTPError:
+            if self.cancel is not None and self.cancel.is_set():
+                raise SynthesisCancelled from None  # we hung up
+            return None
+
+    @contextmanager
+    def _hang_up_on_cancel(self) -> Iterator[None]:
+        """Close the connection as soon as the job is cancelled, even while the
+        engine has not answered: a busy engine queues the request, no chunk
+        arrives to notice the cancel by, and the request would keep its place."""
+        cancel = self.cancel
+        if cancel is None:
+            yield
+            return
+        done = threading.Event()
+
+        def watch() -> None:
+            while not done.is_set():
+                if cancel.wait(_CANCEL_POLL_S):
+                    if not done.is_set():
+                        self._hang_up()  # the socket: interrupts a request still waiting
+                        self._client.close()
+                    return
+
+        watcher = threading.Thread(target=watch, name="tts-hang-up", daemon=True)
+        watcher.start()
+        try:
+            yield
+        finally:
+            done.set()
 
     def _speech(self, text: str, voice: str, fmt: str, instructions: str | None = None) -> bytes:
         body: dict[str, Any] = {

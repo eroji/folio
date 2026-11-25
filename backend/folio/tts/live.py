@@ -21,11 +21,10 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
 import subprocess
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -42,6 +41,8 @@ from folio.integrations import SENTENCE_REQUEST_CHARS, effective_tts_settings
 from folio.models import Audio, Book, SegmentAudio
 from folio.storage import ensure_dirs
 from folio.tts.cache import cache_path, duration_seconds, single_request_key, speech_cache_key
+from folio.tts.encode import DEFAULT_PCM_RATE, ENCODE, can_encode, encode_pcm, ffmpeg_args
+from folio.tts.hangup import hang_up_client
 from folio.tts.narration import engine_instructions
 from folio.tts.pronunciation import apply_rules
 from folio.tts.queue import PRIORITY_NOW, _notify, _rules, prepare
@@ -49,16 +50,6 @@ from folio.tts.text import normalize_speech_text
 
 logger = logging.getLogger(__name__)
 
-# What ffmpeg writes for each clip format it can stream, matching the engine's
-# own encode (fish-s2-openai: mono 44.1 kHz, 128 kb/s) so an iPhone's HLS
-# stream of mixed clips stays one format.
-_ENCODE: dict[str, tuple[list[str], str]] = {
-    "aac": (["-c:a", "aac", "-f", "adts"], "audio/aac"),
-    "mp3": (["-c:a", "libmp3lame", "-f", "mp3"], "audio/mpeg"),
-}
-_OUTPUT = ["-ar", "44100", "-ac", "1", "-b:a", "128k"]
-# fish-s2-openai's PCM_SAMPLE_RATE default, for an engine that sends no header.
-_DEFAULT_PCM_RATE = 24000
 # The POST answers once audio flows (or the engine refused): the player sets
 # the URL only when there is something to play.
 FIRST_AUDIO_TIMEOUT_S = 15.0
@@ -66,20 +57,6 @@ FIRST_AUDIO_TIMEOUT_S = 15.0
 CANCEL_POLL_S = 0.25
 # A finished stream stays replayable this long (Safari re-requests media).
 KEEP_FINISHED_S = 120.0
-
-
-def _ffmpeg(rate: int, codec: list[str], *, live: bool) -> list[str]:
-    """ffmpeg reading mono s16le PCM at ``rate`` on stdin, writing the clip
-    format on stdout; ``live`` writes each packet as soon as it is encoded."""
-    args = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
-    if live:
-        # No read-ahead: by default ffmpeg probes ~5 s of input before it
-        # writes a byte, and the listener hears nothing until then.
-        args += ["-probesize", "32", "-analyzeduration", "0", "-fflags", "nobuffer"]
-    args += ["-f", "s16le", "-ar", str(rate), "-ac", "1", "-i", "pipe:0", *_OUTPUT, *codec]
-    if live:
-        args += ["-flush_packets", "1"]
-    return [*args, "pipe:1"]
 
 
 class _Stop(Exception):
@@ -205,8 +182,7 @@ def start_live(
     voice = row.voice
     if row.status == "ready":
         return {"status": "ready", "voice": voice}
-    encode = _ENCODE.get(settings.tts_format)
-    if encode is None or shutil.which("ffmpeg") is None or not settings.tts_base_url:
+    if not can_encode(settings.tts_format) or not settings.tts_base_url:
         return {"status": "unavailable", "voice": voice}
     running = _running(segment.id, voice)
     if running is not None and row.status == "streaming":
@@ -226,7 +202,7 @@ def start_live(
         segment_id=segment.id,
         voice=voice,
         start=round(cut / len(normalized), 6) if normalized else 0.0,
-        media_type=encode[1],
+        media_type=ENCODE[settings.tts_format][1],
     )
     with _LIVE_LOCK:
         _LIVE[live.id] = live
@@ -240,7 +216,6 @@ def start_live(
         head=normalized[:cut].strip(),
         tail=normalized[cut:].strip(),
         instructions=instructions,
-        codec=encode[0],
     )
     threading.Thread(target=job.run, name=f"live-{live.id[:8]}", daemon=True).start()
     live.first.wait(FIRST_AUDIO_TIMEOUT_S)
@@ -284,7 +259,8 @@ class _Job:
     head: str
     tail: str
     instructions: str
-    codec: list[str]
+    # Set by the watcher once the row is gone; it also hangs up the engine.
+    stop: threading.Event = field(default_factory=threading.Event)
 
     def run(self) -> None:
         db = SessionLocal()
@@ -332,29 +308,48 @@ class _Job:
         if self.settings.tts_api_key:
             headers["Authorization"] = f"Bearer {self.settings.tts_api_key}"
         url = f"{(self.settings.tts_base_url or '').rstrip('/')}/audio/speech"
-        with httpx.Client(timeout=60.0, headers=headers) as client:
-            tail_pcm, rate = self._stream_tail(db, client, url)
-            self.live.end()  # the listener has the rest of the segment
-            head_pcm = b""
-            if self.head:
-                if not self._wanted(db):
-                    raise _Stop
-                response = client.post(url, json=self._body(self.head, stream=False))
-                if response.status_code != 200:
-                    raise RuntimeError(f"the engine answered {response.status_code}")
-                head_pcm = response.content
-        if not self._wanted(db):
+        done = threading.Event()
+        client, hang_up = hang_up_client(60.0, headers)
+        with client:
+            watcher = threading.Thread(target=self._watch, args=(hang_up, done), daemon=True)
+            watcher.start()
+            try:
+                tail_pcm, rate = self._stream_tail(client, url)
+                self.live.end()  # the listener has the rest of the segment
+                head_pcm = self._stream_head(client, url) if self.head else b""
+            except httpx.HTTPError:
+                if self.stop.is_set():
+                    raise _Stop from None  # the watcher hung up
+                raise
+            finally:
+                done.set()
+                watcher.join()
+        if self.stop.is_set() or not self._wanted(db):
             raise _Stop
         self._store(db, head_pcm[: len(head_pcm) // 2 * 2], tail_pcm, rate)
 
-    def _stream_tail(self, db: Session, client: httpx.Client, url: str) -> tuple[bytes, int]:
+    def _watch(self, hang_up: Callable[[], None], done: threading.Event) -> None:
+        """Check the row while the engine works, and hang up once it is gone
+        (a narrator change), even before the engine has answered: a busy
+        engine queues the request, and no chunk arrives to notice it by."""
+        db = SessionLocal()
+        try:
+            while not done.wait(CANCEL_POLL_S):
+                if not self._wanted(db):
+                    self.stop.set()
+                    hang_up()
+                    return
+        finally:
+            db.close()
+
+    def _stream_tail(self, client: httpx.Client, url: str) -> tuple[bytes, int]:
         """Stream the rest of the segment to the listener; returns its PCM."""
         with client.stream("POST", url, json=self._body(self.tail, stream=True)) as response:
             if response.status_code != 200:
                 raise RuntimeError(f"the engine answered {response.status_code}")
-            rate = int(response.headers.get("x-sample-rate") or _DEFAULT_PCM_RATE)
+            rate = int(response.headers.get("x-sample-rate") or DEFAULT_PCM_RATE)
             encoder = subprocess.Popen(
-                _ffmpeg(rate, self.codec, live=True),
+                ffmpeg_args(rate, self.settings.tts_format, live=True),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
             )
@@ -363,16 +358,13 @@ class _Job:
             reader = threading.Thread(target=self._read, args=(out,), daemon=True)
             reader.start()
             pcm = bytearray()
-            checked = time.monotonic()
             try:
                 for chunk in response.iter_bytes():
                     pcm += chunk
                     encoder.stdin.write(chunk)
                     encoder.stdin.flush()
-                    if time.monotonic() - checked >= CANCEL_POLL_S:
-                        checked = time.monotonic()
-                        if not self._wanted(db):
-                            raise _Stop  # leaving the block hangs up: the engine stops
+                    if self.stop.is_set():
+                        raise _Stop  # leaving the block hangs up: the engine stops
                 encoder.stdin.close()
                 reader.join()
                 if encoder.wait() != 0:
@@ -384,18 +376,26 @@ class _Job:
                 raise
         return bytes(pcm[: len(pcm) // 2 * 2]), rate
 
+    def _stream_head(self, client: httpx.Client, url: str) -> bytes:
+        """The start of the segment, streamed too: a cancel hangs up, and the
+        engine stops (it finishes a plain request whoever is waiting)."""
+        with client.stream("POST", url, json=self._body(self.head, stream=True)) as response:
+            if response.status_code != 200:
+                raise RuntimeError(f"the engine answered {response.status_code}")
+            pcm = bytearray()
+            for chunk in response.iter_bytes():
+                pcm += chunk
+                if self.stop.is_set():
+                    raise _Stop
+        return bytes(pcm)
+
     def _read(self, out: Any) -> None:
         while data := out.read1(16384):
             self.live.add(data)
 
     def _store(self, db: Session, head_pcm: bytes, tail_pcm: bytes, rate: int) -> None:
         """Encode the whole segment once and file it as its cached clip."""
-        encoded = subprocess.run(
-            _ffmpeg(rate, self.codec, live=False),
-            input=head_pcm + tail_pcm,
-            capture_output=True,
-            check=True,
-        ).stdout
+        encoded = encode_pcm(head_pcm + tail_pcm, rate, self.settings.tts_format)
         fmt = self.settings.tts_format
         path = cache_path(self.settings, self.key, fmt)
         ensure_dirs(path.parent)

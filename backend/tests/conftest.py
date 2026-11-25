@@ -146,6 +146,14 @@ def mock_tts() -> Iterator[str]:
 
 
 @pytest.fixture(autouse=True)
+def _pcm_streaming_unknown() -> None:
+    """Whether a TTS server streams PCM is remembered process-wide per URL."""
+    from folio.tts.client import reset_pcm_streaming
+
+    reset_pcm_streaming()
+
+
+@pytest.fixture(autouse=True)
 def _google_books_not_paused(monkeypatch: pytest.MonkeyPatch) -> None:
     """A 429 pauses Google Books process-wide; every test starts unpaused."""
     from folio.metadata import googlebooks
