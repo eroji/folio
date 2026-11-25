@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
@@ -49,6 +50,9 @@ logger = logging.getLogger(__name__)
 # Segments needed now go first; lookahead is lower priority, nearest first (spec: Priority).
 PRIORITY_NOW = 10
 PRIORITY_LOOKAHEAD = 100
+# A live start (folio.tts.live) holds its row ``streaming`` for one segment's
+# stream, well under this; older, the API process died with it.
+LIVE_STALE = timedelta(minutes=5)
 
 
 def _resolve_voice(
@@ -252,7 +256,8 @@ def cancel_pending(session: Session, book_id: UUID, keep_voice: str | None) -> i
     lookahead (an entire prefetched chapter) and the segments it is generating
     right now would otherwise keep the worker's lanes and the engine busy with
     audio nobody will hear while the listener waits on the new voice. A deleted
-    ``generating`` row is the worker's signal to stop (``run_tts_job``). Ready
+    ``generating`` row is the worker's signal to stop (``run_tts_job``), a
+    deleted ``streaming`` one a live start's (``folio.tts.live``). Ready
     clips and another voice's ready cache stay (switching back is instant), and
     ``failed`` rows stay (a broken engine is still retried only by the Retry
     button, not by the next prepare). Without a keep voice (the override was
@@ -267,7 +272,7 @@ def cancel_pending(session: Session, book_id: UUID, keep_voice: str | None) -> i
     )
     statement = delete(SegmentAudio).where(
         SegmentAudio.segment_id.in_(segment_ids),
-        SegmentAudio.status.in_(("queued", "generating")),
+        SegmentAudio.status.in_(("queued", "generating", "streaming")),
     )
     if keep_voice is not None:
         statement = statement.where(SegmentAudio.voice != keep_voice)
@@ -305,8 +310,17 @@ def requeue_generating(session: Session) -> int:
 
 def claim_next_tts(session: Session, max_priority: int | None = None) -> SegmentAudio | None:
     """Claim the most urgent queued row (at most ``max_priority`` when given), or
-    None. SKIP LOCKED: workers never collide."""
-    conditions = [SegmentAudio.status == "queued"]
+    None. SKIP LOCKED: workers never collide. A live start's ``streaming`` row
+    is left alone unless it is older than ``LIVE_STALE`` (its API process died)."""
+    conditions = [
+        or_(
+            SegmentAudio.status == "queued",
+            and_(
+                SegmentAudio.status == "streaming",
+                SegmentAudio.updated_at < func.now() - LIVE_STALE,
+            ),
+        )
+    ]
     if max_priority is not None:
         conditions.append(SegmentAudio.priority <= max_priority)
     row = (

@@ -16,9 +16,10 @@ RUN if [ -f package.json ]; then npm ci || npm install; npm run build; fi; \
 FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 # Calibre CLI (ebook-convert/ebook-meta) for Kindle ingest; PyMuPDF ships
-# self-contained wheels, so no extra system libs are needed.
+# self-contained wheels, so no extra system libs are needed. ffmpeg encodes a
+# live start's PCM stream to the clip format (folio/tts/live.py).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends calibre \
+    && apt-get install -y --no-install-recommends calibre ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home folio \
     && mkdir -p /data && chown folio:folio /data
