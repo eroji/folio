@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from folio.config import Settings, get_settings
+from folio.db import SessionLocal
 from folio.integrations import Integrations, TtsServer, save_integrations
 from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
 from folio.tts.adts import adts_duration
@@ -120,7 +121,7 @@ async def test_a_segment_with_no_clip_streams_from_the_listeners_sentence(
     # Then the start of the segment once, and the whole is the cached clip.
     (row,) = _wait(db, segment, "ready")
     head = NORMALIZED[:THIRD].strip()
-    assert [(b["input"], bool(b.get("stream"))) for b in BODIES[1:]] == [(head, False)]
+    assert [(b["input"], bool(b.get("stream"))) for b in BODIES[1:]] == [(head, True)]
     audio = db.get(Audio, row.cache_key)
     assert audio is not None and Path(audio.path).is_file()
     head_seconds = len(head) * SECONDS_PER_CHAR
@@ -176,7 +177,7 @@ async def test_a_second_request_joins_the_start_already_running(
     b = await auth_client.get(second["url"])
     assert a.content == b.content and a.content  # each GET gets the stream from its start
     _wait(db, segment, "ready")
-    assert sum(1 for body in BODIES if body.get("stream")) == 1
+    assert sum(1 for body in BODIES if body["input"] == NORMALIZED[THIRD:]) == 1
 
 
 async def test_an_engine_that_cannot_stream_pcm_leaves_the_segment_to_the_queue(
@@ -221,6 +222,29 @@ async def test_a_narrator_change_stops_a_live_start(
     _wait(db, segment, None)
     assert db.scalars(select(Audio)).all() == []
     assert len(BODIES) == 1  # the start of the segment was never asked for
+
+
+async def test_a_narrator_change_stops_a_live_start_the_engine_has_not_answered_yet(
+    auth_client: httpx.AsyncClient, db: Session, live: Settings
+) -> None:
+    """A busy engine queues the request; the live start must hang up anyway,
+    or the abandoned request keeps its place ahead of the new voice."""
+    import threading
+
+    CONFIG["first_delay_s"] = 3.0
+    book, segment = _segment(db)
+
+    def change_narrator() -> None:
+        with SessionLocal() as other:
+            cancel_pending(other, book.id, "sarah")
+
+    threading.Timer(0.5, change_narrator).start()
+    started = time.monotonic()
+    await _start(auth_client, book, segment, at=0.0)
+
+    assert time.monotonic() - started < 2  # hung up at once, not after the engine's 3 s
+    _wait(db, segment, None)
+    assert db.scalars(select(Audio)).all() == []
 
 
 async def test_a_live_start_takes_over_a_segment_the_worker_is_generating(

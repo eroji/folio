@@ -10,7 +10,8 @@ speech body in ``BODIES``.
 ``response_format: "pcm"`` answers like fish-s2-openai: raw s16le mono at
 ``PCM_RATE`` (``X-Sample-Rate``), ``PCM_SECONDS_PER_CHAR`` of it per input
 character; with ``stream: true`` it is sent in chunks as it is "generated"
-(``STREAM_DELAY_S`` between them, no Content-Length). ``CONFIG["reject_pcm"]``
+(``stream_delay_s`` between them, no Content-Length; ``first_delay_s`` before
+anything, like a busy engine that queued the request). ``CONFIG["reject_pcm"]``
 answers 400 instead, like an engine that cannot do PCM.
 """
 
@@ -42,7 +43,7 @@ REQUESTS: list[tuple[str, str, str | None]] = []
 BODIES: list[dict[str, Any]] = []
 PCM_RATE = 24000
 PCM_SECONDS_PER_CHAR = 0.01
-CONFIG: dict[str, Any] = {"reject_pcm": False, "stream_delay_s": 0.0}
+CONFIG: dict[str, Any] = {"reject_pcm": False, "stream_delay_s": 0.0, "first_delay_s": 0.0}
 
 
 def pcm_for(text: str) -> bytes:
@@ -81,6 +82,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, "application/json", b'{"error": "unsupported format"}')
             return
         data = pcm_for(text)
+        time.sleep(CONFIG["first_delay_s"])  # a busy engine: queued before it answers
         if not stream:
             self._send(200, "audio/pcm", data, {"X-Sample-Rate": str(PCM_RATE)})
             return
@@ -116,7 +118,7 @@ def serve() -> Iterator[str]:
     """Start the mock on an ephemeral port; yield its base URL."""
     REQUESTS.clear()
     BODIES.clear()
-    CONFIG.update(reject_pcm=False, stream_delay_s=0.0)
+    CONFIG.update(reject_pcm=False, stream_delay_s=0.0, first_delay_s=0.0)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
