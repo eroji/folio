@@ -13,6 +13,7 @@ import {
   fetchSegments,
   fetchStreamTimeline,
   prepareAudio,
+  startLive,
   streamPlaylistUrl,
   type PreparedSegment,
   type Segment,
@@ -41,6 +42,19 @@ import type { ResumePromptProps } from "../components/ResumePrompt";
 import type { Book, BookDetailResponse, Chapter, Progress } from "../api/types";
 import { forgetClosed, rememberClosed } from "./closed";
 import { sentenceStartFraction, timeForFraction } from "./marks";
+
+/** A live start (POST /audio/live): the current segment plays from `url`
+ * while the server makes it. `from` is the share of its text the stream
+ * starts at; `estimate` is the segment length the clock runs on until the clip
+ * exists (the old voice's, else a character estimate), `base` where the stream
+ * starts on that clock. */
+interface LiveState {
+  segment: string;
+  url: string;
+  from: number;
+  estimate: number;
+  base: number;
+}
 
 /** TTS_LOOKAHEAD, spec "Generation strategy". */
 export const TTS_LOOKAHEAD = 6;
@@ -105,9 +119,10 @@ export interface PlayerContextValue {
   error: string | null;
   /** Seconds played within the current segment. */
   time: number;
-  /** While a voice change waits on the new voice's clip for the current
-   * segment: the share of its text playback restarts at. Read-along holds the
-   * highlight there (with no clip length, `time` cannot be placed). */
+  /** While the current segment has no clip in the new voice after a voice
+   * change: the share of its text being spoken (held where playback restarts
+   * while waiting; following a live stream's clock while it plays). Read-along
+   * uses it, since with no clip length `time` cannot be placed. */
   swapShare: number | null;
   rate: number;
   sleep: SleepChoice;
@@ -195,6 +210,7 @@ interface Machine {
    * voice's are known: the chapter clock keeps counting what was heard instead
    * of falling back to character estimates (the played time would jump). */
   pastDurations: Record<string, number>;
+  live: LiveState | null;
   resumeLoading: boolean; // resume not applied yet: saves stay quiet
   finished: boolean;
   finishedMarked: boolean; // the finished PUT fires once per session
@@ -231,7 +247,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const s = useRef<Machine>({
     book: null, chapters: [], chapterIdx: 0, segments: [], index: 0, status: {},
     intent: false, playing: false, preparing: false, prebuffering: false, progress: {}, error: null,
-    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null, chapterDone: null, voiceSwap: null, pastDurations: {},
+    time: 0, rate: 1, sleep: null, offset: 0, loaded: null, stalled: false, streamVoice: null, stream: null, chapterStop: null, chapterDone: null, voiceSwap: null, pastDurations: {}, live: null,
     resumeLoading: false, finished: false, finishedMarked: false, resumePrompt: null, lastDevice: null,
   }).current;
   const el = useMemo(() => new Audio(), []);
@@ -280,13 +296,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const e = found >= 0 ? entries[found]! : null;
     return e && t < e.start + e.duration ? found : -1;
   };
+  /** The element plays the current live start. */
+  const playingLive = () => s.live !== null && s.loaded === s.live.url;
+  /** Seconds into the current segment the element is at: a live stream's
+   * clock starts at its cut. */
+  const elementTime = () => (playingLive() ? s.live!.base + el.currentTime : el.currentTime);
   const liveTime = () => {
-    if (!streaming()) return el.currentTime;
+    if (!streaming()) return elementTime();
     const at = entryIndexOf(s.segments[s.index]?.id);
     return at >= 0 ? Math.max(0, el.currentTime - s.stream!.entries[at]!.start) : s.time;
   };
   const durationOf = (segment: Segment | undefined) =>
-    segment ? s.status[segment.id]?.duration_s ?? s.pastDurations[segment.id] ?? 0 : 0;
+    segment
+      ? (s.live?.segment === segment.id ? s.live.estimate : null) ??
+        s.status[segment.id]?.duration_s ??
+        s.pastDurations[segment.id] ??
+        0
+      : 0;
   /** Estimated seconds per character, from the book's measured average (server)
    * or 15 chars per second when the book has no measurement yet. */
   const secondsPerChar = () => {
@@ -395,35 +421,62 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       fail("Couldn't generate this part");
       return;
     }
-    // A resume after a generation stall waits for a small buffer so it does not
-    // start and then stall while the queued lookahead catches up. The poll keeps
-    // topping up. (A voice change starts on the first ready segment instead.)
-    if (s.prebuffering) {
-      if (!buffered()) {
+    const live = s.live?.segment === s.segments[s.index]?.id ? s.live : null;
+    let url: string;
+    if (live && !(item?.status === "ready" && item.url && item.duration_s)) {
+      // A live start plays until its segment's clip is stored.
+      url = live.url;
+      s.prebuffering = false;
+      if (s.loaded !== url) {
+        el.src = url;
+        s.loaded = url;
+      }
+    } else {
+      if (live && item?.duration_s) {
+        // Resuming after the clip was stored: the same place in it (the clip
+        // is the start of the segment, then exactly what the stream played).
+        s.offset = timeForFraction(live.from, item.duration_s, item.marks) + Math.max(0, s.time - live.base);
+        s.time = s.offset;
+        s.live = null;
+      }
+      // A resume after a generation stall waits for a small buffer so it does not
+      // start and then stall while the queued lookahead catches up. The poll keeps
+      // topping up. (A voice change starts on the first ready segment instead.)
+      if (s.prebuffering) {
+        if (!buffered()) {
+          s.preparing = true;
+          publishSession();
+          return;
+        }
+        s.prebuffering = false;
+      }
+      if (item?.status !== "ready" || !item.url) {
         s.preparing = true;
         publishSession();
         return;
       }
-      s.prebuffering = false;
+      url = loadClip(item.url);
     }
-    if (item?.status !== "ready" || !item.url) {
-      s.preparing = true;
-      publishSession();
-      return;
+    startElement(url);
+  }
+
+  /** Point the element at the ready clip `url`, or at the book stream there
+   * (Safari); returns what it now holds (`s.loaded`). */
+  function loadClip(url: string): string {
+    if (s.streamVoice && s.book && hlsPlayable()) return loadStream(s.book.id, s.streamVoice);
+    if (s.loaded !== url) {
+      el.src = clips.current.get(url) ?? url;
+      s.loaded = url;
     }
-    let url = item.url;
-    if (s.streamVoice && s.book && hlsPlayable()) {
-      url = loadStream(s.book.id, s.streamVoice);
-    } else {
-      if (s.loaded !== url) {
-        el.src = clips.current.get(url) ?? url;
-        s.loaded = url;
-      }
-      if (s.offset > 0) {
-        el.currentTime = s.offset;
-        s.offset = 0;
-      }
+    if (s.offset > 0) {
+      el.currentTime = s.offset;
+      s.offset = 0;
     }
+    return url;
+  }
+
+  /** Play whatever the element now holds; `url` identifies it (pump's load). */
+  function startElement(url: string) {
     el.playbackRate = s.rate; // a new src resets the rate to the default
     void el
       .play()
@@ -707,6 +760,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!s.resumeLoading && s.segments.length > 0) saveNow(); // chapter change: save the old position
     s.chapterDone = null;
     s.voiceSwap = null;
+    s.live = null;
+    liveRequest.current += 1;
     silence(); // never let the old chapter's element keep running under the new one
     s.chapterIdx = idx;
     s.segments = [];
@@ -760,6 +815,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       bump();
       return;
     }
+    if (playingLive()) s.live = null; // the rest of the segment was heard
     s.time = 0;
     s.playing = false;
     if (s.index + 1 < s.segments.length) {
@@ -826,6 +882,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // Never carry the previous book's position into the new one.
         silence();
         dropStream();
+        s.live = null;
         s.streamVoice = null;
         s.chapterIdx = 0;
         s.segments = [];
@@ -969,6 +1026,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     for (const objectUrl of clips.current.values()) URL.revokeObjectURL(objectUrl);
     clips.current.clear();
     dropStream();
+    s.live = null;
     s.streamVoice = null;
     s.book = null;
     s.chapters = [];
@@ -1005,12 +1063,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const offset = s.playing ? liveTime() : s.time;
     const segment = s.segments[s.index];
     const old = segment ? s.status[segment.id] : undefined;
+    // A switch during a live start: where its stream had got to.
+    const fromLive = segment && s.live?.segment === segment.id ? heldShare() : null;
     // The new voice's clip has another length and pace: restart at the same
     // sentence (placed once its clip exists), not at the old clip's second.
     s.voiceSwap =
-      segment && old?.duration_s
-        ? { segment: segment.id, fraction: sentenceStartFraction(offset, old.duration_s, old.marks) }
-        : null;
+      segment && fromLive !== null
+        ? { segment: segment.id, fraction: fromLive }
+        : segment && old?.duration_s
+          ? { segment: segment.id, fraction: sentenceStartFraction(offset, old.duration_s, old.marks) }
+          : null;
+    s.live = null;
     s.offset = offset;
     s.time = offset;
     silence();
@@ -1028,8 +1091,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // silent in "Preparing audio…" for as long as those took.
     s.prebuffering = false;
     s.preparing = wasPlaying;
-    void topUp();
+    // A playing listener hears the new voice at once: the server streams the
+    // segment from their sentence while it makes it. Paused, prepare as usual.
+    if (wasPlaying && segment) void startLiveVoice(segment);
+    else void topUp();
     bump();
+  }
+
+  /** Each live request, voice change or move; a stale answer is dropped. */
+  const liveRequest = useRef(0);
+  async function startLiveVoice(segment: Segment) {
+    const book = s.book;
+    if (!book) return;
+    const request = ++liveRequest.current;
+    const estimate = estimateOf(segment) || 1;
+    const at = s.voiceSwap?.segment === segment.id ? s.voiceSwap.fraction : Math.min(1, s.time / estimate);
+    // A failed request leaves it to the queue, as before.
+    const answer = await startLive(book.id, segment.id, at, effectiveVoice(book)).catch(() => null);
+    const current =
+      request === liveRequest.current && s.book?.id === book.id && s.segments[s.index]?.id === segment.id;
+    if (current && s.intent && !s.playing && answer?.status === "streaming" && answer.url) {
+      const from = answer.from ?? 0;
+      s.live = { segment: segment.id, url: answer.url, from, estimate, base: from * estimate };
+      s.voiceSwap = null;
+      s.time = s.live.base;
+      s.offset = 0;
+      pump();
+    }
+    if (current) void topUp(); // the lookahead, and the clip of a segment already made
+    bump();
+  }
+
+  /** The share of the current segment's text being spoken while it has no
+   * clip in the new voice (see `swapShare`), else null. */
+  function heldShare(): number | null {
+    const segment = s.segments[s.index];
+    if (!segment) return null;
+    if (s.live?.segment === segment.id) {
+      return Math.min(1, Math.max(s.live.from, s.time / s.live.estimate));
+    }
+    return s.voiceSwap?.segment === segment.id ? s.voiceSwap.fraction : null;
   }
 
   /** Seek to a segment + offset within it; prepares first when unknown. */
@@ -1037,6 +1138,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (index < 0 || index >= s.segments.length) return;
     s.chapterDone = null; // a move inside the chapter: it is being listened to again
     s.voiceSwap = null; // an explicit place wins over the voice-change restart
+    s.live = null; // a seek inside a live stream waits for the stored clip
+    liveRequest.current += 1;
     if (streaming()) {
       const at = entryIndexOf(s.segments[index]!.id);
       if (at >= 0) {
@@ -1130,6 +1233,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     void topUp(true); // the poll alone is a no-op for failed rows
   }
 
+  /** The live stream broke: wait for the stored clip and restart there. */
+  function liveFailed() {
+    const segment = s.segments[s.index];
+    const share = heldShare();
+    s.live = null;
+    s.loaded = null;
+    s.playing = false;
+    s.voiceSwap = segment && share !== null ? { segment: segment.id, fraction: share } : null;
+    s.preparing = s.intent;
+    void topUp();
+    bump();
+  }
+
   /** Mirror the player into the lock screen. Called synchronously from media
    * events as well as after renders: iOS extrapolates the clock from the last
    * published position while playbackState is "playing", and a locked screen
@@ -1191,8 +1307,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }
 
   // Latest closures for the stable effects below (state lives in `s`, not closures).
-  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession, onStreamTime });
-  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession, onStreamTime };
+  const fns = useRef({ topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession, onStreamTime, elementTime, liveFailed });
+  fns.current = { topUp, play, pause, skip, skipBack, skipForward, stepChapter, handleEnded, saveNow, publishSession, onStreamTime, elementTime, liveFailed };
 
   // Sync the saved default speed into the player. A book with its own stored
   // speed keeps it: the default only drives books played here for the first
@@ -1214,7 +1330,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const onTime = () => {
       if (!s.loaded) return;
       if (s.stream && s.loaded === s.stream.url) fns.current.onStreamTime();
-      else s.time = el.currentTime;
+      else s.time = fns.current.elementTime();
       fns.current.publishSession();
       bump();
     };
@@ -1230,7 +1346,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // external: adopt it, or the app and lock screen both believe it still plays.
     const onPause = () => {
       if (!s.playing || el.ended) return;
-      s.time = el.currentTime;
+      s.time = fns.current.elementTime();
       s.intent = false;
       s.preparing = false;
       s.prebuffering = false;
@@ -1246,6 +1362,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       s.stalled = true;
       fns.current.publishSession();
     };
+    // A live stream that breaks (the server restarted, the network dropped)
+    // falls back to waiting for the stored clip at the same place.
+    const onError = () => {
+      if (s.live && s.loaded === s.live.url) fns.current.liveFailed();
+    };
     const onPlaying = () => {
       if (!s.stalled) return;
       s.stalled = false;
@@ -1258,6 +1379,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ["waiting", onWaiting],
       ["playing", onPlaying],
       ["loadedmetadata", onMetadata],
+      ["error", onError],
     ];
     for (const [name, fn] of listeners) el.addEventListener(name, fn);
     return () => {
@@ -1437,7 +1559,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     preparingProgress: (s.preparing && s.progress[s.segments[s.index]?.id ?? ""]) || null,
     error: s.error,
     time: s.time,
-    swapShare: s.voiceSwap?.segment === s.segments[s.index]?.id ? s.voiceSwap?.fraction ?? null : null,
+    swapShare: heldShare(),
     rate: s.rate,
     sleep: s.sleep,
     settings,

@@ -60,3 +60,7 @@ A segment (up to `TTS_MAX_CHARS` = 800 characters, about 50 s of audio) used to 
 ### Parallel sentences (`TTS_CONCURRENCY`, measured 2026-11-18)
 
 VoxCPM2 serves concurrent requests. Eight sentence-sized requests (`tess`, AAC): 6.0 s one at a time, 3.4 s two at a time, 2.1 s four at a time, 1.95 s eight at a time. A segment's sentences now go out `TTS_CONCURRENCY` (default 4) at a time and are joined in reading order. The worker still synthesizes one segment at a time, so this is also the cap on requests in flight.
+
+## Live start (streaming a segment while it is made)
+
+A voice switch mid-play asks the engine for the rest of the current segment as a raw PCM stream: `POST /v1/audio/speech` with `"response_format": "pcm", "stream": true`, read as mono s16le at the `X-Sample-Rate` header (24000 when absent). fish-s2-openai does this (first audio ~0.5 s); its `PCM_SAMPLE_RATE` defaults to 24 kHz, so set it to 44100 there for full-bandwidth audio. Folio encodes the stream with ffmpeg to `TTS_FORMAT` (AAC or MP3, mono 44.1 kHz, 128 kb/s, the engine's own settings) and stores the finished segment as an ordinary clip. An engine that answers the PCM request with an error makes Folio fall back to waiting for the whole clip; `opus` is never streamed live.

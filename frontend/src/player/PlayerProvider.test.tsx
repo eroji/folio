@@ -7,7 +7,7 @@ import { installMockEventSource, MockEventSource } from "../test/eventsource";
 import { BOOK_ID, BOOK2_ID, CH1, CH2, CH3, installPlayerFetch, makeProgress, makeSegments, renderPlayer, stubMedia } from "../test/player";
 import { deviceLabel } from "../api/progress";
 import { DEFAULT_SETTINGS, settingsQueryKey, speedOptionsQueryKey } from "../api/settings";
-import type { AudioStatus } from "../api/audio";
+import type { AudioStatus, LiveStart } from "../api/audio";
 import type { BookDetailResponse } from "../api/types";
 import { closedBook } from "./closed";
 
@@ -546,6 +546,127 @@ describe("PlayerProvider", () => {
     await waitFor(() => expect(getPlayer().playing).toBe(true));
     expect(getPlayer().preparing).toBe(false);
     expect(played).toHaveLength(1); // started on the first ready clip, not the lookahead
+  });
+
+  describe("live start on a voice change", () => {
+    // A whole-segment clip in the new voice took ~35 s to make, and playback
+    // stopped for all of it. The server streams the rest of the segment from
+    // the listener's sentence while it makes it (POST /audio/live).
+    const LIVE_URL = "/api/v1/audio/live/0123456789abcdef0123456789abcdef";
+
+    async function switchVoiceMidPlay(live: LiveStart) {
+      const statuses: Record<string, AudioStatus> = {};
+      const marks: Record<string, [number, number][]> = {};
+      const installed = installPlayerFetch({ statuses, marks, live });
+      prepareCalls = installed.prepareCalls;
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      act(() => {
+        const el = getPlayer().element;
+        el.currentTime = 7; // 70 % into the 10 s clip
+        el.dispatchEvent(new Event("timeupdate"));
+      });
+      statuses[`${CH1}-seg0`] = "streaming"; // the new voice has no clip yet
+      played.length = 0;
+      const before = prepareCalls.length;
+      await act(async () => {
+        getPlayer().reloadVoice(BOOK_ID);
+      });
+      return { getPlayer, installed, statuses, marks, before };
+    }
+
+    it("plays the new voice at once from the listener's place while it is made", async () => {
+      const { getPlayer, installed, before } = await switchVoiceMidPlay({
+        status: "streaming",
+        url: LIVE_URL,
+        from: 0.5,
+        voice: "zoe-en",
+      });
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      expect(installed.liveCalls).toHaveLength(1);
+      expect(installed.liveCalls[0]!.segment_id).toBe(`${CH1}-seg0`);
+      expect(installed.liveCalls[0]!.at).toBeCloseTo(0.7);
+      expect(getPlayer().element.src).toContain(LIVE_URL);
+      expect(getPlayer().preparing).toBe(false);
+      expect(played).toHaveLength(1);
+      // The stream starts at its sentence: the clock and read-along are there.
+      expect(getPlayer().time).toBeCloseTo(5);
+      expect(getPlayer().swapShare).toBeCloseTo(0.5);
+      // The lookahead keeps being made behind it.
+      await waitFor(() => expect(prepareCalls.length).toBeGreaterThan(before));
+    });
+
+    it("moves read-along and the position with the stream's clock", async () => {
+      const { getPlayer } = await switchVoiceMidPlay({ status: "streaming", url: LIVE_URL, from: 0.5 });
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      act(() => {
+        const el = getPlayer().element;
+        el.currentTime = 2.5;
+        el.dispatchEvent(new Event("timeupdate"));
+      });
+      expect(getPlayer().time).toBeCloseTo(7.5); // 5 s (the cut) + 2.5 s heard
+      expect(getPlayer().liveTime()).toBeCloseTo(7.5);
+      expect(getPlayer().swapShare).toBeCloseTo(0.75);
+    });
+
+    it("goes on to the next segment when the stream ends", async () => {
+      const { getPlayer } = await switchVoiceMidPlay({ status: "streaming", url: LIVE_URL, from: 0.5 });
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      act(() => {
+        getPlayer().element.dispatchEvent(new Event("ended"));
+      });
+      await waitFor(() => expect(getPlayer().index).toBe(1));
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      // The next clip (from its in-memory copy), never the stream again.
+      expect(getPlayer().element.src).not.toContain("/audio/live/");
+      expect(getPlayer().time).toBe(0);
+      expect(getPlayer().swapShare).toBeNull();
+    });
+
+    it("resumes in the stored clip at the same place after a pause", async () => {
+      const { getPlayer, statuses, marks } = await switchVoiceMidPlay({
+        status: "streaming",
+        url: LIVE_URL,
+        from: 0.5,
+      });
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      act(() => {
+        const el = getPlayer().element;
+        el.currentTime = 2;
+        el.dispatchEvent(new Event("timeupdate"));
+      });
+      act(() => getPlayer().pause());
+      // Meanwhile the clip was stored: its first 4 s are the start of the segment.
+      statuses[`${CH1}-seg0`] = "ready";
+      marks[`${CH1}-seg0`] = [[0, 0], [0.5, 4]];
+      await act(async () => {
+        await getPlayer().play();
+      });
+      await waitFor(() => expect(getPlayer().playing).toBe(true));
+      expect(getPlayer().element.src).toContain(`/api/v1/audio/${CH1}-seg0`);
+      expect(getPlayer().element.currentTime).toBeCloseTo(6); // 4 s of start + 2 s heard
+      expect(getPlayer().swapShare).toBeNull();
+    });
+
+    it("waits for the clip as before when the server cannot stream", async () => {
+      const { getPlayer, installed } = await switchVoiceMidPlay({ status: "unavailable" });
+      await waitFor(() => expect(installed.liveCalls).toHaveLength(1));
+      await waitFor(() => expect(getPlayer().preparing).toBe(true));
+      expect(getPlayer().playing).toBe(false);
+      expect(getPlayer().element.src).not.toContain("/audio/live/");
+    });
+
+    it("a paused player's voice change starts no stream", async () => {
+      const installed = installPlayerFetch({ live: { status: "streaming", url: LIVE_URL, from: 0 } });
+      const getPlayer = renderPlayer();
+      await loadAndPlay(getPlayer);
+      act(() => getPlayer().pause());
+      await act(async () => {
+        getPlayer().reloadVoice(BOOK_ID);
+      });
+      await waitFor(() => expect(installed.prepareCalls.length).toBeGreaterThan(0));
+      expect(installed.liveCalls).toHaveLength(0);
+    });
   });
 
   it("reloadVoice keeps a paused player paused without prebuffering", async () => {

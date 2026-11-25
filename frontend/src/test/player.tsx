@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Book, Chapter, Progress } from "../api/types";
-import type { AudioStatus, Segment } from "../api/audio";
+import type { AudioStatus, LiveStart, Segment } from "../api/audio";
 import { DEFAULT_SETTINGS, DEFAULT_SPEED_OPTIONS, type ListeningSettings, type SpeedOptions } from "../api/settings";
 import { PlayerProvider, SILENT_SRC, type PlayerContextValue } from "../player/PlayerProvider";
 import { usePlayer } from "../player/usePlayer";
@@ -76,6 +76,8 @@ export interface PlayerFixture {
   book?: Partial<Book>;
   /** segment_id → the clip's sentence marks ([text fraction, seconds] pairs). */
   marks?: Record<string, [number, number][]>;
+  /** The POST /audio/live answer (default: this server cannot stream). */
+  live?: LiveStart;
 }
 
 export interface InstalledFetch {
@@ -89,6 +91,8 @@ export interface InstalledFetch {
   saveFails: boolean;
   /** Every PATCH /books/{id} body received, in order (narrator changes). */
   patchCalls: Record<string, unknown>[];
+  /** Every POST /audio/live body received, in order. */
+  liveCalls: { segment_id: string; at: number; voice?: string }[];
 }
 
 /** GET /voices: two English voices (one without a display name) and the
@@ -125,7 +129,8 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
   const saveCalls: InstalledFetch["saveCalls"] = [];
   const finishedCalls: InstalledFetch["finishedCalls"] = [];
   const patchCalls: InstalledFetch["patchCalls"] = [];
-  const installed: InstalledFetch = { prepareCalls, saveCalls, finishedCalls, saveFails: false, patchCalls };
+  const liveCalls: InstalledFetch["liveCalls"] = [];
+  const installed: InstalledFetch = { prepareCalls, saveCalls, finishedCalls, saveFails: false, patchCalls, liveCalls };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -165,6 +170,11 @@ export function installPlayerFetch(fixture: PlayerFixture = {}): InstalledFetch 
       }
       if (url.startsWith("/api/v1/audio/")) {
         return new Response("clip", { headers: { "Content-Type": "audio/mpeg" } });
+      }
+      if (url.includes("/audio/live") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as InstalledFetch["liveCalls"][number];
+        liveCalls.push(body);
+        return jsonResponse(fixture.live ?? { status: "unavailable", voice: body.voice ?? "ashley-en" });
       }
       if (url.includes("/audio/prepare")) {
         const body = JSON.parse(String(init?.body)) as {

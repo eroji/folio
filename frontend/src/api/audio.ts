@@ -4,7 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 import type { BookDetailResponse } from "./types";
 
-export type AudioStatus = "queued" | "generating" | "ready" | "failed";
+/** `streaming`: a live start is playing this segment while it is made
+ * (startLive); it becomes "ready" once the whole clip is stored. */
+export type AudioStatus = "queued" | "generating" | "streaming" | "ready" | "failed";
 
 /** One entry of the POST /books/{id}/audio/prepare response. `url` is the
  * playable /api/v1/audio/{key} path when status is "ready". */
@@ -99,6 +101,26 @@ export function prepareAudio(
     }),
     timeout,
   ]);
+}
+
+/** POST /books/{id}/audio/live: play a segment the voice has no clip for
+ * while the engine makes it, from the sentence at share `at` of its text.
+ * "streaming" carries the URL to play and `from`, the share of the text that
+ * URL starts at; "ready" means the clip exists (prepare as usual); and
+ * "unavailable" means this server cannot stream (the queue makes it). */
+export interface LiveStart {
+  status: "streaming" | "ready" | "unavailable";
+  url?: string;
+  from?: number;
+  voice?: string;
+}
+
+export function startLive(bookId: string, segmentId: string, at: number, voice?: string): Promise<LiveStart> {
+  return api.post<LiveStart>(`/books/${bookId}/audio/live`, {
+    segment_id: segmentId,
+    at: Math.min(1, Math.max(0, at)),
+    ...(voice ? { voice } : {}),
+  });
 }
 
 export function segmentsForChapter(bookId: string, chapterId: string): Promise<{ items: Segment[] }> {

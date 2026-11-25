@@ -234,7 +234,7 @@ Voice is chosen in this order: the book's narrator override, then the user's voi
 
 - Settings: for each language, a dropdown of the engine's voices for that language (a "Show all voices" toggle lists every voice), each with a Preview button that speaks a short sample in that language.
 - Book page: the same picker as the narrator override for that book.
-- Full player: a Voice button to switch mid-book. Switching regenerates audio from the current segment onward; the previous voice's cached audio is kept.
+- Full player: a Voice button to switch mid-book. Switching regenerates audio from the current segment onward; the previous voice's cached audio is kept. A switch while playing never waits for the new voice's whole segment: when that segment has no clip yet, the server streams it from the sentence the listener is on while the engine makes it (the engine's raw PCM stream, encoded to `TTS_FORMAT` by ffmpeg as it arrives; first audio in about half a second on fish-s2), makes the start of the segment after, and stores both as the segment's one clip; the following segments are queued behind it as usual. The old voice's queued and in-progress audio for the book is cancelled. Engines that cannot stream PCM, and `opus`, fall back to waiting for the clip.
 
 ### Generation strategy
 
@@ -321,6 +321,8 @@ Use SQLAlchemy 2.x models and Alembic migrations. Index `segments(chapter_id, id
 | `POST /books/{id}/reprocess` | retry ingestion |
 | `GET /books/{id}/chapters/{chapterId}/segments` | segment list with text and audio status |
 | `POST /books/{id}/audio/prepare` | body: segment id + count (+ `retry: true` from an explicit user action, to re-queue the window's failed rows); queues generation and returns statuses |
+| `POST /books/{id}/audio/live` | body: segment id + `at` (share of its text) + voice; for a segment with no clip, starts streaming it from that sentence while it is made: `{status: "streaming", url, from}` once audio flows, `"ready"` when the clip exists, `"unavailable"` when this server cannot stream (the queue makes it) |
+| `GET /audio/live/{id}` | a live start's audio as it is made (no `Range`; every request replays it from the first byte) |
 | `GET /audio/{cacheKey}` | stream audio (supports HTTP `Range`) |
 | `GET /books/{id}/progress`, `PUT /books/{id}/progress` | read/save progress |
 | `GET /me/continue` | in-progress books, most recent first |
