@@ -6,15 +6,19 @@ Verified against the homelab Qwen3 service (docs/TTS.md).
 
 from __future__ import annotations
 
+import heapq
+import itertools
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, Self
 
 import httpx
 
 from folio.config import Settings
 from folio.metrics import TTS_REQUEST_SECONDS, TTS_REQUESTS_TOTAL
-from folio.tts import TtsError, Voice
+from folio.tts import SynthesisCancelled, TtsError, Voice
 from folio.tts.voices import parse_voices_payload
 
 # 1 initial try + 3 retries, backing off 1 s, 4 s, 16 s (spec: Retries).
@@ -31,11 +35,61 @@ class _Rejected(Exception):
         self.status = status
 
 
-_SLOTS: dict[int, threading.BoundedSemaphore] = {}
+# How often a request waiting for a slot checks whether its job was cancelled.
+_CANCEL_POLL_S = 0.25
+
+
+class _Slots:
+    """A counting semaphore that hands a free slot to the most urgent waiter
+    (lowest priority number, then first come) instead of whoever woke first.
+
+    The worker's audio lanes run side by side: after a play, seek or voice
+    change one synthesizes the segment the listener waits on (PRIORITY_NOW)
+    while the other starts its lookahead. First come, first served split the
+    engine between them, so the waited-on segment took about twice as long.
+    """
+
+    def __init__(self, count: int) -> None:
+        self._free = count
+        self._cond = threading.Condition()
+        self._waiting: list[tuple[int, int]] = []
+        self._order = itertools.count()
+
+    @contextmanager
+    def hold(self, priority: int = 0, cancel: threading.Event | None = None) -> Iterator[None]:
+        """Hold one slot; raises SynthesisCancelled (holding nothing) once
+        ``cancel`` is set while waiting."""
+        with self._cond:
+            ticket = (priority, next(self._order))
+            heapq.heappush(self._waiting, ticket)
+            try:
+                while True:
+                    if cancel is not None and cancel.is_set():
+                        raise SynthesisCancelled
+                    if self._free > 0 and self._waiting[0] == ticket:
+                        break
+                    self._cond.wait(_CANCEL_POLL_S if cancel is not None else None)
+            except BaseException:
+                self._waiting.remove(ticket)
+                heapq.heapify(self._waiting)
+                self._cond.notify_all()  # the next in line may be at the head now
+                raise
+            heapq.heappop(self._waiting)
+            self._free -= 1
+            self._cond.notify_all()  # a second free slot goes to the next in line
+        try:
+            yield
+        finally:
+            with self._cond:
+                self._free += 1
+                self._cond.notify_all()
+
+
+_SLOTS: dict[int, _Slots] = {}
 _SLOTS_LOCK = threading.Lock()
 
 
-def _slots(count: int) -> threading.BoundedSemaphore:
+def _slots(count: int) -> _Slots:
     """The process-wide cap on TTS requests in flight (the effective
     concurrency: Admin → Voices → TTS server, else TTS_CONCURRENCY): the
     worker's audio lanes and each segment's parallel sentences share it.
@@ -45,15 +99,29 @@ def _slots(count: int) -> threading.BoundedSemaphore:
     to old + new requests can be in flight. Accepted; it ends with them.
     """
     with _SLOTS_LOCK:
-        return _SLOTS.setdefault(count, threading.BoundedSemaphore(count))
+        return _SLOTS.setdefault(count, _Slots(count))
 
 
 class TtsClient:
     """Pass the effective settings (``folio.integrations.effective_tts_settings``)
-    so the admin's TTS server, key and concurrency apply."""
+    so the admin's TTS server, key and concurrency apply.
 
-    def __init__(self, settings: Settings, timeout: float = _TIMEOUT_S) -> None:
+    ``priority`` orders this client's requests for a free slot (the queue row's
+    priority; lower goes first, previews and tests use 0). Once ``cancel`` is
+    set, requests still waiting for a slot raise SynthesisCancelled.
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        timeout: float = _TIMEOUT_S,
+        *,
+        priority: int = 0,
+        cancel: threading.Event | None = None,
+    ) -> None:
         self.settings = settings
+        self.priority = priority
+        self.cancel = cancel
         headers = {}
         if settings.tts_api_key:
             headers["Authorization"] = f"Bearer {settings.tts_api_key}"
@@ -83,7 +151,8 @@ class TtsClient:
         retries included (spec: Observability); the time excludes waiting for a
         free slot under TTS_CONCURRENCY.
         """
-        with _slots(max(1, self.settings.tts_concurrency)):
+        slots = _slots(max(1, self.settings.tts_concurrency))
+        with slots.hold(self.priority, self.cancel):
             start = time.perf_counter()
             result = "error"
             try:

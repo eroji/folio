@@ -104,8 +104,15 @@ def stream_window(session: Session, book: Book, voice: str, origin: UUID) -> Str
 
 def keep_generating(session: Session, settings: Settings, book: Book, window: StreamWindow) -> None:
     """Queue the first missing segment (needed now) and its lookahead: on a
-    locked phone only the media player is polling, not the page's top-up."""
+    locked phone only the media player is polling, not the page's top-up.
+
+    A stream in a voice the book's narrator has replaced queues nothing: the
+    player is waiting on the new voice, and Safari may still poll the old
+    playlist. Resolving it would queue the new narrator from the old stream's
+    far end at needed-now priority, ahead of the segment the listener awaits."""
     if window.next_missing is None:
+        return
+    if book.narrator_voice is not None and window.voice != book.narrator_voice:
         return
     try:
         prepare(session, settings, book, window.next_missing, None, window.voice)

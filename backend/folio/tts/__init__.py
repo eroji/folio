@@ -16,6 +16,11 @@ class TtsError(Exception):
         self.code = code
 
 
+class SynthesisCancelled(Exception):
+    """The audio being synthesized is no longer wanted (its queue row was
+    cancelled, e.g. by a narrator change): stop without a result or an error."""
+
+
 @dataclass
 class Voice:
     """A voice reported by the engine (or the ``TTS_VOICES`` fallback)."""
@@ -39,6 +44,7 @@ from folio.tts.text import normalize_speech_text, prepare_for_speech
 from folio.tts.voices import discover_voices
 
 __all__ = [
+    "SynthesisCancelled",
     "TtsClient",
     "TtsError",
     "Voice",

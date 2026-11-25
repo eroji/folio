@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from typing import Any
 
 import httpx
 import pytest
 
 from folio.config import Settings
-from folio.tts import TtsClient, TtsError
+from folio.tts import SynthesisCancelled, TtsClient, TtsError
+from folio.tts.client import _Slots
 
 
 def _settings(**over: Any) -> Settings:
@@ -168,3 +171,77 @@ def test_list_voices_raises_when_both_endpoints_fail() -> None:
 
     with pytest.raises(TtsError):
         _client(handler).list_voices()
+
+
+def _until(condition: Any, timeout: float = 2.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.005)
+
+
+def test_a_free_slot_goes_to_the_most_urgent_waiter() -> None:
+    """After a voice change the worker's two lanes synthesize the segment the
+    listener waits on (priority 10) and its lookahead (101) side by side. First
+    come, first served split the engine between them, so the waited-on segment
+    took about twice as long to start."""
+    slots = _Slots(1)
+    order: list[int] = []
+    held = slots.hold(0)
+    held.__enter__()
+
+    def take(priority: int) -> None:
+        with slots.hold(priority):
+            order.append(priority)
+
+    late = threading.Thread(target=take, args=(101,))
+    late.start()
+    _until(lambda: len(slots._waiting) == 1)
+    urgent = threading.Thread(target=take, args=(10,))
+    urgent.start()
+    _until(lambda: len(slots._waiting) == 2)
+    held.__exit__(None, None, None)
+    late.join(2)
+    urgent.join(2)
+    assert order == [10, 101]
+
+
+def test_a_cancelled_waiter_leaves_the_line_without_a_slot() -> None:
+    slots = _Slots(1)
+    cancel = threading.Event()
+    outcome: list[str] = []
+    held = slots.hold(0)
+    held.__enter__()
+
+    def wait_for_slot() -> None:
+        try:
+            with slots.hold(10, cancel):
+                outcome.append("held")
+        except SynthesisCancelled:
+            outcome.append("cancelled")
+
+    waiter = threading.Thread(target=wait_for_slot)
+    waiter.start()
+    _until(lambda: len(slots._waiting) == 1)
+    cancel.set()
+    waiter.join(2)
+    assert outcome == ["cancelled"] and slots._waiting == []
+    held.__exit__(None, None, None)
+    with slots.hold(200):  # the slot was never leaked
+        pass
+
+
+def test_a_cancelled_job_sends_no_request() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, content=b"ID3")
+
+    cancel = threading.Event()
+    cancel.set()
+    client = TtsClient(_settings(), cancel=cancel)
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(SynthesisCancelled):
+        client.synthesize("hi", "v")
+    assert requests == []
