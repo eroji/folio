@@ -318,7 +318,7 @@ def test_run_tts_job_synthesizes_the_corrected_text(
         spoken.append(str(body["input"]))
         return httpx.Response(200, content=SILENT_OPUS, headers={"content-type": "audio/ogg"})
 
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s, handler))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s, handler))
     run_tts_job(db, settings, row)
 
     assert row.status == "ready", row.error

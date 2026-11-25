@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import os
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -24,7 +24,7 @@ from folio.config import Settings
 from folio.ingest.segment import SegmentedSentence, speech_pieces
 from folio.models.audio import Audio, SegmentAudio
 from folio.storage import audio_path, ensure_dirs
-from folio.tts import TtsError
+from folio.tts import SynthesisCancelled, TtsError
 from folio.tts.adts import adts_duration
 from folio.tts.join import join_clips
 from folio.tts.text import normalize_speech_text
@@ -132,6 +132,10 @@ def duration_seconds(path: Path) -> float:
         return 0.0
 
 
+# How often a segment being synthesized asks whether it is still wanted.
+CANCEL_POLL_S = 0.25
+
+
 def get_or_synthesize(
     session: Session,
     settings: Settings,
@@ -141,6 +145,7 @@ def get_or_synthesize(
     instructions: str = "",
     language: str = "en",
     on_progress: Callable[[int, int], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> tuple[Audio, bool]:
     """Return ``(audio_row, was_cached)``; a cache hit makes no HTTP call.
 
@@ -150,6 +155,10 @@ def get_or_synthesize(
     request starts (``marks``) for read-along. ``language`` picks the
     sentence splitter. ``on_progress(done, total)`` is called from this
     thread as the sentences finish (from 0), when there is more than one.
+    ``cancelled()`` is asked from this thread before the first request and
+    every ``CANCEL_POLL_S`` until the last one lands; once it says yes, the
+    sentences not yet sent are dropped and SynthesisCancelled is raised
+    without waiting for those in flight (their results are discarded).
     """
     normalized = normalize_speech_text(text)
     key = speech_cache_key(settings, voice, normalized, instructions, language)
@@ -160,23 +169,37 @@ def get_or_synthesize(
         return row, True
 
     pieces = _pieces(settings, normalized, language)
+    if cancelled is not None and cancelled():
+        raise SynthesisCancelled
     # The sentences go out TTS_CONCURRENCY at a time (VoxCPM2 serves concurrent
-    # requests: 8 sentences took 6.0 s one by one, 2.1 s four at a time); map
-    # keeps reading order however they finish, and the first error propagates.
+    # requests: 8 sentences took 6.0 s one by one, 2.1 s four at a time); the
+    # index keeps reading order however they finish, and the first error propagates.
     workers = max(1, min(len(pieces), settings.tts_concurrency))
     report = on_progress if len(pieces) > 1 else None
     if report:
         report(0, len(pieces))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        futures: dict[Future[tuple[bytes, str]], int] = {
             pool.submit(client.synthesize, piece.text, voice, instructions): index
             for index, piece in enumerate(pieces)
         }
         ordered: list[tuple[bytes, str] | None] = [None] * len(pieces)
-        for done, future in enumerate(as_completed(futures), start=1):
-            ordered[futures[future]] = future.result()  # the first error propagates
-            if report:
-                report(done, len(pieces))
+        pending = set(futures)
+        done = 0
+        while pending:
+            finished, pending = wait(pending, timeout=CANCEL_POLL_S, return_when=FIRST_COMPLETED)
+            for future in finished:
+                ordered[futures[future]] = future.result()  # the first error propagates
+                done += 1
+                if report:
+                    report(done, len(pieces))
+            if pending and cancelled is not None and cancelled():
+                raise SynthesisCancelled
+    finally:
+        # On an error or a cancel, never send the sentences still queued, and
+        # do not wait for those in flight: their worker threads end on their own.
+        pool.shutdown(wait=False, cancel_futures=True)
     results = [result for result in ordered if result is not None]
     clips = [clip for clip, _ in results]
     formats = {piece_fmt for _, piece_fmt in results}

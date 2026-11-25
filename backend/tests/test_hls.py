@@ -275,3 +275,24 @@ async def test_a_failed_top_up_never_fails_the_playlist(
     response = await auth_client.get(_playlist_url(book, segs[0]))
     assert response.status_code == 200
     assert response.text.count("#EXTINF") == 1
+
+
+async def test_a_stream_in_a_replaced_narrators_voice_queues_nothing(
+    auth_client: httpx.AsyncClient, db: Session
+) -> None:
+    """Safari can keep polling the old voice's playlist while the player waits
+    on the new narrator. Topping that stream up resolved to the new narrator
+    from the old stream's far end at needed-now priority, ahead of the segment
+    the listener was actually waiting for."""
+    settings = get_settings()
+    book, segs = _book(db)
+    _ready(db, settings, segs[0], 47)
+    book.narrator_voice = "sarah"
+    db.commit()
+
+    response = await auth_client.get(_playlist_url(book, segs[0]))
+
+    assert response.status_code == 200
+    assert response.text.count("#EXTINF") == 1  # what is ready still plays
+    db.expire_all()
+    assert db.scalars(select(SegmentAudio).where(SegmentAudio.status == "queued")).all() == []

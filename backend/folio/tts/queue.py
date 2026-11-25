@@ -8,6 +8,7 @@ No separate jobs plumbing: the rows double as queue and state.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -30,6 +31,7 @@ from folio.models import (
     SegmentAudio,
 )
 from folio.tts import (
+    SynthesisCancelled,
     TtsClient,
     TtsError,
     discover_voices,
@@ -244,16 +246,17 @@ def _notify(session: Session, book_id: str | None, segment_id: UUID, status: str
 
 
 def cancel_pending(session: Session, book_id: UUID, keep_voice: str | None) -> int:
-    """Drop a book's not-yet-started audio for every voice but ``keep_voice``.
+    """Drop a book's unfinished audio for every voice but ``keep_voice``.
 
     A narrator change switches the book to a new voice; the old voice's queued
-    lookahead (an entire prefetched chapter) would otherwise keep the engine
-    busy synthesizing audio nobody will hear before the new voice's first
-    segments. Ready clips and another voice's ready cache stay (switching back
-    is instant), ``failed`` rows stay (a broken engine is still retried only by
-    the Retry button, not by the next prepare), and a claim already generating
-    cannot be aborted and is left to finish. Without a keep voice (the override
-    was cleared) every pending row goes — the next prepare re-queues the
+    lookahead (an entire prefetched chapter) and the segments it is generating
+    right now would otherwise keep the worker's lanes and the engine busy with
+    audio nobody will hear while the listener waits on the new voice. A deleted
+    ``generating`` row is the worker's signal to stop (``run_tts_job``). Ready
+    clips and another voice's ready cache stay (switching back is instant), and
+    ``failed`` rows stay (a broken engine is still retried only by the Retry
+    button, not by the next prepare). Without a keep voice (the override was
+    cleared) every pending row goes — the next prepare re-queues the
     listener's voice within a second.
     """
     segment_ids = (
@@ -264,7 +267,7 @@ def cancel_pending(session: Session, book_id: UUID, keep_voice: str | None) -> i
     )
     statement = delete(SegmentAudio).where(
         SegmentAudio.segment_id.in_(segment_ids),
-        SegmentAudio.status == "queued",
+        SegmentAudio.status.in_(("queued", "generating")),
     )
     if keep_voice is not None:
         statement = statement.where(SegmentAudio.voice != keep_voice)
@@ -330,10 +333,22 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
 
     Always releases the row: after this returns it is never ``generating``.
     The TTS server, key and concurrency are read from the database per job,
-    so the worker follows an admin change without a restart.
+    so the worker follows an admin change without a restart. The job asks for
+    the engine at its row's priority (the segment a listener waits on goes
+    first), and stops early, writing nothing, once its row is deleted
+    (``cancel_pending`` on a narrator change, or a text change).
     """
     settings = effective_tts_settings(session, settings)
     row_id = row.id
+    stop = threading.Event()
+
+    def cancelled() -> bool:
+        if not stop.is_set():
+            gone = session.scalar(select(SegmentAudio.id).where(SegmentAudio.id == row_id)) is None
+            if gone:
+                stop.set()  # requests still waiting for a slot give up too
+        return stop.is_set()
+
     segment = session.get(Segment, row.segment_id)
     chapter = session.get(Chapter, segment.chapter_id) if segment else None
     book_id = str(chapter.book_id) if chapter else None
@@ -365,7 +380,7 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
                 },
             )
 
-        with TtsClient(settings) as client:
+        with TtsClient(settings, priority=row.priority, cancel=stop) as client:
             audio, _ = get_or_synthesize(
                 session,
                 settings,
@@ -375,8 +390,13 @@ def run_tts_job(session: Session, settings: Settings, row: SegmentAudio) -> None
                 instructions,
                 language=book.language if book else "en",
                 on_progress=progress,
+                cancelled=cancelled,
             )
         row.cache_key, row.status, row.error = audio.cache_key, "ready", None
+    except SynthesisCancelled:
+        session.rollback()
+        logger.info("segment_audio %s cancelled during synthesis; stopped", row_id)
+        return
     except TtsError as exc:
         row.status, row.error = "failed", exc.message
     except Exception as exc:  # noqa: BLE001 - a stuck generating row is worse than a failure

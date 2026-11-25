@@ -102,12 +102,15 @@ async def test_changing_the_narrator_cancels_the_old_voices_pending_audio(
     db.flush()
     first = Segment(chapter_id=chapter.id, idx=0, text="Hello there.", char_start=0, char_end=12)
     second = Segment(chapter_id=chapter.id, idx=1, text="And again.", char_start=12, char_end=22)
-    db.add_all([first, second])
+    third = Segment(chapter_id=chapter.id, idx=2, text="Once more.", char_start=22, char_end=32)
+    db.add_all([first, second, third])
     db.flush()
     db.add_all(
         [
             SegmentAudio(segment_id=first.id, voice="bennett", status="queued"),
             SegmentAudio(segment_id=second.id, voice="bennett", status="ready"),
+            # In flight: the worker aborts it rather than finish the old voice.
+            SegmentAudio(segment_id=third.id, voice="bennett", status="generating"),
             SegmentAudio(segment_id=first.id, voice="sarah", status="queued"),
         ]
     )

@@ -16,7 +16,14 @@ from sqlalchemy.orm import Session
 
 from folio.config import Settings
 from folio.models import Audio, Book, Chapter, Segment, SegmentAudio
-from folio.tts import cache_key, cache_path, duration_seconds, evict_if_needed, get_or_synthesize
+from folio.tts import (
+    SynthesisCancelled,
+    cache_key,
+    cache_path,
+    duration_seconds,
+    evict_if_needed,
+    get_or_synthesize,
+)
 from folio.tts.cache import single_request_key, speech_cache_key
 
 sys_path = Path(__file__).resolve().parents[1]
@@ -368,3 +375,39 @@ def test_migration_0004_up_and_down(settings: Settings) -> None:
     finally:
         with psycopg.connect(maint, autocommit=True) as conn:
             conn.execute(f'DROP DATABASE IF EXISTS "{mig_db}" WITH (FORCE)')
+
+
+def test_a_cancelled_segment_stops_without_waiting_for_the_sentence_in_flight(
+    db: Session, settings: Settings
+) -> None:
+    """A narrator change abandons the old voice's segment mid-synthesis. Finishing
+    it kept a worker lane and the engine busy while the listener waited for the
+    new voice, so the check runs on a timer, not only when a sentence lands."""
+    import threading
+    import time
+
+    from sqlalchemy import func, select
+
+    settings = settings.model_copy(update={"tts_request_chars": 400, "tts_concurrency": 1})
+    started: list[str] = []
+    release = threading.Event()
+
+    class _Slow(_CountingClient):
+        def synthesize(
+            self, text: str, voice: str, instructions: str | None = None
+        ) -> tuple[bytes, str]:
+            started.append(text)
+            release.wait(5)
+            return super().synthesize(text, voice, instructions)
+
+    begun = time.monotonic()
+    try:
+        with pytest.raises(SynthesisCancelled):
+            get_or_synthesize(
+                db, settings, _Slow(), _LONG, "tess", language="en", cancelled=lambda: bool(started)
+            )
+        assert time.monotonic() - begun < 2  # did not sit out the 5 s sentence
+    finally:
+        release.set()
+    assert len(started) == 1  # the eleven queued sentences never went out
+    assert db.scalar(select(func.count()).select_from(Audio)) == 0

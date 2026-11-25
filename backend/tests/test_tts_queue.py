@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -400,26 +401,23 @@ def test_cancel_pending_drops_other_voices_but_keeps_the_new_one(db: Session) ->
     row(segments[0], "bennett")  # queued: dropped
     row(segments[1], "bennett", "failed")  # broken engine: kept for Retry
     row(segments[2], "bennett", "ready")  # cached clip: kept
-    row(segments[3], "bennett", "generating")  # claimed, cannot abort: kept
+    row(segments[3], "bennett", "generating")  # in flight: dropped, the worker aborts it
     row(segments[0], "sarah")  # the voice the listener switched to: kept
+    row(segments[1], "sarah", "generating")  # the new voice in flight: kept
     db.commit()
 
-    assert cancel_pending(db, book.id, "sarah") == 1
+    assert cancel_pending(db, book.id, "sarah") == 2
     rows = {(r.voice, r.segment_id): r.status for r in db.scalars(select(SegmentAudio))}
     assert rows == {
         ("bennett", segments[1].id): "failed",
         ("bennett", segments[2].id): "ready",
-        ("bennett", segments[3].id): "generating",
         ("sarah", segments[0].id): "queued",
+        ("sarah", segments[1].id): "generating",
     }
 
-    # Clearing the override keeps no voice: every queued row goes.
-    assert cancel_pending(db, book.id, None) == 1
-    assert {r.status for r in db.scalars(select(SegmentAudio))} == {
-        "failed",
-        "ready",
-        "generating",
-    }
+    # Clearing the override keeps no voice: every pending row goes.
+    assert cancel_pending(db, book.id, None) == 2
+    assert {r.status for r in db.scalars(select(SegmentAudio))} == {"failed", "ready"}
 
 
 def test_worker_startup_requeues_orphaned_rows(
@@ -454,7 +452,7 @@ def test_run_tts_job_success_writes_file_audio_row_and_ready(
     prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
     row = claim_next_tts(db)
     assert row is not None
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s))
 
     run_tts_job(db, settings, row)
 
@@ -474,7 +472,7 @@ def test_run_tts_job_survives_row_deleted_mid_synthesis(
     prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
     row = claim_next_tts(db)
     assert row is not None
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s))
 
     db.delete(row)
     db.commit()
@@ -495,7 +493,7 @@ def test_run_tts_job_after_repeated_5xx_is_failed_never_generating(
     def always_500(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
 
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s, always_500))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s, always_500))
     run_tts_job(db, settings, row)
 
     assert row.status == "failed" and row.error
@@ -503,7 +501,7 @@ def test_run_tts_job_after_repeated_5xx_is_failed_never_generating(
     # retry resets it, and the next run can succeed
     retry(db, settings, segment.id, "ashley-en")
     assert (row.status, row.error, row.priority) == ("queued", None, 10)
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s))
     claimed = claim_next_tts(db)
     assert claimed is not None
     run_tts_job(db, settings, claimed)
@@ -525,7 +523,7 @@ def test_run_tts_job_releases_the_row_on_unexpected_errors(
             raise RuntimeError("boom")
 
     class _BoomClient:
-        def __init__(self, _settings: Settings) -> None:
+        def __init__(self, _settings: Settings, **_kw: Any) -> None:
             self._impl = _Boom()
 
         def __enter__(self) -> _Boom:
@@ -553,7 +551,7 @@ def test_retry_without_voice_finds_the_failed_row(db: Session, settings: Setting
 def test_worker_loop_claims_tts_rows_before_ingest_jobs(
     db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s))
     book = _book(db, chapters=1, per_chapter=1)
     prepare(db, settings, book, _segments(db, book)[0].id, count=0, voice="ashley-en")
     ingest = Job(type="ingest", book_id=book.id, status="queued")
@@ -575,7 +573,7 @@ def test_worker_runs_an_import_before_background_prefetch(
     upload "processing" until it drained: only audio someone is waiting for
     (the playing segment and the lookahead window) goes before imports."""
     calls: list[str] = []
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s))
     monkeypatch.setattr(
         worker, "run_tts_job", lambda _db, _s, row: calls.append(f"tts {row.priority}")
     )
@@ -681,7 +679,7 @@ def test_prepare_requeues_when_the_voice_instruction_changes(
     """A narration instruction is part of the cache key: changing it turns the
     ready clip into a miss and the row goes back to queued. Re-running the job
     must then land on the key prepare computed (same string on both sides)."""
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s))
     book = _book(db, chapters=1, per_chapter=1)
     book.genre = "Mystery"
     db.commit()
@@ -726,7 +724,7 @@ def test_run_tts_job_synthesizes_with_the_voice_narration_prompt(
     row = claim_next_tts(db)
     assert row is not None
     monkeypatch.setattr(
-        queue_module, "TtsClient", lambda _s: _FakeClient(_s, synth=_Synth(captured))
+        queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s, synth=_Synth(captured))
     )
 
     run_tts_job(db, settings, row)
@@ -751,7 +749,7 @@ def test_tts_instructions_off_sends_no_prompt_and_keys_without_it(
     row = claim_next_tts(db)
     assert row is not None
     monkeypatch.setattr(
-        queue_module, "TtsClient", lambda _s: _FakeClient(_s, synth=_Synth(captured))
+        queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s, synth=_Synth(captured))
     )
 
     run_tts_job(db, settings, row)
@@ -827,7 +825,7 @@ def test_a_split_segment_is_found_in_the_cache_by_the_next_prepare(
     row = claim_next_tts(db)
     assert row is not None
     synth = _Synth()
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s, synth=synth))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s, synth=synth))
     run_tts_job(db, settings, row)
     assert row.status == "ready"
     assert len(synth.captured) > 1  # split into several requests
@@ -952,7 +950,7 @@ def test_run_tts_job_announces_sentence_progress(
     prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
     row = claim_next_tts(db)
     assert row is not None
-    monkeypatch.setattr(queue_module, "TtsClient", lambda _s: _FakeClient(_s))
+    monkeypatch.setattr(queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s))
     frames: list[dict[str, Any]] = []
     monkeypatch.setattr(queue_module, "notify", lambda _db, payload: frames.append(payload))
 
@@ -969,3 +967,64 @@ def test_run_tts_job_announces_sentence_progress(
     }
     assert [f["done"] for f in progress] == list(range(11))
     assert frames[-1]["status"] == "ready" and "done" not in frames[-1]
+
+
+def test_run_tts_job_stops_when_a_narrator_change_cancels_its_row(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Switching voice mid-play: the old voice's segment kept synthesizing to the
+    end, holding a worker lane and the engine while the listener waited on the
+    new voice. The worker now notices its row is gone and stops."""
+    settings = settings.model_copy(update={"tts_request_chars": 400, "tts_concurrency": 1})
+    book = _book(db, chapters=1, per_chapter=1)
+    segment = _long_segment(db, book)  # ten sentences, one request each
+    prepare(db, settings, book, segment.id, count=0, voice="ashley-en")
+    row = claim_next_tts(db)
+    assert row is not None
+    sent: list[str] = []
+
+    class _SwitchMidway(_Synth):
+        def synthesize(
+            self, text: str, voice: str, instructions: str | None = None
+        ) -> tuple[bytes, str]:
+            sent.append(text)
+            if len(sent) == 1:
+                with SessionLocal() as other:  # the PATCH, from the API process
+                    cancel_pending(other, book.id, "sarah")
+            time.sleep(0.1)  # a sentence takes a while on a real engine
+            return super().synthesize(text, voice, instructions)
+
+    monkeypatch.setattr(
+        queue_module, "TtsClient", lambda _s, **_kw: _FakeClient(_s, synth=_SwitchMidway())
+    )
+    frames: list[dict[str, Any]] = []
+    monkeypatch.setattr(queue_module, "notify", lambda _db, payload: frames.append(payload))
+
+    run_tts_job(db, settings, row)
+
+    assert len(sent) <= 2  # not all ten
+    assert not [f for f in frames if f["status"] in ("ready", "failed")]
+    assert db.scalar(select(func.count()).select_from(Audio)) == 0
+    assert db.scalar(select(func.count()).select_from(SegmentAudio)) == 0
+
+
+def test_run_tts_job_claims_slots_at_its_row_priority(
+    db: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The segment the listener waits on must win the engine over lookahead."""
+    book = _book(db, chapters=1, per_chapter=2)
+    first = _segments(db, book)[0]
+    prepare(db, settings, book, first.id, count=1, voice="ashley-en")
+    seen: list[int] = []
+
+    def client(_s: Settings, **kw: Any) -> _FakeClient:
+        seen.append(kw["priority"])
+        assert kw["cancel"] is not None
+        return _FakeClient(_s)
+
+    monkeypatch.setattr(queue_module, "TtsClient", client)
+    for _ in range(2):
+        claimed = claim_next_tts(db)
+        assert claimed is not None
+        run_tts_job(db, settings, claimed)
+    assert seen == [10, 101]
